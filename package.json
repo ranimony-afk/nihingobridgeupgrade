@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "node --import tsx src/lib/seed.ts",
+    "setup": "tsx scripts/setup.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:unit": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node --import tsx --test tests/*.test.ts",

@@ -20,6 +20,7 @@ import {
   uniqueIndex,
   index,
   boolean,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 
 /* ------------------------------------------------------------------ */
@@ -820,4 +821,128 @@ export const editorialEvents = pgTable(
   (t) => ({
     entityIdx: index("editorial_events_entity_idx").on(t.entityType, t.entityId),
   }),
+);
+
+/* ------------------------------------------------------------------ */
+/* Phase 10 / Prompt 20 Additions (NextAuth & Extended LMS)           */
+/* ------------------------------------------------------------------ */
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: varchar("type", { length: 255 }).notNull(),
+    provider: varchar("provider", { length: 255 }).notNull(),
+    providerAccountId: varchar("providerAccountId", { length: 255 }).notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: varchar("token_type", { length: 255 }),
+    scope: varchar("scope", { length: 255 }),
+    id_token: text("id_token"),
+    session_state: varchar("session_state", { length: 255 }),
+  },
+  (table) => ({
+    compoundKey: primaryKey({ columns: [table.provider, table.providerAccountId] }),
+  })
+);
+
+export const sessions = pgTable(
+  "sessions",
+  {
+    sessionToken: varchar("sessionToken", { length: 255 }).primaryKey(),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+  }
+);
+
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    identifier: varchar("identifier", { length: 255 }).notNull(),
+    token: varchar("token", { length: 255 }).notNull(),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+  },
+  (table) => ({
+    compoundKey: primaryKey({ columns: [table.identifier, table.token] }),
+  })
+);
+
+export const enrollments = pgTable(
+  "enrollments",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    courseId: integer("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  }
+);
+
+export const subscribers = pgTable(
+  "subscribers",
+  {
+    id: serial("id").primaryKey(),
+    email: varchar("email", { length: 256 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    subEmailUnique: uniqueIndex("subscribers_email_unique").on(t.email),
+  })
+);
+
+export const contacts = pgTable(
+  "contacts",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 128 }).notNull(),
+    email: varchar("email", { length: 256 }).notNull(),
+    message: text("message").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  }
+);
+
+export const categories = pgTable(
+  "categories",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 128 }).notNull(),
+    slug: varchar("slug", { length: 128 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    catSlugUnique: uniqueIndex("categories_slug_unique").on(t.slug),
+  })
+);
+
+export const tags = pgTable(
+  "tags",
+  {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 128 }).notNull(),
+    slug: varchar("slug", { length: 128 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    tagSlugUnique: uniqueIndex("tags_slug_unique").on(t.slug),
+  })
+);
+
+export const languages = pgTable(
+  "languages",
+  {
+    id: serial("id").primaryKey(),
+    code: varchar("code", { length: 12 }).notNull(),
+    name: varchar("name", { length: 128 }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    langCodeUnique: uniqueIndex("languages_code_unique").on(t.code),
+  })
 );

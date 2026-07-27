@@ -1,3 +1,18 @@
+CREATE TABLE "accounts" (
+	"userId" integer NOT NULL,
+	"type" varchar(255) NOT NULL,
+	"provider" varchar(255) NOT NULL,
+	"providerAccountId" varchar(255) NOT NULL,
+	"refresh_token" text,
+	"access_token" text,
+	"expires_at" integer,
+	"token_type" varchar(255),
+	"scope" varchar(255),
+	"id_token" text,
+	"session_state" varchar(255),
+	CONSTRAINT "accounts_provider_providerAccountId_pk" PRIMARY KEY("provider","providerAccountId")
+);
+--> statement-breakpoint
 CREATE TABLE "asset_collections" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"brand_id" integer,
@@ -93,6 +108,21 @@ CREATE TABLE "brands" (
 	"tagline" varchar(256),
 	"default_locale" varchar(12) DEFAULT 'en' NOT NULL,
 	"theme" jsonb DEFAULT '{}'::jsonb,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "categories" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(128) NOT NULL,
+	"slug" varchar(128) NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "contacts" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(128) NOT NULL,
+	"email" varchar(256) NOT NULL,
+	"message" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -271,6 +301,14 @@ CREATE TABLE "editorial_tasks" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "enrollments" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"user_id" integer NOT NULL,
+	"course_id" integer NOT NULL,
+	"completed_at" timestamp with time zone,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "jlpt_exam_sessions" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" integer,
@@ -306,6 +344,14 @@ CREATE TABLE "kanji_dictionary" (
 	"is_favorite" boolean DEFAULT false,
 	"mastery_score" integer DEFAULT 0,
 	"examples" jsonb DEFAULT '[]'::jsonb,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "languages" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"code" varchar(12) NOT NULL,
+	"name" varchar(128) NOT NULL,
+	"active" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -446,6 +492,12 @@ CREATE TABLE "pages" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "sessions" (
+	"sessionToken" varchar(255) PRIMARY KEY NOT NULL,
+	"userId" integer NOT NULL,
+	"expires" timestamp NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "srs_flashcards" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"item_id" integer NOT NULL,
@@ -468,6 +520,20 @@ CREATE TABLE "study_japan_items" (
 	"location" varchar(128),
 	"stipend_tuition" varchar(128),
 	"tags" jsonb DEFAULT '[]'::jsonb,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "subscribers" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"email" varchar(256) NOT NULL,
+	"active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "tags" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"name" varchar(128) NOT NULL,
+	"slug" varchar(128) NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -521,6 +587,14 @@ CREATE TABLE "users" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "verification_tokens" (
+	"identifier" varchar(255) NOT NULL,
+	"token" varchar(255) NOT NULL,
+	"expires" timestamp NOT NULL,
+	CONSTRAINT "verification_tokens_identifier_token_pk" PRIMARY KEY("identifier","token")
+);
+--> statement-breakpoint
+ALTER TABLE "accounts" ADD CONSTRAINT "accounts_userId_users_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "asset_collections" ADD CONSTRAINT "asset_collections_brand_id_brands_id_fk" FOREIGN KEY ("brand_id") REFERENCES "public"."brands"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "asset_folders" ADD CONSTRAINT "asset_folders_brand_id_brands_id_fk" FOREIGN KEY ("brand_id") REFERENCES "public"."brands"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "asset_usages" ADD CONSTRAINT "asset_usages_asset_id_assets_id_fk" FOREIGN KEY ("asset_id") REFERENCES "public"."assets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -547,6 +621,8 @@ ALTER TABLE "editorial_notifications" ADD CONSTRAINT "editorial_notifications_ac
 ALTER TABLE "editorial_tasks" ADD CONSTRAINT "editorial_tasks_assignee_id_users_id_fk" FOREIGN KEY ("assignee_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "editorial_tasks" ADD CONSTRAINT "editorial_tasks_reviewer_id_users_id_fk" FOREIGN KEY ("reviewer_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "editorial_tasks" ADD CONSTRAINT "editorial_tasks_approver_id_users_id_fk" FOREIGN KEY ("approver_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "enrollments" ADD CONSTRAINT "enrollments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "enrollments" ADD CONSTRAINT "enrollments_course_id_courses_id_fk" FOREIGN KEY ("course_id") REFERENCES "public"."courses"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "jlpt_exam_sessions" ADD CONSTRAINT "jlpt_exam_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "learner_gamification" ADD CONSTRAINT "learner_gamification_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "learner_gamification" ADD CONSTRAINT "learner_gamification_brand_id_brands_id_fk" FOREIGN KEY ("brand_id") REFERENCES "public"."brands"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -559,6 +635,7 @@ ALTER TABLE "nihongo_quizzes" ADD CONSTRAINT "nihongo_quizzes_brand_id_brands_id
 ALTER TABLE "pages" ADD CONSTRAINT "pages_brand_id_brands_id_fk" FOREIGN KEY ("brand_id") REFERENCES "public"."brands"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pages" ADD CONSTRAINT "pages_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "pages" ADD CONSTRAINT "pages_hero_asset_id_assets_id_fk" FOREIGN KEY ("hero_asset_id") REFERENCES "public"."assets"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "sessions" ADD CONSTRAINT "sessions_userId_users_id_fk" FOREIGN KEY ("userId") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "srs_flashcards" ADD CONSTRAINT "srs_flashcards_item_id_nihongo_learning_items_id_fk" FOREIGN KEY ("item_id") REFERENCES "public"."nihongo_learning_items"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "srs_flashcards" ADD CONSTRAINT "srs_flashcards_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "study_japan_items" ADD CONSTRAINT "study_japan_items_brand_id_brands_id_fk" FOREIGN KEY ("brand_id") REFERENCES "public"."brands"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -576,6 +653,7 @@ CREATE INDEX "audit_logs_action_idx" ON "audit_logs" USING btree ("action");--> 
 CREATE INDEX "audit_logs_entity_idx" ON "audit_logs" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "brand_settings_category_unique" ON "brand_settings" USING btree ("brand_id","category");--> statement-breakpoint
 CREATE UNIQUE INDEX "brands_slug_unique" ON "brands" USING btree ("slug");--> statement-breakpoint
+CREATE UNIQUE INDEX "categories_slug_unique" ON "categories" USING btree ("slug");--> statement-breakpoint
 CREATE UNIQUE INDEX "content_sections_lookup_unique" ON "content_sections" USING btree ("brand_id","page_slug","section_key","locale");--> statement-breakpoint
 CREATE INDEX "content_sections_key_idx" ON "content_sections" USING btree ("section_key");--> statement-breakpoint
 CREATE INDEX "content_versions_entity_idx" ON "content_versions" USING btree ("entity_type","entity_id");--> statement-breakpoint
@@ -595,6 +673,7 @@ CREATE INDEX "jlpt_exam_cert_idx" ON "jlpt_exam_sessions" USING btree ("certific
 CREATE UNIQUE INDEX "kanji_dict_unique" ON "kanji_dictionary" USING btree ("kanji");--> statement-breakpoint
 CREATE INDEX "kanji_dict_jlpt_idx" ON "kanji_dictionary" USING btree ("jlpt_level");--> statement-breakpoint
 CREATE INDEX "kanji_dict_theme_idx" ON "kanji_dictionary" USING btree ("theme_category");--> statement-breakpoint
+CREATE UNIQUE INDEX "languages_code_unique" ON "languages" USING btree ("code");--> statement-breakpoint
 CREATE INDEX "leaderboards_rank_idx" ON "leaderboards" USING btree ("rank");--> statement-breakpoint
 CREATE INDEX "learner_gamify_idx" ON "learner_gamification" USING btree ("user_id","brand_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "lessons_module_slug_unique" ON "lessons" USING btree ("module_id","slug");--> statement-breakpoint
@@ -608,6 +687,8 @@ CREATE UNIQUE INDEX "pages_brand_slug_locale_unique" ON "pages" USING btree ("br
 CREATE INDEX "pages_status_idx" ON "pages" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "srs_flashcards_item_user_idx" ON "srs_flashcards" USING btree ("item_id","user_id");--> statement-breakpoint
 CREATE INDEX "study_japan_cat_idx" ON "study_japan_items" USING btree ("category");--> statement-breakpoint
+CREATE UNIQUE INDEX "subscribers_email_unique" ON "subscribers" USING btree ("email");--> statement-breakpoint
+CREATE UNIQUE INDEX "tags_slug_unique" ON "tags" USING btree ("slug");--> statement-breakpoint
 CREATE INDEX "translation_memory_lookup_idx" ON "translation_memory" USING btree ("source_locale","target_locale");--> statement-breakpoint
 CREATE INDEX "translation_workflows_lookup_idx" ON "translation_workflows" USING btree ("entity_type","entity_id","target_locale");--> statement-breakpoint
 CREATE UNIQUE INDEX "translations_lookup_unique" ON "translations" USING btree ("entity_type","entity_id","locale","field");--> statement-breakpoint

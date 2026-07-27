@@ -26,7 +26,29 @@ export function fail(
   status = 400,
   code?: string,
 ): Response {
+  // Log server-side errors
+  console.error(`🚨 API Error [${code ?? "ERROR"}]: ${error} (Status: ${status})`);
   return Response.json({ ok: false, error, code } satisfies ApiError, {
     status,
   });
+}
+
+/** Structured Error Codes (Phase 12 Completion) */
+export const STRUCTURED_ERRORS = {
+  DATABASE_UNAVAILABLE: { message: "Database unavailable", status: 503 },
+  MIGRATION_MISSING: { message: "Migration missing", status: 500 },
+  TABLE_NOT_FOUND: { message: "Table not found", status: 404 },
+  PERMISSION_DENIED: { message: "Permission denied", status: 403 },
+  VALIDATION_FAILED: { message: "Validation failed", status: 400 },
+  CONNECTION_TIMEOUT: { message: "Connection timeout", status: 504 },
+} as const;
+
+export type StructuredErrorCode = keyof typeof STRUCTURED_ERRORS;
+
+export function failWithCode(
+  code: StructuredErrorCode,
+  customMessage?: string
+): Response {
+  const err = STRUCTURED_ERRORS[code];
+  return fail(customMessage || err.message, err.status, code);
 }
