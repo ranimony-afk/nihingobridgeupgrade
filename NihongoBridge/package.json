@@ -1,0 +1,15 @@
+{
+  "name": "nihongobridge-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/website",
+    "build": "npm run build --workspace=apps/website",
+    "start": "npm start --workspace=apps/website",
+    "setup": "npm run setup --workspace=apps/website",
+    "test": "npm test --workspace=apps/workspace"
+  }
+}
