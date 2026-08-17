@@ -1,37 +1,42 @@
-# Nihongo Bridge — Japanese Learning Platform
+# Nihongo Bridge
 
-**Development focus: Nihongo Bridge only.**
+Playable Japanese LMS (Duolingo-style path, hearts, XP, stories) on Next.js, Drizzle, and PostgreSQL.
 
-Nihongo Bridge is a comprehensive Japanese learning platform running on a
-unified Next.js + PostgreSQL backend (headless CMS, LMS, DAM, editorial
-workflow, multilingual i18n, and mobile-ready REST APIs).
+Phase 1 added the audit CMS. Phase 2 adds production infrastructure (Auth.js, Drizzle pool, optional Redis/Supabase, rate limits, logs, backups, Docker, GitHub Actions) without rewriting the lesson loop.
 
-> The shared multi-brand backend and legacy `/ascend` routes remain intact
-> for backwards compatibility, but all new development targets Nihongo Bridge.
+## Quick start
 
-## Key routes
-- `/` → Nihongo Bridge home (redirects to `/nihongo`)
-- `/nihongo` — Learning portal (JLPT N5–N1, vocab, kanji, grammar, quizzes, gamification)
-- `/nihongo/study-japan` · `/nihongo/jobs` · `/nihongo/conversation` — CMS pages
-- `/admin` — Headless CMS Admin Dashboard
-- `/hub` — Multi-brand hub (preserved)
-- `/api/v1/*` — Unified REST API (see `docs/API.md`, `/api/v1/swagger`)
-
-## Stack
-Next.js (App Router) · React 19 · TypeScript · TailwindCSS · PostgreSQL ·
-Drizzle ORM · REST API · Headless CMS · LMS · DAM · Editorial workflow ·
-Multilingual (EN / தமிழ் / മലയാളം / 日本語)
-
-## Getting started
-```
+```bash
 npm install
-npm run dev          # http://localhost:3000
-npm run build        # production build
-npm test             # unit tests (node:test)
-npx drizzle-kit push # apply schema to Postgres
+npx drizzle-kit push
+npm run dev
 ```
 
-## Documentation (`docs/`)
-ARCHITECTURE · API · CMS_ADMIN_GUIDE · ENTERPRISE_READINESS_REPORT ·
-FEATURE_COMPLETION_MATRIX · SECURITY_AUDIT · PERFORMANCE_AUDIT ·
-ACCESSIBILITY_AUDIT · DOCUMENTATION_AUDIT · VERSION_5_ROADMAP · RELEASE_NOTES
+- Learn: `/` → Start free → `/learn`
+- Audit report: `/audit`
+- Admin CMS: `/admin/login` (`sensei@nihongobridge.local` / `bridge-audit`)
+- Infra desk: `/admin/infra`
+
+## Tests
+
+```bash
+node --experimental-strip-types --test tests/unit/*.test.ts
+npx tsx --test tests/integration/*.test.ts tests/smoke/*.test.ts
+```
+
+## Docs
+
+- [Phase 1 audit](docs/PHASE1_REPOSITORY_AUDIT.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Roadmap](docs/ROADMAP.md)
+- [API](docs/API.md)
+- [CMS guide](docs/CMS_ADMIN_GUIDE.md)
+- [Security](docs/SECURITY.md)
+- [Phase 2 infrastructure](docs/PHASE2_INFRASTRUCTURE.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Operations](docs/OPERATIONS.md)
+- [Environment](docs/ENVIRONMENT.md)
+
+## Compatibility
+
+Do not remove `/api/health`, `/api/me`, `/api/game`, or the `/learn` family of routes.

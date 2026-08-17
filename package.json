@@ -6,29 +6,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio",
-    "db:seed": "node --import tsx src/lib/seed.ts",
-    "setup": "tsx scripts/setup.ts",
-    "test": "node --import tsx --test tests/*.test.ts",
-    "test:unit": "node --import tsx --test tests/*.test.ts",
-    "test:integration": "node --import tsx --test tests/*.test.ts",
-    "test:e2e": "node --import tsx --test tests/*.test.ts",
-    "analyze": "ANALYZE=true next build",
-    "prepare": "node -e \"console.log('Repository prepared.')\""
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
+    "ioredis": "^6.0.0",
     "next": "16.2.6",
+    "next-auth": "^5.0.0-beta.32",
     "pg": "8.20.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "tsx": "^4.19.2",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",

@@ -1,56 +1,37 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { CookieConsent } from "@/shared/components/CookieConsent";
+import { Noto_Sans_JP, Nunito } from "next/font/google";
+import { Providers } from "@/components/Providers";
+import { seedReady } from "@/lib/seed";
 import "./globals.css";
 
+const nunito = Nunito({
+  subsets: ["latin"],
+  variable: "--font-nunito",
+  weight: ["400", "600", "700", "800", "900"],
+});
+
+const noto = Noto_Sans_JP({
+  subsets: ["latin"],
+  variable: "--font-noto",
+  weight: ["400", "500", "700", "900"],
+});
+
 export const metadata: Metadata = {
-  title: "Nihongo Bridge — Master Japanese, JLPT & Careers in Japan",
+  title: "Nihongo Bridge — Learn Japanese like play",
   description:
-    "Learn Japanese from zero to JLPT N1 with vocabulary, kanji, grammar, reading, listening, conversation practice, mock exams, and Japan career guidance. Fully CMS-driven next-generation learning platform.",
-  verification: {
-    google: "google-site-verification-code-value-12345",
-  },
-  other: {
-    "google-adsense-account": "ca-pub-1234567890123456",
-  },
+    "Duolingo-style Japanese lessons with streaks, hearts, XP, stories, leagues, and a tanuki named Mochi.",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  await seedReady();
+
   return (
     <html lang="en">
-      <head>
-        {/* Google Analytics Global Site Tag */}
-        <script
-          async
-          src="https://www.googletagmanager.com/gtag/js?id=G-123456789"
-        />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', 'G-123456789');
-            `,
-          }}
-        />
-
-        {/* Microsoft Clarity Tracking Code */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function(c,l,a,r,i,t,y){
-                  c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-                  t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-                  y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-              })(window, document, "clarity", "script", "clarity-id-12345");
-            `,
-          }}
-        />
-      </head>
-      <body className="bg-slate-100 text-slate-900 antialiased">
-        {children}
-        <CookieConsent />
+      <body className={`${nunito.variable} ${noto.variable} antialiased`}>
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -1,45 +1,72 @@
-# REST API v1
+# API
 
-Base path: `/api/v1`
+## Compatibility surface (do not change)
 
-All responses use the envelope:
+### `GET /api/health`
 
-```json
-{ "ok": true, "data": ... }
-```
-or
-```json
-{ "ok": false, "error": "message", "code": "OPTIONAL_CODE" }
-```
+Returns `{ "ok": true }` when PostgreSQL answers `select 1`.
 
-## Brands
-- `GET /api/v1/brands` — list all brands.
-- `GET /api/v1/brands/:slug` — single brand by slug (`ascend`, `nihongo`).
+### `GET /api/me`
 
-## Pages (CMS)
-- `GET /api/v1/pages?brand=ascend&locale=en&status=published`
-- `POST /api/v1/pages` — body: `{ brand, slug, title, body?, locale?, status? }`
-- `POST /api/v1/pages/:id/transition` — body: `{ toStatus, actorId?, note? }`
+Cookie session. `401` if no learner.
 
-Statuses: `draft | in_review | published | archived`. Every transition
-writes to `editorial_events`.
+### `POST /api/game`
 
-## Courses (LMS)
-- `GET /api/v1/courses?brand=ascend&locale=en&status=published`
-- `GET /api/v1/courses/:slug?brand=ascend&locale=en` — returns the
-  course with `modules[].lessons[]` pre-joined.
+Body is a `GameAction` discriminated union. See `src/lib/game.ts`. This is the LMS facade. New clients should eventually call `/api/v1/*` wrappers that still invoke `handleGame`.
 
-## Assets (DAM)
-- `GET /api/v1/assets?brand=ascend&kind=image`
-- `POST /api/v1/assets` — body: `{ brand?, kind, url, title?, altText?, mimeType?, bytes?, metadata? }`
+## Phase 1 additions
 
-Kinds: `image | video | audio | document`.
+All new routes use `{ ok, data?, error? }`.
 
-## Translations (i18n)
-- `GET /api/v1/translations?entityType=page&entityId=1&locale=ja`
-- `POST /api/v1/translations` — body: `{ entityType, entityId, locale, field, value }`
-  (idempotent upsert on `(entityType, entityId, locale, field)`).
+### `GET /api/v1/audit`
 
-## Health
-- `GET /api/health` — DB probe + seed check. Backwards compatible: still
-  returns `{ ok: true }` on success.
+Full Phase 1 bundle: report, findings, roadmap, events, readiness score, coverage, histograms.
+
+### `GET /api/v1/audit/findings`
+
+Query: `domain`, `severity`, `status`.
+
+### `PATCH /api/v1/audit/findings/:id`
+
+Staff only. Body: `{ "status": "open" | "in_progress" | "resolved" | "accepted_risk" }`.  
+Illegal transitions return `400`.
+
+### `POST /api/v1/admin/login`
+
+`{ email, password }` → HMAC cookie `nb_staff`.
+
+### `POST /api/v1/admin/logout`
+
+Clears staff cookie.
+
+### `GET /api/v1/admin/session`
+
+Current staff profile or `401`.
+
+## Phase 2 additions
+
+### `GET /api/auth/[...nextauth]` / `POST /api/auth/[...nextauth]`
+
+Auth.js v5 handlers (staff JWT).
+
+### `GET /api/v1/health`
+
+Deep probe: database, Drizzle pool, Redis, Supabase, Auth.js, error tracking, analytics. `503` if Postgres is down.
+
+### `POST /api/v1/analytics` / `GET /api/v1/analytics`
+
+Public write of named events. Staff read.
+
+### `POST /api/v1/errors` / `GET /api/v1/errors`
+
+Client/server incident capture. Staff read.
+
+### `GET|POST /api/v1/admin/backups`
+
+List or run a logical snapshot.
+
+### `GET /api/v1/admin/infra`
+
+Aggregated infra dashboard payload.
+
+`POST /api/game` now rate-limits (80/min) and records `game_action` analytics. The `handleGame` contract is unchanged.
