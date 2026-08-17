@@ -1,1 +1,0 @@
-# Kanji study models

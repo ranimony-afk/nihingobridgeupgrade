@@ -1,1 +1,0 @@
-# Separate AI Infrastructure layer

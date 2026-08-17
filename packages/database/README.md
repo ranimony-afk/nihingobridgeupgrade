@@ -1,1 +1,0 @@
-# Shared Database connection adapters
