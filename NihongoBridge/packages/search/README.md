@@ -1,1 +1,0 @@
-# Search indexing algorithms
