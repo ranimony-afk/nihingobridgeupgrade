@@ -1,0 +1,27 @@
+-- NihongoBridge logical backup 2026-08-17T15-12-30-848Z
+-- tables: 25
+-- achievements: 10 rows
+-- analytics_events: 1 rows
+-- audit_events: 4 rows
+-- audit_findings: 33 rows
+-- audit_reports: 1 rows
+-- audit_roadmap: 12 rows
+-- auth_sessions: 0 rows
+-- backup_runs: 0 rows
+-- chests: 4 rows
+-- daily_xp: 8 rows
+-- error_events: 1 rows
+-- exercises: 181 rows
+-- learner_achievements: 0 rows
+-- learner_chests: 0 rows
+-- learners: 8 rows
+-- lesson_progress: 0 rows
+-- lessons: 19 rows
+-- purchases: 0 rows
+-- review_cards: 0 rows
+-- shop_items: 6 rows
+-- staff_users: 1 rows
+-- stories: 3 rows
+-- story_progress: 0 rows
+-- system_settings: 5 rows
+-- units: 6 rows
