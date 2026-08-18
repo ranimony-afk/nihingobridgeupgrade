@@ -1,0 +1,10 @@
+process.env.DATABASE_URL ??= "postgresql://postgres:postgres@127.0.0.1:5432/app_db";
+process.env.NEXT_PUBLIC_APP_URL ??= "http://localhost:3000";
+process.env.RATE_LIMIT_ALLOW_MEMORY_FALLBACK ??= "true";
+process.env.AUTH_SECRET ??= "test-auth-secret-that-is-longer-than-thirty-two-characters";
+process.env.MOBILE_JWT_SECRET ??= "test-mobile-jwt-secret-that-is-longer-than-thirty-two";
+process.env.MFA_ENCRYPTION_KEY ??= "test-mfa-encryption-key-that-is-longer-than-thirty-two";
+process.env.MOBILE_JWT_ISSUER ??= "http://localhost:3000";
+process.env.RAZORPAY_KEY_ID ??= "rzp_test_nihongobridge";
+process.env.RAZORPAY_KEY_SECRET ??= "test-razorpay-key-secret-for-signature-validation";
+process.env.RAZORPAY_WEBHOOK_SECRET ??= "test-razorpay-webhook-secret-for-validation";
