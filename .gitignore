@@ -1,0 +1,32 @@
+# Dependencies and build output
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Local tooling and logs
+*.log
+*.tsbuildinfo
+.DS_Store
+.vscode/
+
+# Test artifacts
+playwright-report/
+test-results/
+
+# Knowledge source archives are mounted by controlled ETL workers.
+data/knowledge/*
+!data/knowledge/README.md
+
+# Operational artifacts
+backups/
+*.dump
+*.sql.gz
+*.enc

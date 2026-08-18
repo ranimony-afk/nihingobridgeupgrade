@@ -1,0 +1,140 @@
+name: Continuous Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nihongobridge_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nihongobridge_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/nihongobridge_test
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+      AUTH_SECRET: 9Cg2oYFj8GFWDQFP09n7bqf7EdmM8DdGsG9QzOjzai7BDW98
+      AUTH_TRUST_HOST: "true"
+      RATE_LIMIT_ALLOW_MEMORY_FALLBACK: "true"
+      LOG_LEVEL: silent
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Generate Next.js route types
+        run: npx next typegen
+
+      - name: Apply database migrations
+        run: npx tsx src/db/migrate.ts
+
+      - name: Run unit and integration tests
+        run: npx vitest run
+
+      - name: Lint source
+        run: npm run lint
+
+      - name: Type-check source
+        run: npm exec tsc -- --noEmit --pretty false
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Start production server
+        run: |
+          npm run start > /tmp/nihongobridge-server.log 2>&1 &
+          echo $! > /tmp/nihongobridge-server.pid
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/api/health/live > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/nihongobridge-server.log
+          exit 1
+
+      - name: Run deployment smoke tests
+        env:
+          SMOKE_TEST_URL: http://127.0.0.1:3000
+        run: node scripts/smoke-test.mjs
+
+      - name: Stop production server
+        if: always()
+        run: |
+          if [ -f /tmp/nihongobridge-server.pid ]; then
+            kill "$(cat /tmp/nihongobridge-server.pid)" || true
+          fi
+
+  e2e-authentication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: nihongobridge_e2e
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nihongobridge_e2e"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/nihongobridge_e2e
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000
+      AUTH_SECRET: 9Cg2oYFj8GFWDQFP09n7bqf7EdmM8DdGsG9QzOjzai7BDW98
+      AUTH_TRUST_HOST: "true"
+      MOBILE_JWT_SECRET: 4URgxNUKb4NuV6GFn9QHzqVaPs6Et4JfS1wTg5ZxK8FDoR12
+      MFA_ENCRYPTION_KEY: nQ8aYv4Jw3sKpL9zXe7cV2rD6mT1fH5uB0aC8gI4oP3qR6s
+      RATE_LIMIT_ALLOW_MEMORY_FALLBACK: "true"
+      LOG_LEVEL: silent
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Apply database migrations
+        run: npx tsx src/db/migrate.ts
+
+      - name: Install Chromium browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run authentication browser journeys
+        run: npx playwright test
