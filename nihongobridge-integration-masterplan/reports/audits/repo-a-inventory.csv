@@ -1,0 +1,18 @@
+file_path,file_type,category,lines,purpose,dependencies,classification,confidence,migration_risk,notes
+src/app/page.tsx,page,ui,624,Control tower dashboard - integration masterplan viewer,"db, drizzle-orm, fs, path, next/link",REPLACE,HIGH,LOW,Will be replaced with actual NihongoBridge home page in Phase 04
+src/app/layout.tsx,layout,ui,16,Root HTML layout with metadata and global body styles,"next (Metadata, ReactNode), globals.css",MODIFY,HIGH,LOW,Keep structure; update metadata and theme for NihongoBridge
+src/app/globals.css,style,ui,44,Tailwind CSS imports and custom animation keyframes,tailwindcss,MODIFY,HIGH,LOW,Keep Tailwind base; add NihongoBridge design tokens
+src/app/api/health/route.ts,api_route,infrastructure,13,Health check endpoint returning {ok: boolean},"db, drizzle-orm",KEEP,HIGH,NONE,Critical infrastructure - do not modify
+src/app/api/masterplan/route.ts,api_route,control_tower,95,Control tower API - reads masterplan files from disk,"fs, path, next/server",ARCHIVE,HIGH,NONE,Control tower scaffolding - not production code
+src/app/docs/page.tsx,page,control_tower,58,Document index page for masterplan viewer,next/link,ARCHIVE,HIGH,NONE,Control tower scaffolding - not production code
+src/app/docs/[slug]/page.tsx,page,control_tower,238,Markdown document viewer for masterplan docs,"fs, path, next/link, next/navigation",ARCHIVE,HIGH,NONE,Control tower scaffolding - not production code
+src/db/index.ts,db_config,infrastructure,24,Database connection pool and Drizzle ORM instance,"drizzle-orm/node-postgres, pg (Pool)",KEEP,HIGH,NONE,Core infrastructure - connection pooling with singleton pattern
+src/db/schema.ts,db_schema,infrastructure,3,Empty schema placeholder - exports nothing,none,MODIFY,HIGH,LOW,Will be populated with full domain schema in Phase 01
+package.json,config,infrastructure,32,NPM package manifest with scripts and dependencies,all packages,MODIFY,HIGH,LOW,Will gain new dependencies per phase
+tsconfig.json,config,infrastructure,42,TypeScript strict config with path aliases and Next.js plugin,typescript,KEEP,HIGH,NONE,Well-configured; no changes needed
+next.config.ts,config,infrastructure,5,Next.js configuration (currently empty),next,MODIFY,HIGH,LOW,Will add configuration as features require
+drizzle.config.json,config,infrastructure,7,Drizzle Kit schema push config pointing to schema.ts,drizzle-kit,KEEP,HIGH,NONE,Correctly configured for current schema path
+.env,config,infrastructure,1,Environment variable - DATABASE_URL only,dotenv,MODIFY,HIGH,LOW,Will add auth and AI API keys
+eslint.config.mjs,config,infrastructure,8,ESLint flat config with Next.js core web vitals,"eslint, eslint-config-next",KEEP,HIGH,NONE,Modern flat config - well configured
+postcss.config.mjs,config,infrastructure,7,PostCSS config with Tailwind CSS plugin,@tailwindcss/postcss,KEEP,HIGH,NONE,Standard Tailwind v4 setup
+next-env.d.ts,types,infrastructure,6,Next.js auto-generated type declarations,next,KEEP,HIGH,NONE,Auto-managed by Next.js
