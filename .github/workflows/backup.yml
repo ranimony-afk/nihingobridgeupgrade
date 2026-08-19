@@ -1,0 +1,26 @@
+name: Database backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+jobs:
+  backup:
+    if: ${{ secrets.DATABASE_URL != '' }}
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      BACKUP_DIR: backups
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Dump
+        run: bash scripts/backup-db.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: postgres-backup
+          path: backups/*.sql.gz
+          if-no-files-found: warn
+          retention-days: 14
