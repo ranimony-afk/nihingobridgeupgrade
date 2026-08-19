@@ -1,0 +1,69 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: production
+        type: choice
+        options:
+          - preview
+          - production
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d app_db"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+      AUTH_SECRET: ci-secret-ci-secret-ci-secret-12
+      AUTH_TRUST_HOST: "true"
+      LOG_LEVEL: error
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: node --experimental-strip-types --test tests/unit/*.test.ts
+      - run: npx tsc --noEmit
+      - run: npx drizzle-kit push --force
+      - run: npx --yes tsx --test tests/smoke/*.test.ts
+      - run: npm run build
+
+  deploy:
+    needs: gate
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Vercel
+        if: ${{ secrets.VERCEL_TOKEN != '' }}
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx --yes vercel deploy --yes --token "$VERCEL_TOKEN" ${{ github.event.inputs.environment == 'preview' && '' || '--prod' }}
+      - name: Dry run
+        if: ${{ secrets.VERCEL_TOKEN == '' }}
+        run: |
+          echo "No VERCEL_TOKEN secret. Pipeline gated successfully; skipping remote deploy."
+          echo "Set VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID to enable production deploys."
