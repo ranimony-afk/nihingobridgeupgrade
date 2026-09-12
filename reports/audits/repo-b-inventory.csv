@@ -1,0 +1,72 @@
+package,path,type,classification,purpose,confidence,migration_risk
+nihongobridge-knowledge,schema/dictionary.ts,schema,MERGE,UUID dictionary_entries; concepts already in GitHub A; do not apply migration,HIGH,HIGH
+nihongobridge-knowledge,schema/kanji.ts,schema,MERGE,UUID kanji_entries + radicals/components arrays,HIGH,HIGH
+nihongobridge-knowledge,schema/grammar.ts,schema,MERGE,UUID grammar_patterns with JSON examples,HIGH,HIGH
+nihongobridge-knowledge,schema/sentences.ts,schema,MERGE,UUID sentences + JSON translations,HIGH,HIGH
+nihongobridge-knowledge,schema/srs.ts,schema,MERGE,SM-2 style cards; GitHub A already has srs_*,HIGH,HIGH
+nihongobridge-knowledge,schema/tests.ts,schema,MERGE,practice_tests/questions/test_sessions,HIGH,HIGH
+nihongobridge-knowledge,schema/users.ts,schema,MERGE,users + progress + bookmarks; A has no identity table,HIGH,CRITICAL
+nihongobridge-knowledge,schema/relations.ts,schema,MERGE,Cross-entity UUID link tables,HIGH,MEDIUM
+nihongobridge-knowledge,schema/media.ts,schema,MERGE,media_assets; missing from GitHub A,HIGH,MEDIUM
+nihongobridge-knowledge,schema/enums.ts,schema,DEPRECATE,JLPT as N5-N1 enum vs A's smallint 1-5,HIGH,HIGH
+nihongobridge-knowledge,drizzle/*.sql,migration,ARCHIVE,Do not run B migrations on A database,HIGH,CRITICAL
+nihongobridge-knowledge,lib/*.js,build,ARCHIVE,Compiled schema JS; source is schema/*.ts,HIGH,LOW
+nihongobridge-knowledge,scripts/seed-n5.ts,etl,MERGE,N5 seed ideas only; rewrite against A schema,MEDIUM,MEDIUM
+nihongobridge-api,app/api/dictionary/*,route,MERGE,Search/autocomplete/bulk/random shapes → inform /api/v2,HIGH,MEDIUM
+nihongobridge-api,app/api/kanji/*,route,MERGE,Kanji by radical/level/quiz,HIGH,MEDIUM
+nihongobridge-api,app/api/grammar/*,route,MERGE,Grammar search/level/quiz,HIGH,MEDIUM
+nihongobridge-api,app/api/srs/*,route,MERGE,add/due/review/stats; overlaps GitHub A /api/v2/srs,HIGH,HIGH
+nihongobridge-api,app/api/tests/*,route,MERGE,Timed test session engine,HIGH,HIGH
+nihongobridge-api,app/api/user/*,route,MERGE,Bookmarks/dashboard; requires identity,HIGH,HIGH
+nihongobridge-api,app/api/search/route.ts,route,DEPRECATE,Meilisearch-backed global search; v1 is pg_trgm,HIGH,HIGH
+nihongobridge-api,app/api/listening/*,route,MERGE,Listening generate + audio,MEDIUM,MEDIUM
+nihongobridge-api,lib/auth.ts,source,DEPRECATE,Supabase JWT verifier; do not adopt as A's auth,HIGH,CRITICAL
+nihongobridge-api,middleware/auth.ts,source,DEPRECATE,Re-exports B auth,HIGH,CRITICAL
+nihongobridge-api,middleware/rateLimit.ts,source,MERGE,Rate limit idea for later security phase,MEDIUM,LOW
+nihongobridge-api,middleware/cache.ts,source,MERGE,Cache idea,MEDIUM,LOW
+nihongobridge-api,lib/dictionary.ts,service,MERGE,Query logic vs A's DictionaryService,HIGH,MEDIUM
+nihongobridge-api,lib/srs.ts,service,MERGE,SM-2 implementation vs A's algorithm.ts,HIGH,HIGH
+nihongobridge-api,lib/testEngine.ts,service,MERGE,Test session engine,HIGH,MEDIUM
+nihongobridge-api,lib/search.ts,service,DEPRECATE,Meilisearch client,HIGH,HIGH
+nihongobridge-api,tests/*.ts,test,KEEP,Contract tests to port after API freeze,MEDIUM,LOW
+nihongobridge-web,app/dictionary/page.tsx,component,MERGE,Learner dictionary UI later,MEDIUM,MEDIUM
+nihongobridge-web,app/kanji/[character]/page.tsx,component,MERGE,Kanji page later,MEDIUM,MEDIUM
+nihongobridge-web,app/dashboard/page.tsx,component,MERGE,Dashboard later,MEDIUM,MEDIUM
+nihongobridge-web,app/test/*,component,MERGE,Timed test UI later,MEDIUM,MEDIUM
+nihongobridge-web,app/srs/demo/page.tsx,component,MERGE,SRS demo UI,MEDIUM,LOW
+nihongobridge-web,lib/api-client.ts,source,MODIFY,Must retarget /api/v2 on A,HIGH,MEDIUM
+nihongobridge-web,lib/demo-*.ts,source,DEPRECATE,Demo/fixture data; not production knowledge,HIGH,LOW
+nihongobridge-admin,schema/admin.ts,schema,MERGE,RBAC/audit/ETL run tables — add in admin phase,HIGH,MEDIUM
+nihongobridge-admin,app/admin/*,component,MERGE,CMS screens later; rewrite against A APIs,MEDIUM,HIGH
+nihongobridge-admin,lib/auth.ts,source,DEPRECATE,Separate admin jose/Supabase auth,HIGH,CRITICAL
+nihongobridge-admin,middleware.ts,source,DEPRECATE,Admin middleware bound to B auth,HIGH,HIGH
+nihongobridge-admin,app/api/admin/*,route,MERGE,ETL control/dashboard ideas,MEDIUM,MEDIUM
+nihongobridge-ai,lib/auth.ts,source,DEPRECATE,Third copy of Supabase JWT auth,HIGH,CRITICAL
+nihongobridge-ai,app/api/ai/tutor/chat/route.ts,route,MERGE,Tutor chat flow → A's src/services/ai,HIGH,MEDIUM
+nihongobridge-ai,app/api/ai/grammar-explain/route.ts,route,MERGE,Grammar explain,HIGH,MEDIUM
+nihongobridge-ai,app/api/ai/translate/route.ts,route,MERGE,Translation endpoint later,MEDIUM,MEDIUM
+nihongobridge-ai,app/api/ai/generate-questions/route.ts,route,MERGE,Question generation later,MEDIUM,MEDIUM
+nihongobridge-ai,lib/dictionary-tool.ts,source,KEEP,Tool-calling against platform dictionary — pattern to reuse,HIGH,LOW
+nihongobridge-ai,schema/ai.ts,schema,MERGE,ai_explanations cache table,MEDIUM,LOW
+nihongobridge-etl,etl/parsers/jmdict_parser.py,etl,MERGE,Real XML parser — port to TS in ETL phase,HIGH,MEDIUM
+nihongobridge-etl,etl/transformers/jmdict_transformer.py,etl,MERGE,JMdict transform logic,HIGH,MEDIUM
+nihongobridge-etl,etl/pipelines/jmdict_pipeline.py,etl,MERGE,Pipeline orchestration reference,HIGH,MEDIUM
+nihongobridge-etl,etl/pipelines/tatoeba_pipeline.py,etl,MERGE,Tatoeba import,HIGH,MEDIUM
+nihongobridge-etl,etl/parsers/tatoeba_stager.py,etl,MERGE,Tatoeba staging,HIGH,MEDIUM
+nihongobridge-etl,etl/enrichers/*,etl,MERGE,JLPT/frequency/furigana/matcher,HIGH,LOW
+nihongobridge-etl,etl/generators/*,etl,MERGE,Quiz/test question generators,HIGH,MEDIUM
+nihongobridge-etl,etl/pipelines/tts_pipeline.py,etl,MODIFY,TTS; license and provider must be explicit,MEDIUM,MEDIUM
+nihongobridge-etl,etl/storage/minio_client.py,etl,DEPRECATE,MinIO not in A deploy model (Vercel+Postgres),HIGH,MEDIUM
+nihongobridge-etl,tests/*,test,KEEP,Parser tests to port with TS parser,HIGH,LOW
+nihongobridge-search,search/http/server.ts,source,DEPRECATE,Fastify Meilisearch service — not v1,HIGH,HIGH
+nihongobridge-search,search/sync/sync-to-meili.ts,source,DEPRECATE,Meili sync,HIGH,HIGH
+nihongobridge-search,search/lib/japanese.ts,source,MERGE,Japanese query normalization — reuse in pg search,HIGH,LOW
+nihongobridge-search,docker-compose.yml,config,ARCHIVE,Meili+service compose,HIGH,LOW
+nihongobridge-mobile,lib/core/api/*,source,KEEP,Flutter API client; retarget A's /api/v2 in Phase 08,HIGH,MEDIUM
+nihongobridge-mobile,lib/core/db/*,source,KEEP,Offline SQLite cache,HIGH,MEDIUM
+nihongobridge-mobile,lib/core/sync/*,source,KEEP,Sync vs A's /api/v2/srs/sync,HIGH,MEDIUM
+nihongobridge-mobile,lib/features/auth/auth_repository.dart,source,MODIFY,Must use A's future auth not B JWT,HIGH,HIGH
+nihongobridge-mobile,lib/features/*/screens/*,component,KEEP,Feature screens later,MEDIUM,MEDIUM
+nihongobridge-platform,docker-compose.yml,config,ARCHIVE,Multi-DB B platform; A is single Postgres + Vercel,HIGH,HIGH
+nihongobridge-platform,.github/workflows/*,config,MERGE,CI ideas only,MEDIUM,LOW
+nihongobridge-platform,scripts/*,config,ARCHIVE,B-era orchestration,MEDIUM,LOW
