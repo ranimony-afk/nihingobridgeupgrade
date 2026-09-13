@@ -1,0 +1,29 @@
+# KRADFILE STRUCTURAL TEST FIXTURE — synthetic component records only.
+# It is not redistributed EDRDG data. Generated/manual fixture for Phase 04.5.
+# Format: Kanji : component component ...
+日 : 日
+一 : 一
+人 : 人
+大 : 大
+本 : 木
+中 : 中
+水 : 水
+火 : 火
+山 : 山
+川 : 川
+学 : 小 冖 子
+校 : 木 交
+語 : 言 五 口
+話 : 言 舌
+時 : 日 寺
+間 : 門 日
+食 : 食
+電 : 雨 申
+車 : 車
+行 : 行
+# Deliberate malformed and duplicate rows for validation/dedup.
+あ : あ
+森 : 木 森森
+日 : 日
+# This valid but unmatched character is reported, never inserted.
+明 : 日 月
