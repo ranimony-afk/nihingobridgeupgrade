@@ -1,0 +1,236 @@
+{
+  "license": "CC BY-SA 4.0 (NihongoBridge curated content)",
+  "note": "Authored teaching prose per lesson. Grammar, kanji, vocabulary and sentence blocks are derived at load time from the canonical knowledge graph, never copied here.",
+  "defaults": {
+    "sections": [
+      { "key": "concept", "kind": "concept", "title": "Concept", "titleJa": "考え方", "position": 1 },
+      { "key": "grammar", "kind": "grammar", "title": "Grammar in focus", "titleJa": "文法", "position": 2 },
+      { "key": "kanji", "kind": "kanji", "title": "Kanji and words", "titleJa": "漢字と語彙", "position": 3 },
+      { "key": "examples", "kind": "examples", "title": "Sentences in use", "titleJa": "例文", "position": 4 },
+      { "key": "summary", "kind": "summary", "title": "Review", "titleJa": "まとめ", "position": 5 }
+    ]
+  },
+  "lessons": {
+    "n5-sentence-order": {
+      "intro": "Japanese marks grammatical roles with particles instead of position, so the order feels flexible — but the predicate is fixed at the end. Read to the final word before deciding what a sentence means.",
+      "keyPoints": [
+        "The predicate (verb, adjective or copula) closes the sentence.",
+        "Particles, not word order, identify subject and object.",
+        "Known information is usually stated first, new information later."
+      ],
+      "tip": "When a sentence feels ambiguous, find the final predicate first and work backwards through the particles.",
+      "checkpoint": "Rearrange “I read a book at the library” into Japanese order and name the particle after each noun.",
+      "summary": "A Japanese sentence is a chain of particle-marked phrases that ends in a predicate. Master that shape and long sentences become predictable."
+    },
+    "n5-particles-wa-ga-o": {
+      "intro": "は, が and を answer three different questions: what are we talking about, who or what performs the action, and what receives it.",
+      "keyPoints": [
+        "は sets the topic and often contrasts it with something else.",
+        "が introduces or identifies a subject, especially new information.",
+        "を marks the direct object of a transitive verb."
+      ],
+      "tip": "If you can replace the phrase with “as for …”, the particle is は, not が.",
+      "checkpoint": "Explain why 私は寿司が好きです uses both は and が.",
+      "summary": "Choosing between は and が is about information flow, while を stays tied to the transitive verb."
+    },
+    "n5-polite-verbs": {
+      "intro": "The ます form is the default register for conversation with people you do not know well. It attaches to the continuative stem and carries both tense and polarity.",
+      "keyPoints": [
+        "Find the ます-stem before attaching any polite ending.",
+        "ます / ません mark non-past affirmative and negative.",
+        "ました / ませんでした mark the past."
+      ],
+      "tip": "Learn verbs in stem form (書き, 食べ, し) so every polite ending becomes mechanical.",
+      "checkpoint": "Give all four polite forms of 行く and 食べる.",
+      "summary": "One stem plus four endings covers the entire polite non-past and past system."
+    },
+    "n5-everyday-requests": {
+      "intro": "Requests and permission both build on the て form. The difference is what follows it, and how direct you are willing to sound.",
+      "keyPoints": [
+        "V-て + ください asks someone to act.",
+        "V-て + もいいですか asks for permission.",
+        "Softening the request matters more than grammar in formal settings."
+      ],
+      "tip": "To a superior, prefer 〜ていただけますか over 〜てください.",
+      "checkpoint": "Ask politely to open a window, then ask permission to take a photo.",
+      "summary": "Master the て form once and requests, permission and prohibition all become available."
+    },
+    "n4-reasons-kara-node": {
+      "intro": "Both から and ので give reasons, but they position the speaker differently: から asserts, ので explains.",
+      "keyPoints": [
+        "から is subjective and supports requests, refusals and decisions.",
+        "ので presents the reason as shared background and sounds softer.",
+        "Nouns and na-adjectives take な before ので."
+      ],
+      "tip": "In apologies and workplace explanations, ので is usually the safer choice.",
+      "checkpoint": "Explain why you are late using both から and ので, and describe how the tone changes.",
+      "summary": "Same logical link, different social weight — choose によって who must accept the reason."
+    },
+    "n4-conditionals": {
+      "intro": "Japanese has several conditionals because they encode different assumptions about time, control and shared context.",
+      "keyPoints": [
+        "たら treats the condition as a completed event.",
+        "ば states a general hypothetical relationship.",
+        "なら picks up something the listener just introduced."
+      ],
+      "tip": "If the main clause is a request or suggestion, たら is almost always correct.",
+      "checkpoint": "Express “if it rains, I will not go” three ways and judge which sounds natural.",
+      "summary": "Conditionals overlap in translation but not in usage; pick by context, not by English."
+    },
+    "n4-aspect-completion-preparation": {
+      "intro": "て-form auxiliaries change how an action is viewed: finished, prepared in advance, or attempted.",
+      "keyPoints": [
+        "〜てしまう marks completion, often with regret.",
+        "〜ておく marks preparation for a later situation.",
+        "〜てみる marks trying something to see the result."
+      ],
+      "tip": "In speech these contract to 〜ちゃう and 〜とく; recognise them before using them.",
+      "checkpoint": "Describe eating the whole cake, buying tickets in advance, and trying natto.",
+      "summary": "Aspect auxiliaries add the speaker's perspective on an action, not new events."
+    },
+    "n4-obligation-permission": {
+      "intro": "Japanese obligation is built from double negatives, which is why it looks long. Permission and prohibition reuse the て form.",
+      "keyPoints": [
+        "〜なければならない literally says “if you don't, it won't do”.",
+        "〜てはいけない prohibits an action.",
+        "〜てもいい grants permission."
+      ],
+      "tip": "Casual speech shortens obligation to 〜なきゃ and 〜なくちゃ.",
+      "checkpoint": "State one thing you must do today and one thing you must not do here.",
+      "summary": "Obligation, prohibition and permission form one system built on negation and the て form."
+    },
+    "n3-change-and-effort": {
+      "intro": "ようになる and ようにする separate what happens to you from what you choose to do.",
+      "keyPoints": [
+        "ようになる describes a change that has come about.",
+        "Potential verbs with ようになる express newly acquired ability.",
+        "ようにする describes a deliberate, ongoing effort."
+      ],
+      "tip": "〜ようにしている signals a habit you maintain on purpose.",
+      "checkpoint": "Say that you became able to read newspapers, and that you try to read one daily.",
+      "summary": "なる reports change; する claims agency. The grammar encodes responsibility."
+    },
+    "n3-decisions-and-outcomes": {
+      "intro": "ことにする and ことになる distinguish a decision you made from an outcome imposed on you.",
+      "keyPoints": [
+        "ことにする is the speaker's own decision.",
+        "ことになる is decided by circumstances, rules or other people.",
+        "ことになっている describes a standing rule or arrangement."
+      ],
+      "tip": "Japanese often prefers ことになりました even for personal news, to sound less self-centred.",
+      "checkpoint": "Announce a job transfer in both forms and explain the nuance difference.",
+      "summary": "The する/なる contrast is the grammar of agency in Japanese."
+    },
+    "n3-evidence-and-expectation": {
+      "intro": "らしい, はず and かもしれない place a statement on a scale of evidence and confidence.",
+      "keyPoints": [
+        "かもしれない admits mere possibility.",
+        "らしい reports an inference from indirect evidence.",
+        "はず states a logically expected conclusion."
+      ],
+      "tip": "はずがない denies possibility outright; かもしれない never does.",
+      "checkpoint": "Describe a colleague's absence using all three levels of certainty.",
+      "summary": "Choosing the marker is choosing how much you are willing to commit to the claim."
+    },
+    "n3-formal-relations": {
+      "intro": "Compound particles express relations that English handles with about, for, toward and as.",
+      "keyPoints": [
+        "について introduces a topic of discussion.",
+        "にとって states whose viewpoint applies.",
+        "に対して marks a target or a contrast.",
+        "として states the role someone acts in."
+      ],
+      "tip": "にとって must be followed by an evaluation, not an action.",
+      "checkpoint": "Write one sentence with each compound particle about your own studies.",
+      "summary": "These particles make written and formal Japanese precise about relationships."
+    },
+    "kanji-nature-elements": {
+      "intro": "日, 月, 火 and 水 are pictographs. Learning their shapes unlocks hundreds of compounds and several radicals.",
+      "keyPoints": [
+        "Each character keeps a native reading and a Sino-Japanese reading.",
+        "Compounds usually take the Sino-Japanese reading.",
+        "These characters also function as components inside other kanji."
+      ],
+      "tip": "Study the weekday names to meet all four characters in one natural set.",
+      "checkpoint": "Give one native and one Sino-Japanese reading for each of the four characters.",
+      "summary": "Concrete pictographs are the cheapest entry point into the kanji system."
+    },
+    "kanji-people-and-actions": {
+      "intro": "人, 行 and 来 connect people with movement, and they show how readings shift between words.",
+      "keyPoints": [
+        "人 appears as ひと, じん and にん depending on the word.",
+        "行く and 来る form a deictic pair around the speaker.",
+        "The person component appears in many derived characters."
+      ],
+      "tip": "Learn 行 with both いく and おこなう so the written form stops surprising you.",
+      "checkpoint": "Write three words containing 人 and identify each reading.",
+      "summary": "Reading variation is systematic; exposure through words beats memorising tables."
+    },
+    "kanji-language-family": {
+      "intro": "言, 話 and 語 share the speech radical and form a visible semantic family.",
+      "keyPoints": [
+        "言 is the speech radical itself.",
+        "話 covers talking and conversation.",
+        "語 covers language and vocabulary."
+      ],
+      "tip": "Use the Mind Tree to see every kanji built from 言.",
+      "checkpoint": "Explain the difference between 会話 and 日本語 using the characters.",
+      "summary": "Components predict meaning, which makes families far easier than isolated characters."
+    },
+    "kanji-study-work": {
+      "intro": "学, 勉, 強 and 働 dominate school and workplace vocabulary.",
+      "keyPoints": [
+        "勉強 combines two characters that both suggest effort.",
+        "学 appears in most education words.",
+        "働 contains the person component beside movement."
+      ],
+      "tip": "Group new kanji by life domain; recall is stronger than with random lists.",
+      "checkpoint": "Write the words for student, study and to work, and mark the shared components.",
+      "summary": "Semantic fields give kanji the context that makes them stick."
+    },
+    "conversation-introductions": {
+      "intro": "A first introduction is formulaic. Learning the frame lets you focus on the content.",
+      "keyPoints": [
+        "Start with はじめまして and end with よろしくお願いします.",
+        "State your name with the copula, not a verb.",
+        "Occupation and origin use the same noun-predicate pattern."
+      ],
+      "tip": "Keep the first introduction short; detail comes in the following exchange.",
+      "checkpoint": "Introduce yourself in four sentences using only polite forms.",
+      "summary": "Formulae carry the social work so your grammar can stay simple."
+    },
+    "conversation-making-plans": {
+      "intro": "Invitations in Japanese are deliberately indirect, and the reply pattern is fixed.",
+      "keyPoints": [
+        "ませんか invites; ましょう proposes once agreement exists.",
+        "Time and place particles structure the arrangement.",
+        "Refusals are softened, rarely direct."
+      ],
+      "tip": "Answer an invitation with ええ、いいですね before adding details.",
+      "checkpoint": "Invite someone to lunch, agree on a time, and confirm the place.",
+      "summary": "Plan-making is a short script: invite, agree, fix the details."
+    },
+    "conversation-requests-permission": {
+      "intro": "Requests carry social weight. The same content can sound abrupt or considerate depending on the form.",
+      "keyPoints": [
+        "てください is neutral-polite, not maximally polite.",
+        "てもいいですか asks rather than assumes.",
+        "Adding すみません frames the imposition."
+      ],
+      "tip": "Prefacing with ちょっと signals that the request is small.",
+      "checkpoint": "Ask a stranger for help and ask a teacher for permission in the same situation.",
+      "summary": "Politeness is a choice of form, not just of vocabulary."
+    },
+    "conversation-explaining-problems": {
+      "intro": "Explaining a problem combines reason, regret and a request for guidance.",
+      "keyPoints": [
+        "Give the reason with ので in formal contexts.",
+        "Mark unintended results with 〜てしまいました.",
+        "Ask for advice with どうしたらいいですか."
+      ],
+      "tip": "State the problem, then the reason, then the request — in that order.",
+      "checkpoint": "Report that you lost a document, explain why, and ask what to do.",
+      "summary": "Connected speech is where grammar from earlier lessons finally combines."
+    }
+  }
+}
