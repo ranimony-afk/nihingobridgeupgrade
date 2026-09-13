@@ -1,12 +1,11 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 
-import { serverEnv } from "@/config/env";
+const databaseUrl = process.env.DATABASE_URL;
 
-// Configuration is read through the validated config module so there is
-// exactly one place that touches process.env. A missing or malformed
-// DATABASE_URL fails here with the full, aggregated diagnostic.
-const { database } = serverEnv();
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is required");
+}
 
 const globalForDb = globalThis as typeof globalThis & {
   __arenaNextJsPostgresqlPool?: Pool;
@@ -15,9 +14,7 @@ const globalForDb = globalThis as typeof globalThis & {
 export const pool =
   globalForDb.__arenaNextJsPostgresqlPool ??
   new Pool({
-    connectionString: database.url,
-    max: database.poolMax,
-    ...(database.ssl ? { ssl: { rejectUnauthorized: false } } : {}),
+    connectionString: databaseUrl,
   });
 
 if (process.env.NODE_ENV !== "production") {
