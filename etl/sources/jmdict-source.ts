@@ -7,11 +7,12 @@
 
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import type { EtlConfig } from "../config";
+import { isRetryableHttpStatus, withRetry } from "../runtime/retry";
 
 export type SourceResolution = {
   path: string;
@@ -38,26 +39,59 @@ export async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-async function download(url: string, dest: string, timeoutMs: number): Promise<void> {
-  await mkdir(dirname(dest), { recursive: true });
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": "NihongoBridge-ETL/1.0" },
-    });
-    if (!res.ok || !res.body) {
-      throw new Error(`Download failed: HTTP ${res.status} for ${url}`);
-    }
-    // Write to a temp file then rename — never leave a partial file in place.
-    const tmp = `${dest}.part`;
-    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(tmp));
-    const { rename } = await import("node:fs/promises");
-    await rename(tmp, dest);
-  } finally {
-    clearTimeout(timer);
+class DownloadHttpError extends Error {
+  constructor(readonly status: number, url: string) {
+    super(`Download failed: HTTP ${status} for ${url}`);
+    this.name = "DownloadHttpError";
   }
+}
+
+async function download(
+  url: string,
+  dest: string,
+  timeoutMs: number,
+  retries: number,
+  backoffMs: number,
+): Promise<void> {
+  await mkdir(dirname(dest), { recursive: true });
+  const tmp = `${dest}.part`;
+
+  await withRetry(
+    async () => {
+      // A stale partial must never be appended to a later retry.
+      await rm(tmp, { force: true });
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { "User-Agent": "NihongoBridge-ETL/1.0" },
+        });
+        if (!res.ok) throw new DownloadHttpError(res.status, url);
+        if (!res.body) throw new Error(`Download body missing for ${url}`);
+        // Write to a temp file then rename — never expose partial content.
+        await pipeline(Readable.fromWeb(res.body as never), createWriteStream(tmp));
+        const { rename } = await import("node:fs/promises");
+        await rename(tmp, dest);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    {
+      attempts: retries,
+      baseDelayMs: backoffMs,
+      shouldRetry: (error) =>
+        error instanceof DownloadHttpError ? isRetryableHttpStatus(error.status) : true,
+      onRetry: ({ error, attempt, delayMs }) => {
+        console.warn(
+          `[etl] download retry ${attempt}/${retries - 1} in ${delayMs}ms: ${String(error)}`,
+        );
+      },
+    },
+  ).finally(async () => {
+    // `rename` removes tmp on success; failed attempts must not leak it.
+    await rm(tmp, { force: true });
+  });
 }
 
 export async function resolveSource(config: EtlConfig): Promise<SourceResolution> {
@@ -73,10 +107,16 @@ export async function resolveSource(config: EtlConfig): Promise<SourceResolution
       );
     }
   } else {
-    path = "etl/data/raw/JMdict_e.xml.gz";
+    path = `etl/data/raw/${config.downloadFilename}`;
     origin = (await fileExists(path)) ? "cache" : "download";
     if (origin === "download") {
-      await download(config.jmdictUrl, path, config.httpTimeoutMs);
+      await download(
+        config.jmdictUrl,
+        path,
+        config.httpTimeoutMs,
+        config.downloadRetries,
+        config.downloadBackoffMs,
+      );
     }
   }
 

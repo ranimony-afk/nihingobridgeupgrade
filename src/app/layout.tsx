@@ -31,6 +31,12 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 Decks
               </Link>
               <Link
+                href="/dictionary"
+                className="rounded-lg px-3 py-1.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              >
+                Dictionary
+              </Link>
+              <Link
                 href="/kana"
                 className="rounded-lg px-3 py-1.5 text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
               >

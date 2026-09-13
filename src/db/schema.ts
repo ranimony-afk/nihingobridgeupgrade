@@ -101,6 +101,9 @@ export const etlImportRuns = pgTable("etl_import_runs", {
   attribution: text("attribution").notNull().default(""),
   checksumSha256: varchar("checksum_sha256", { length: 64 }).notNull().default(""),
   checksumVerified: boolean("checksum_verified").notNull().default(false),
+  // Fixture provenance is test-only and is never production-trusted unless an
+  // ETL command explicitly opts into fixture mode.
+  isFixture: boolean("is_fixture").notNull().default(false),
   dryRun: boolean("dry_run").notNull().default(false),
   status: varchar("status", { length: 16 }).notNull().default("running"), // running|success|failed
   stats: jsonb("stats").notNull().default({}),
@@ -199,6 +202,334 @@ export const dictionarySenses = pgTable(
     entryIdx: index("dictionary_senses_entry_idx").on(t.entryId),
   }),
 );
+
+/* =========================================================================
+ * PHASE 04.3 — KANJI (KANJIDIC2)
+ * Additive only. Shares etl_import_runs for provenance (Rule 5).
+ * ========================================================================= */
+
+export const kanjiCharacters = pgTable(
+  "kanji_characters",
+  {
+    id: serial("id").primaryKey(),
+    source: varchar("source", { length: 64 }).notNull().default("kanjidic2"),
+    literal: varchar("literal", { length: 8 }).notNull(),
+    importRunId: integer("import_run_id").references(() => etlImportRuns.id, {
+      onDelete: "set null",
+    }),
+    codepointUcs: varchar("codepoint_ucs", { length: 16 }).notNull().default(""),
+    strokeCount: integer("stroke_count"),
+    // Alternative stroke counts recorded by KANJIDIC2 (miscounts / variants).
+    strokeMiscounts: jsonb("stroke_miscounts").notNull().default([]),
+    radicalClassical: integer("radical_classical"),
+    radicalNelson: integer("radical_nelson"),
+    // 1-6 kyouiku, 8 jouyou, 9-10 jinmeiyou.
+    grade: integer("grade"),
+    frequencyRank: integer("frequency_rank"),
+    // KANJIDIC2 ships the LEGACY 4-level JLPT scale (1-4), NOT modern N1-N5.
+    jlptOld: integer("jlpt_old"),
+    // Modern N5-N1, populated by a later enrichment phase.
+    jlptLevel: varchar("jlpt_level", { length: 4 }),
+    variants: jsonb("variants").notNull().default([]),
+    dictionaryRefs: jsonb("dictionary_refs").notNull().default({}),
+    queryCodes: jsonb("query_codes").notNull().default({}),
+    nanori: jsonb("nanori").notNull().default([]),
+    contentHash: varchar("content_hash", { length: 64 }).notNull().default(""),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    literalUnique: uniqueIndex("kanji_characters_source_literal_unique").on(
+      t.source,
+      t.literal,
+    ),
+    gradeIdx: index("kanji_characters_grade_idx").on(t.grade),
+    strokeIdx: index("kanji_characters_stroke_idx").on(t.strokeCount),
+    freqIdx: index("kanji_characters_freq_idx").on(t.frequencyRank),
+  }),
+);
+
+export const kanjiReadings = pgTable(
+  "kanji_readings",
+  {
+    id: serial("id").primaryKey(),
+    kanjiId: integer("kanji_id")
+      .notNull()
+      .references(() => kanjiCharacters.id, { onDelete: "cascade" }),
+    // ja_on | ja_kun | pinyin | korean_r | korean_h | vietnam ...
+    type: varchar("type", { length: 16 }).notNull(),
+    value: text("value").notNull(),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => ({
+    kanjiIdx: index("kanji_readings_kanji_idx").on(t.kanjiId),
+    typeIdx: index("kanji_readings_type_idx").on(t.type),
+    valueIdx: index("kanji_readings_value_idx").on(t.value),
+  }),
+);
+
+export const kanjiMeanings = pgTable(
+  "kanji_meanings",
+  {
+    id: serial("id").primaryKey(),
+    kanjiId: integer("kanji_id")
+      .notNull()
+      .references(() => kanjiCharacters.id, { onDelete: "cascade" }),
+    language: varchar("language", { length: 8 }).notNull().default("en"),
+    value: text("value").notNull(),
+    position: integer("position").notNull().default(0),
+  },
+  (t) => ({
+    kanjiIdx: index("kanji_meanings_kanji_idx").on(t.kanjiId),
+    langIdx: index("kanji_meanings_language_idx").on(t.language),
+    valueIdx: index("kanji_meanings_value_idx").on(t.value),
+  }),
+);
+
+/* =========================================================================
+ * PHASE 04.4 — SENTENCES (Tatoeba)
+ * Additive only. Shares etl_import_runs for provenance (Rule 5).
+ *
+ * LICENSING (verified — see reports/phase-04/TATOEBA-LICENSING-AND-SCHEMA-
+ * VERIFICATION.md): Tatoeba text is CC BY 2.0 FR, which REQUIRES citing the
+ * author of each sentence. Attribution is therefore a first-class, NOT NULL
+ * column — not optional metadata.
+ * ========================================================================= */
+
+export const sentences = pgTable(
+  "sentences",
+  {
+    id: serial("id").primaryKey(),
+    source: varchar("source", { length: 64 }).notNull().default("tatoeba"),
+    sourceId: varchar("source_id", { length: 32 }).notNull(), // Tatoeba sentence id
+    importRunId: integer("import_run_id").references(() => etlImportRuns.id, {
+      onDelete: "set null",
+    }),
+    lang: varchar("lang", { length: 8 }).notNull(), // ISO 639-3, e.g. jpn / eng
+    text: text("text").notNull(),
+    // --- CC BY 2.0 FR compliance (constraint C1/C2) ---
+    ownerUsername: varchar("owner_username", { length: 128 }).notNull().default(""),
+    ownerUnknown: boolean("owner_unknown").notNull().default(false),
+    attribution: text("attribution").notNull(),
+    license: varchar("license", { length: 32 }).notNull().default("CC BY 2.0 FR"),
+    // --- quality signals (constraint C4) ---
+    charLength: integer("char_length").notNull().default(0),
+    isReviewed: boolean("is_reviewed").notNull().default(false),
+    contentHash: varchar("content_hash", { length: 64 }).notNull().default(""),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    sourceUnique: uniqueIndex("sentences_source_unique").on(t.source, t.sourceId),
+    langIdx: index("sentences_lang_idx").on(t.lang),
+    lengthIdx: index("sentences_length_idx").on(t.charLength),
+  }),
+);
+
+// Translation pairs. Self-referential many-to-many; Tatoeba lists each pair in
+// both directions, and dangling endpoints are filtered out before insert.
+export const sentenceLinks = pgTable(
+  "sentence_links",
+  {
+    id: serial("id").primaryKey(),
+    sentenceId: integer("sentence_id")
+      .notNull()
+      .references(() => sentences.id, { onDelete: "cascade" }),
+    translationId: integer("translation_id")
+      .notNull()
+      .references(() => sentences.id, { onDelete: "cascade" }),
+  },
+  (t) => ({
+    pairUnique: uniqueIndex("sentence_links_pair_unique").on(
+      t.sentenceId,
+      t.translationId,
+    ),
+    sentenceIdx: index("sentence_links_sentence_idx").on(t.sentenceId),
+  }),
+);
+
+/* =========================================================================
+ * PHASE 04.5 — KNOWLEDGE ENRICHMENT
+ *
+ * One canonical, provenance-bound enrichment ledger. `value` is structured by
+ * `kind`; all values are validated in etl/enrichment before reaching storage.
+ * `source_import_run_id` is mandatory so untraceable enrichment cannot exist.
+ * ========================================================================= */
+export const knowledgeEnrichments = pgTable(
+  "knowledge_enrichments",
+  {
+    id: serial("id").primaryKey(),
+    // dictionary_entry | kanji_character
+    subjectType: varchar("subject_type", { length: 32 }).notNull(),
+    subjectId: integer("subject_id").notNull(),
+    // furigana | jlpt | frequency | radical | strokes | pitch | conjugation
+    kind: varchar("kind", { length: 32 }).notNull(),
+    // A stable sub-key: e.g. reading for pitch, empty for one-per-subject kinds.
+    variantKey: varchar("variant_key", { length: 255 }).notNull().default(""),
+    value: jsonb("value").notNull(),
+    sourceImportRunId: integer("source_import_run_id")
+      .notNull()
+      .references(() => etlImportRuns.id),
+    // e.g. jmdict:1000001; pinpoints the source record used.
+    sourceRecordKey: varchar("source_record_key", { length: 160 }).notNull(),
+    // Direct source projection or named deterministic derivation.
+    derivationMethod: varchar("derivation_method", { length: 96 }).notNull(),
+    derivationVersion: varchar("derivation_version", { length: 32 }).notNull(),
+    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    currentUnique: uniqueIndex("knowledge_enrichments_current_unique").on(
+      t.subjectType,
+      t.subjectId,
+      t.kind,
+      t.variantKey,
+      t.derivationMethod,
+      t.derivationVersion,
+    ),
+    kindIdx: index("knowledge_enrichments_kind_idx").on(t.kind),
+    subjectIdx: index("knowledge_enrichments_subject_idx").on(t.subjectType, t.subjectId),
+    provenanceIdx: index("knowledge_enrichments_provenance_idx").on(t.sourceImportRunId),
+  }),
+);
+
+/* =========================================================================
+ * PHASE 04.6 — PRODUCTION ETL OPERATIONS
+ *
+ * Checkpoints, dead letters, and reports are additive operational records.
+ * They reference the existing canonical `etl_import_runs` provenance ledger;
+ * imported knowledge tables are never dropped, truncated, or overwritten by
+ * these operational records.
+ * ========================================================================= */
+
+// Exactly one logical import run owns one resumable checkpoint. The cursor is
+// advanced only after a committed batch; replay after a crash is therefore
+// safe because every domain loader is idempotent.
+export const etlCheckpoints = pgTable(
+  "etl_checkpoints",
+  {
+    id: serial("id").primaryKey(),
+    importRunId: integer("import_run_id")
+      .notNull()
+      .unique()
+      .references(() => etlImportRuns.id, { onDelete: "cascade" }),
+    pipeline: varchar("pipeline", { length: 64 }).notNull(),
+    source: varchar("source", { length: 64 }).notNull(),
+    sourceUrl: text("source_url").notNull(),
+    sourceChecksumSha256: varchar("source_checksum_sha256", { length: 64 }).notNull(),
+    // Number of source records for which all previous work is durably committed.
+    lastCommittedCursor: integer("last_committed_cursor").notNull().default(0),
+    batchesCommitted: integer("batches_committed").notNull().default(0),
+    // Cumulative counters persisted with each checkpoint for accurate reports
+    // after a resumed execution.
+    progress: jsonb("progress").notNull().default({}),
+    // running | failed | complete
+    status: varchar("status", { length: 16 }).notNull().default("running"),
+    resumeCount: integer("resume_count").notNull().default(0),
+    lastError: text("last_error").notNull().default(""),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    completedAt: timestamp("completed_at"),
+  },
+  (t) => ({
+    resumableIdx: index("etl_checkpoints_resumable_idx").on(
+      t.pipeline,
+      t.source,
+      t.sourceChecksumSha256,
+      t.status,
+    ),
+  }),
+);
+
+// Rejected source records are durable and queryable, not merely console logs.
+// `payload` is bounded/truncated by the writer to avoid unbounded DB growth.
+export const etlDeadLetters = pgTable(
+  "etl_dead_letters",
+  {
+    id: serial("id").primaryKey(),
+    importRunId: integer("import_run_id")
+      .notNull()
+      .references(() => etlImportRuns.id, { onDelete: "cascade" }),
+    pipeline: varchar("pipeline", { length: 64 }).notNull(),
+    stage: varchar("stage", { length: 32 }).notNull(), // parse | validate | transform | load | pipeline
+    sourceRecordKey: varchar("source_record_key", { length: 160 }).notNull().default(""),
+    errorCode: varchar("error_code", { length: 96 }).notNull(),
+    errorMessage: text("error_message").notNull(),
+    payload: jsonb("payload").notNull().default({}),
+    retryable: boolean("retryable").notNull().default(false),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    recordUnique: uniqueIndex("etl_dead_letters_record_unique").on(
+      t.importRunId,
+      t.pipeline,
+      t.stage,
+      t.sourceRecordKey,
+      t.errorCode,
+    ),
+    runIdx: index("etl_dead_letters_run_idx").on(t.importRunId),
+    stageIdx: index("etl_dead_letters_stage_idx").on(t.pipeline, t.stage),
+  }),
+);
+
+// One final operational import report per logical import run. The import run
+// itself remains the immutable source/provenance record; this holds metrics.
+export const etlImportReports = pgTable(
+  "etl_import_reports",
+  {
+    id: serial("id").primaryKey(),
+    importRunId: integer("import_run_id")
+      .notNull()
+      .unique()
+      .references(() => etlImportRuns.id, { onDelete: "cascade" }),
+    pipeline: varchar("pipeline", { length: 64 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull(),
+    sourceChecksumSha256: varchar("source_checksum_sha256", { length: 64 }).notNull(),
+    resumed: boolean("resumed").notNull().default(false),
+    resumeCount: integer("resume_count").notNull().default(0),
+    report: jsonb("report").notNull().default({}),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({ pipelineIdx: index("etl_import_reports_pipeline_idx").on(t.pipeline, t.status) }),
+);
+
+// Stage-level validation summary, retained separately from sampled dead letters
+// so operators can audit acceptance ratios without replaying raw source data.
+export const etlValidationReports = pgTable(
+  "etl_validation_reports",
+  {
+    id: serial("id").primaryKey(),
+    importRunId: integer("import_run_id")
+      .notNull()
+      .references(() => etlImportRuns.id, { onDelete: "cascade" }),
+    pipeline: varchar("pipeline", { length: 64 }).notNull(),
+    stage: varchar("stage", { length: 32 }).notNull().default("validation"),
+    totalRecords: integer("total_records").notNull().default(0),
+    validRecords: integer("valid_records").notNull().default(0),
+    invalidRecords: integer("invalid_records").notNull().default(0),
+    duplicateRecords: integer("duplicate_records").notNull().default(0),
+    sampledErrors: jsonb("sampled_errors").notNull().default([]),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({ runIdx: index("etl_validation_reports_run_idx").on(t.importRunId, t.stage) }),
+);
+
+export type EtlCheckpoint = typeof etlCheckpoints.$inferSelect;
+export type EtlDeadLetter = typeof etlDeadLetters.$inferSelect;
+export type EtlImportReport = typeof etlImportReports.$inferSelect;
+export type EtlValidationReport = typeof etlValidationReports.$inferSelect;
+
+export type KnowledgeEnrichment = typeof knowledgeEnrichments.$inferSelect;
+
+export type Sentence = typeof sentences.$inferSelect;
+export type SentenceLink = typeof sentenceLinks.$inferSelect;
+
+export type KanjiCharacter = typeof kanjiCharacters.$inferSelect;
+export type KanjiReading = typeof kanjiReadings.$inferSelect;
+export type KanjiMeaning = typeof kanjiMeanings.$inferSelect;
 
 export type EtlImportRun = typeof etlImportRuns.$inferSelect;
 export type DictionaryEntry = typeof dictionaryEntries.$inferSelect;

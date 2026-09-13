@@ -1,14 +1,14 @@
 /**
- * JMdict ETL CLI.
+ * KANJIDIC2 ETL CLI.
  *
- *   npx tsx scripts/etl-jmdict.ts --limit 500
- *   npx tsx scripts/etl-jmdict.ts --dry-run --limit 100
+ *   npx tsx scripts/etl-kanjidic.ts --limit 300
+ *   npx tsx scripts/etl-kanjidic.ts --dry-run --limit 100
  *
  * Runs out-of-band (worker / CI), never inside a serverless request.
  */
 
 import "dotenv/config";
-import { runJmdictPipeline } from "../etl/pipelines/jmdict-pipeline";
+import { runKanjidicPipeline } from "../etl/pipelines/kanjidic-pipeline";
 import { pool } from "../src/db";
 
 function flag(name: string): boolean {
@@ -24,7 +24,7 @@ async function main() {
   const limit = value("limit");
   const fixture = value("fixture");
 
-  const report = await runJmdictPipeline(
+  const report = await runKanjidicPipeline(
     {
       dryRun: flag("dry-run"),
       allowNetwork: flag("network"),
@@ -34,7 +34,7 @@ async function main() {
     (msg) => console.log(`[etl] ${msg}`),
   );
 
-  console.log("\n=== JMdict import report ===");
+  console.log("\n=== KANJIDIC2 import report ===");
   console.log(`run id        : ${report.importRunId ?? "(dry run)"}`);
   console.log(`origin        : ${report.origin}`);
   console.log(`sha256        : ${report.sha256}`);
@@ -52,7 +52,7 @@ async function main() {
   console.log(`duration (ms) : ${report.durationMs}`);
   if (report.errorSample.length > 0) {
     console.log(`\nrejected sample (${report.errorSample.length}):`);
-    for (const e of report.errorSample.slice(0, 5)) {
+    for (const e of report.errorSample.slice(0, 6)) {
       console.log(`  - ${e.sourceId}: ${e.reason}`);
     }
   }

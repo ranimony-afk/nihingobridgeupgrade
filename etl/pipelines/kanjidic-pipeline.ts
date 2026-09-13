@@ -1,14 +1,11 @@
 /**
- * Production JMdict ingestion pipeline.
- *
- * Stages: download/retry -> checksum -> parse -> normalize -> validate ->
- * deduplicate -> durable dead letters -> transactional upsert -> checkpoint ->
- * provenance, import report, and validation report.
+ * Production KANJIDIC2 ingestion pipeline.
+ * Shares the Phase 04.6 operational runtime with JMdict.
  */
 
-import { getEtlConfig, type EtlConfig } from "../config";
-import { upsertBatch } from "../loaders/jmdict-loader";
-import { streamEntriesFromFile } from "../parsers/jmdict-parser";
+import { getKanjidicConfig, type EtlConfig } from "../config";
+import { upsertKanjiBatch } from "../loaders/kanjidic-loader";
+import { streamCharactersFromFile } from "../parsers/kanjidic-parser";
 import {
   advanceCheckpoint,
   beginResumableRun,
@@ -22,12 +19,13 @@ import {
   type ResumableRun,
 } from "../runtime/operations";
 import { resolveSource } from "../sources/jmdict-source";
-import { normalizeEntry, type NormalizedEntry } from "../transforms/jmdict-transform";
-import { Deduplicator, validateEntry, type ValidationIssue } from "../validators/jmdict-validator";
+import { normalizeCharacter, type NormalizedCharacter } from "../transforms/kanjidic-transform";
+import { Deduplicator, type ValidationIssue } from "../validators/jmdict-validator";
+import { validateCharacter } from "../validators/kanjidic-validator";
 
-const PIPELINE = "jmdict";
+const PIPELINE = "kanjidic2";
 
-export type PipelineReport = {
+export type KanjiPipelineReport = {
   importRunId: number | null;
   source: string;
   sourcePath: string;
@@ -42,9 +40,7 @@ export type PipelineReport = {
   inserted: number;
   updated: number;
   unchanged: number;
-  /** Durable validation/pipeline error records associated with this run. */
   deadLetters: number;
-  /** Final durable checkpoint cursor. */
   checkpointCursor: number;
   resumed: boolean;
   resumeCount: number;
@@ -58,9 +54,9 @@ function snapshot(
   config: EtlConfig,
   source: { path: string; bytes: number; sha256: string; checksumVerified: boolean; origin: string },
   progress: ProgressCounters,
-  errorSample: ValidationIssue[],
+  errors: ValidationIssue[],
   startedAt: number,
-): PipelineReport {
+): KanjiPipelineReport {
   return {
     importRunId: context?.importRunId ?? null,
     source: config.source,
@@ -82,18 +78,16 @@ function snapshot(
     resumeCount: context?.resumeCount ?? 0,
     dryRun: config.dryRun,
     durationMs: Date.now() - startedAt,
-    errorSample,
+    errorSample: errors,
   };
 }
 
-export async function runJmdictPipeline(
+export async function runKanjidicPipeline(
   overrides: Partial<EtlConfig> = {},
-  log: (msg: string) => void = () => {},
-): Promise<PipelineReport> {
-  const config = getEtlConfig(overrides);
+  log: (message: string) => void = () => {},
+): Promise<KanjiPipelineReport> {
+  const config = getKanjidicConfig(overrides);
   const startedAt = Date.now();
-
-  // Stage 1+2: fixture/download + verified streaming checksum.
   const source = await resolveSource(config);
   const identity = {
     pipeline: PIPELINE,
@@ -101,12 +95,7 @@ export async function runJmdictPipeline(
     sourceUrl: source.url,
     sourceChecksumSha256: source.sha256,
   };
-  log(
-    `source: ${source.origin} ${source.path} (${source.bytes} bytes) sha256=${source.sha256.slice(0, 16)}… verified=${source.checksumVerified}`,
-  );
 
-  // A dry run performs all pure stages but produces no checkpoints, reports,
-  // dead letters, or knowledge mutations.
   const context = config.dryRun
     ? null
     : await beginResumableRun({
@@ -117,7 +106,7 @@ export async function runJmdictPipeline(
         checksumSha256: source.sha256,
         checksumVerified: source.checksumVerified,
         isFixture: source.origin === "fixture",
-        dryRun: config.dryRun,
+        dryRun: false,
         resume: config.resume,
       });
   if (context) {
@@ -129,20 +118,14 @@ export async function runJmdictPipeline(
   const progress = context?.progress ?? emptyProgress();
   const dedupe = new Deduplicator();
   const errorSample: ValidationIssue[] = [];
-  const batch: NormalizedEntry[] = [];
+  const batch: NormalizedCharacter[] = [];
   const pendingDeadLetters: DeadLetterInput[] = [];
   let cursor = 0;
 
-  /**
-   * Persist the data batch, then durable rejection records, then checkpoint.
-   * The checkpoint is intentionally last. A crash at any earlier point only
-   * causes idempotent replay; it cannot advance past undurable work.
-   */
   const flush = async (commitCursor: number) => {
     if (batch.length === 0 && pendingDeadLetters.length === 0) return;
-
     if (!config.dryRun) {
-      const result = await upsertBatch(batch, context!.importRunId);
+      const result = await upsertKanjiBatch(batch, context!.importRunId);
       progress.inserted += result.inserted;
       progress.updated += result.updated;
       progress.unchanged += result.unchanged;
@@ -152,29 +135,20 @@ export async function runJmdictPipeline(
         pendingDeadLetters,
       );
       await advanceCheckpoint(context!, commitCursor, progress);
-      throwIfSimulatedInterruption(
-        context!.batchesCommitted,
-        config.failAfterCommittedBatches,
-      );
+      throwIfSimulatedInterruption(context!.batchesCommitted, config.failAfterCommittedBatches);
     }
-
     batch.length = 0;
     pendingDeadLetters.length = 0;
   };
 
   try {
-    // On resumption, source records before the durable cursor are not loaded
-    // again, but are fed through validation/dedupe to retain duplicate context
-    // for later records. This costs linear read time but zero duplicate writes.
-    for await (const raw of streamEntriesFromFile(source.path, {
-      limit: config.maxEntries,
-    })) {
+    for await (const raw of streamCharactersFromFile(source.path, { limit: config.maxEntries })) {
       cursor += 1;
-      const entry = normalizeEntry(raw, config.source);
-      const issue = validateEntry(entry);
+      const character = normalizeCharacter(raw, config.source);
+      const issue = validateCharacter(character);
 
       if (cursor <= (context?.startCursor ?? 0)) {
-        if (!issue) dedupe.accept(entry.sourceId);
+        if (!issue) dedupe.accept(character.literal);
         continue;
       }
 
@@ -184,39 +158,34 @@ export async function runJmdictPipeline(
         if (errorSample.length < config.validationErrorSampleLimit) errorSample.push(issue);
         pendingDeadLetters.push({
           stage: "validate",
-          sourceRecordKey: `jmdict:${entry.sourceId}`,
-          errorCode: "JM_DICT_VALIDATION_FAILED",
+          sourceRecordKey: `kanjidic2:${character.literal}`,
+          errorCode: "KANJIDIC2_VALIDATION_FAILED",
           errorMessage: issue.reason,
-          payload: { entSeq: entry.sourceId, headword: entry.headword },
+          payload: { literal: character.literal },
         });
         continue;
       }
-
-      if (!dedupe.accept(entry.sourceId)) {
+      if (!dedupe.accept(character.literal)) {
         progress.duplicates += 1;
         pendingDeadLetters.push({
           stage: "validate",
-          sourceRecordKey: `jmdict:${entry.sourceId}`,
-          errorCode: "JM_DICT_DUPLICATE_SOURCE_ID",
-          errorMessage: "duplicate ent_seq encountered in the input stream",
-          payload: { entSeq: entry.sourceId, headword: entry.headword },
+          sourceRecordKey: `kanjidic2:${character.literal}`,
+          errorCode: "KANJIDIC2_DUPLICATE_LITERAL",
+          errorMessage: "duplicate kanji literal encountered in the input stream",
+          payload: { literal: character.literal },
         });
         continue;
       }
 
       progress.valid += 1;
-      batch.push(entry);
+      batch.push(character);
       if (batch.length >= config.batchSize) {
         await flush(cursor);
-        log(
-          `checkpoint: cursor=${cursor} parsed=${progress.parsed} valid=${progress.valid} written=${progress.inserted + progress.updated}`,
-        );
+        log(`checkpoint: cursor=${cursor} valid=${progress.valid} written=${progress.inserted + progress.updated}`);
       }
     }
 
-    // Commits any final partial batch and/or trailing validation dead letters.
     await flush(cursor);
-
     const report = snapshot(context, config, source, progress, errorSample, startedAt);
     if (context) {
       await completeResumableRun(context, {

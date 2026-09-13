@@ -15,6 +15,8 @@ export type StartRunInput = {
   attribution: string;
   checksumSha256: string;
   checksumVerified: boolean;
+  /** True only for local/generated fixtures; not production-trusted by default. */
+  isFixture: boolean;
   dryRun: boolean;
 };
 
