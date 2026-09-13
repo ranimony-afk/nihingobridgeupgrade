@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.env
+.env.local
+.env.*.local
+next-env.d.ts
+*.tsbuildinfo
+
+# ETL runtime artifacts (never commit downloaded upstream data)
+etl/data/
+etl/reports/
+.checkpoints/
+
+# Playwright
+test-results/
+playwright-report/

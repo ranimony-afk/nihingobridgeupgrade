@@ -1,0 +1,34 @@
+# KRADFILE STRUCTURAL TEST FIXTURE — synthetic component records only.
+# NOT redistributed EDRDG data. Hand-authored for Phase 04.5 / 06.3 testing.
+#
+# Decompositions mirror the real KRADFILE format (Kanji : component ...) and
+# are deliberately chosen to create shared-component overlap so that
+# multi-component AND search is exercised:
+#   言 → 語, 話        口 → 語, 中, 話(no) ...
+#   日 → 日, 時, 間     木 → 本, 校
+一 : 一
+人 : 人
+大 : 大
+日 : 日
+水 : 水
+火 : 火
+山 : 山
+川 : 川
+車 : 車
+中 : 口 丨
+本 : 木 一
+校 : 木 交
+語 : 言 五 口
+話 : 言 舌
+時 : 日 土 寸
+間 : 門 日
+食 : 人 良
+電 : 雨 田 乙
+行 : 彳 亍
+学 : 子 冖
+# Deliberate malformed and duplicate rows for validation / dedup coverage.
+あ : あ
+森 : 木 森森
+日 : 日
+# Valid but unmatched in the kanji corpus: reported, never inserted.
+明 : 日 月
