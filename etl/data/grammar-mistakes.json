@@ -1,0 +1,173 @@
+{
+  "license": "CC BY-SA 4.0 (NihongoBridge curated content)",
+  "note": "Frequent learner errors per grammar point. `incorrect` is the error, `correction` the target form, `explanation` why. severity: common | subtle | critical.",
+  "mistakes": {
+    "desu": [
+      { "incorrect": "私は学生だです。", "correction": "私は学生です。", "explanation": "です is already the polite copula — だです doubles it. Use だ only in the plain style.", "severity": "common" },
+      { "incorrect": "このケーキは美味しいのです。", "correction": "このケーキは美味しいです。", "explanation": "After an i-adjective, です is added directly; のです adds an explanatory 'it is that…' nuance.", "severity": "subtle" }
+    ],
+    "masu": [
+      { "incorrect": "食べたます。", "correction": "食べました。", "explanation": "The polite past is ました, not た + ます.", "severity": "common" },
+      { "incorrect": "私も行くます。", "correction": "私も行きます。", "explanation": "ます attaches to the ます-stem (行き), not to the dictionary form (行く).", "severity": "common" }
+    ],
+    "te-iru": [
+      { "incorrect": "今、晩ご飯を食べていますから、後で電話します。", "correction": "晩ご飯を食べてから、電話します。", "explanation": "ています is ongoing state; for 'after doing X' use てから.", "severity": "subtle" },
+      { "incorrect": "ドアが開いています。（誰かが）", "correction": "ドアが開けてあります。", "explanation": "開いている is the resulting state; 〜てある marks an intentional act left in that state.", "severity": "critical" }
+    ],
+    "te-kudasai": [
+      { "incorrect": "座るください。", "correction": "座ってください。", "explanation": "ください follows the て-form, never the dictionary form.", "severity": "common" }
+    ],
+    "tai": [
+      { "incorrect": "彼は日本に行きたいです。", "correction": "彼は日本に行きたがっています。", "explanation": "たい states the speaker's own wish; use たがっている for a third person's visible desire.", "severity": "critical" },
+      { "incorrect": "水を飲みたい。", "correction": "水が飲みたい。 / 水を飲みたい。", "explanation": "Both are acceptable, but が is more natural with たい; avoid を in careful writing.", "severity": "subtle" }
+    ],
+    "ga-suki": [
+      { "incorrect": "私は音楽を好きです。", "correction": "私は音楽が好きです。", "explanation": "好き takes が for the object, not を.", "severity": "common" }
+    ],
+    "kara": [
+      { "incorrect": "危ないから、触るな。", "correction": "危ないから、触らないでください。", "explanation": "から is fine with commands but sounds blunt; soften the request to match a polite reason.", "severity": "subtle" },
+      { "incorrect": "田中さんから、会議は明日です。", "correction": "田中さんによると、会議は明日です。", "explanation": "から marks a reason, not a source of information — use によると for hearsay.", "severity": "common" }
+    ],
+    "kedo": [
+      { "incorrect": "高いですけど、買います。", "correction": "高いですが、買います。", "explanation": "けど is casual; in formal speech use が.", "severity": "subtle" }
+    ],
+    "mashou": [
+      { "incorrect": "一緒に行きましょうか？", "correction": "一緒に行きませんか？", "explanation": "ましょうか offers help ('shall I…?'); ませんか invites the listener ('won't you…?').", "severity": "subtle" }
+    ],
+    "masen-ka": [
+      { "incorrect": "はい、行きません。", "correction": "はい、行きましょう。", "explanation": "ませんか is an invitation — accept with ましょう, not ません.", "severity": "critical" }
+    ],
+    "ni-iku": [
+      { "incorrect": "買い物するに行きます。", "correction": "買い物しに行きます。", "explanation": "The purpose form is the ます-stem: する → し, not する.", "severity": "common" },
+      { "incorrect": "ご飯を食べにいます。", "correction": "ご飯を食べに行きます。", "explanation": "The verb must express motion (行く/来る/帰る), not existence (いる).", "severity": "critical" }
+    ],
+    "te-kara": [
+      { "incorrect": "食べてから、寝ません。", "correction": "食べてから、寝ます。 / 食べる前に、寝ません。", "explanation": "The main clause after てから is normally an action, not a negative statement.", "severity": "subtle" }
+    ],
+    "node": [
+      { "incorrect": "学生ので、安く食べられます。", "correction": "学生なので、安く食べられます。", "explanation": "Nouns and na-adjectives need な before ので.", "severity": "critical" },
+      { "incorrect": "雨が降ったので、傘を持って行きましょう。", "correction": "雨が降っているから、傘を持って行きましょう。", "explanation": "ので presents a reason as a fact; for a suggestion use から.", "severity": "subtle" }
+    ],
+    "noni": [
+      { "incorrect": "高いのを、買いました。", "correction": "高いのに、買いました。", "explanation": "のに expresses unexpected contrast; のを turns the clause into an object.", "severity": "common" },
+      { "incorrect": "雨なのに、行きます。", "correction": "雨なのに、行きます。（✓） / 雨だのに …（✗）", "explanation": "Nouns take な + のに, never だ + のに.", "severity": "critical" }
+    ],
+    "tara": [
+      { "incorrect": "安いったら、買います。", "correction": "安かったら、買います。", "explanation": "With i-adjectives the condition is 〜かったら, not 〜いったら.", "severity": "common" },
+      { "incorrect": "春が来たら、花が咲きます。（一般的な習慣）", "correction": "春が来ると、花が咲きます。", "explanation": "For a general, repeated cause–effect use と; たら is for one-off events.", "severity": "subtle" }
+    ],
+    "ba": [
+      { "incorrect": "安ければ、買ってください。", "correction": "安かったら、買ってください。", "explanation": "ば cannot be followed by a command, request or invitation — use たら.", "severity": "critical" },
+      { "incorrect": "食べれば、行きます。", "correction": "食べれば（or 食べたら）行きます。", "explanation": "ば needs a hypothetical reading; with a completed action use たら.", "severity": "subtle" }
+    ],
+    "nara": [
+      { "incorrect": "行くなら、私も行く。", "correction": "行くなら、私も行く。（✓） / 行けば、私も行く。（✗）", "explanation": "なら picks up the listener's plan; ば states a general condition.", "severity": "subtle" }
+    ],
+    "nagara": [
+      { "incorrect": "音楽を聞きながら、彼が来ました。", "correction": "音楽を聞いている間に、彼が来ました。", "explanation": "ながら requires the same subject in both clauses; use 間に for different subjects.", "severity": "critical" }
+    ],
+    "tame-ni": [
+      { "incorrect": "雨が降るために、試合が中止になった。", "correction": "雨のために、試合が中止になった。", "explanation": "Purpose ために needs a controllable verb; for a natural cause use N の ために.", "severity": "critical" }
+    ],
+    "you-ni": [
+      { "incorrect": "忘れないために、メモします。", "correction": "忘れないように、メモします。", "explanation": "Negative and potential verbs take ように, not ために.", "severity": "critical" }
+    ],
+    "te-shimau": [
+      { "incorrect": "財布をなくしてしまいます。", "correction": "財布をなくしてしまいました。", "explanation": "てしまう marks a completed action; an event that already happened needs the past form.", "severity": "common" },
+      { "incorrect": "この本を読んでしまう。（これから）", "correction": "この本を読んでしまうつもりです。", "explanation": "On its own てしまう reads as finished or regretted; add つもり/予定 for future completion.", "severity": "subtle" }
+    ],
+    "te-oku": [
+      { "incorrect": "窓を開けておく。（今から開ける）", "correction": "窓を開けておきます。", "explanation": "ておく is an action; use the non-past or ておきました for an already-done preparation.", "severity": "subtle" }
+    ],
+    "hou-ga-ii": [
+      { "incorrect": "薬を飲むほうがいいです。", "correction": "薬を飲んだほうがいいです。", "explanation": "Positive advice uses the た-form; only the negative uses ない.", "severity": "critical" }
+    ],
+    "tsumori": [
+      { "incorrect": "彼は来るつもりです。", "correction": "彼は来るつもりだそうです。 / 彼は来る予定です。", "explanation": "つもり is the speaker's intention; for other people use 予定 or a hearsay marker.", "severity": "critical" }
+    ],
+    "nakereba-naranai": [
+      { "incorrect": "行かなければならないでした。", "correction": "行かなければなりませんでした。", "explanation": "Negate the ending (なりません), not the ならない itself.", "severity": "common" }
+    ],
+    "temo-ii": [
+      { "incorrect": "ここに座ってもいいですか。— はい、座ってもいいです。", "correction": "— はい、どうぞ。 / ええ、いいですよ。", "explanation": "Repeating てもいいです sounds stiff; answer with どうぞ / いいですよ.", "severity": "subtle" }
+    ],
+    "te-wa-ikenai": [
+      { "incorrect": "ここで写真を撮ってはいけないです。", "correction": "ここで写真を撮ってはいけません。", "explanation": "The polite negative of いけない is いけません, not いけないです.", "severity": "common" }
+    ],
+    "koto-ga-aru": [
+      { "incorrect": "富士山に登ることがあります。", "correction": "富士山に登ったことがあります。", "explanation": "Experience uses the た-form; 〜る ことがある means 'there are times when'.", "severity": "critical" }
+    ],
+    "sou-desu-hearsay": [
+      { "incorrect": "明日は雨が降りそうです。（天気予報）", "correction": "明日は雨だそうです。", "explanation": "ます-stem + そう is conjecture ('looks like rain'); plain form + そう is hearsay ('they say it will rain').", "severity": "critical" }
+    ],
+    "rashii": [
+      { "incorrect": "彼は忙しいらしいです。", "correction": "彼は忙しいらしい。（です は不要）", "explanation": "らしい already ends the predicate; adding です after らしい is redundant in careful writing.", "severity": "subtle" }
+    ],
+    "kamo-shirenai": [
+      { "incorrect": "彼は来るかもしれないだろう。", "correction": "彼は来るかもしれない。", "explanation": "Stacking two uncertainty markers (かもしれない + だろう) is redundant.", "severity": "common" }
+    ],
+    "you-ni-naru": [
+      { "incorrect": "日本語を話すようになりました。（能力）", "correction": "日本語が話せるようになりました。", "explanation": "For ability, use the potential form before ようになる.", "severity": "critical" }
+    ],
+    "you-ni-suru": [
+      { "incorrect": "毎日、野菜を食べるようになりました。", "correction": "毎日、野菜を食べるようにしています。", "explanation": "ようにする is the effort/habit; ようになる describes a change that happened.", "severity": "critical" }
+    ],
+    "koto-ni-suru": [
+      { "incorrect": "来月から大阪に転勤することにした。（決定は会社）", "correction": "来月から大阪に転勤することになった。", "explanation": "ことにする is your own decision; ことになる is a decision made by circumstances.", "severity": "critical" }
+    ],
+    "hazu": [
+      { "incorrect": "彼は来るはずです。（確実な予定）", "correction": "彼は来る予定です。", "explanation": "はず is an expectation from evidence; a fixed arrangement uses 予定.", "severity": "common" }
+    ],
+    "beki": [
+      { "incorrect": "約束は守るべきではありません。", "correction": "約束は守るべきです。", "explanation": "べきではない negates the obligation ('should not'), which reverses the meaning.", "severity": "critical" }
+    ],
+    "wake": [
+      { "incorrect": "彼が来ないわけがない。", "correction": "彼が来ないわけがない。（✓ 'there's no way he won't come'）", "explanation": "Double negatives with わけがない are easy to misread — check the intended polarity.", "severity": "subtle" }
+    ],
+    "bakari": [
+      { "incorrect": "甘い物ばかりを食べている。", "correction": "甘い物ばかり食べている。", "explanation": "ばかり replaces を/が; adding を after it is unnatural.", "severity": "common" }
+    ],
+    "shika-nai": [
+      { "incorrect": "一つしかあります。", "correction": "一つしかありません。", "explanation": "しか always requires a negative predicate.", "severity": "critical" }
+    ],
+    "tabi-ni": [
+      { "incorrect": "この曲を聞いたたびに、思い出す。", "correction": "この曲を聞くたびに、思い出す。", "explanation": "たびに follows the dictionary form, not the た-form.", "severity": "common" }
+    ],
+    "uchi-ni": [
+      { "incorrect": "若いうちに、勉強した。", "correction": "若いうちに、勉強しておこう。", "explanation": "うちに implies a window that will close, so the main clause should be an action you take in time.", "severity": "subtle" }
+    ],
+    "okage-de": [
+      { "incorrect": "先生のおかげで、試験に落ちた。", "correction": "先生のせいで、試験に落ちた。（皮肉以外は不可）", "explanation": "おかげで is for good results; a bad result takes せいで (unless sarcastic).", "severity": "critical" }
+    ],
+    "sei-de": [
+      { "incorrect": "あなたのせいで、合格しました。", "correction": "あなたのおかげで、合格しました。", "explanation": "せいで assigns blame for a bad outcome — using it for praise sounds insulting.", "severity": "critical" }
+    ],
+    "zu-ni": [
+      { "incorrect": "何も言わないずに、出て行った。", "correction": "何も言わずに、出て行った。", "explanation": "ずに attaches to the ない-stem (言わ), not to ない itself.", "severity": "critical" }
+    ],
+    "mama": [
+      { "incorrect": "靴のままを履いて、入った。", "correction": "靴を履いたまま、入った。", "explanation": "まま follows the た-form / noun + の; it does not take を.", "severity": "common" }
+    ],
+    "koto-ga-dekiru": [
+      { "incorrect": "漢字を読むことができます。", "correction": "漢字が読めます。", "explanation": "When a potential verb exists (読める) it is more natural than ことができる.", "severity": "subtle" }
+    ],
+    "sugiru": [
+      { "incorrect": "静かなすぎる。", "correction": "静かすぎる。", "explanation": "na-adjectives drop な before すぎる.", "severity": "critical" }
+    ],
+    "yasui-nikui": [
+      { "incorrect": "この本は理解しやすい。", "correction": "この本は分かりやすい。", "explanation": "やすい attaches to a verb stem; 理解しやすい is possible but 分かりやすい is the idiomatic choice.", "severity": "subtle" }
+    ],
+    "ni-tsuite": [
+      { "incorrect": "この問題について、話します。（場所）", "correction": "この部屋で、話します。", "explanation": "について is a topic marker ('about'), not a location marker.", "severity": "common" }
+    ],
+    "ni-totte": [
+      { "incorrect": "私にとって、手紙を書きました。", "correction": "私にとって、これは大切です。", "explanation": "にとって introduces a standpoint, so an evaluation — not an action — must follow.", "severity": "critical" }
+    ],
+    "ni-taishite": [
+      { "incorrect": "日本にたいして、中国は大きい。", "correction": "日本に対して、中国は大きい。（✓ 対比）", "explanation": "Contrast reading is fine; do not use に対して for physical direction ('towards Tokyo' = 東京へ).", "severity": "subtle" }
+    ],
+    "to-shite": [
+      { "incorrect": "教師として、学生に教える。（立場の強調のみ）", "correction": "教師として、学生に教えています。", "explanation": "として marks the role; the predicate must actually describe acting in that capacity.", "severity": "subtle" }
+    ]
+  }
+}
