@@ -1,77 +1,125 @@
-import type { NextRequest } from "next/server";
-import { z } from "zod";
-
-import { jsonError, jsonOk, optionsHandler, withHeaders } from "@/lib/api/http";
-import { parseQuery } from "@/lib/api/validate";
-import { clientId, rateLimit } from "@/lib/api/rate-limit";
-import { getQuestions } from "@/services/questions/engine";
-import type { QuestionKind, QuestionSkill } from "@/types/question";
+import { NextRequest, NextResponse } from "next/server";
+import { TestService } from "@/services/jlpt/testService";
+import { db } from "@/db";
+import { questions as questionsTable } from "@/db/schema";
+import { JLPTLevel, QuestionCategory, QuestionSection } from "@/types/quiz";
 
 export const dynamic = "force-dynamic";
 
-const SKILLS = ["grammar", "kanji", "vocabulary", "reading"] as const;
-const KINDS = ["multiple_choice", "cloze", "reading", "meaning"] as const;
-
-const querySchema = z.object({
-  skills: z
-    .string()
-    .optional()
-    .transform((value) =>
-      (value ?? "")
-        .split(",")
-        .map((part) => part.trim())
-        .filter((part): part is QuestionSkill => (SKILLS as readonly string[]).includes(part)),
-    ),
-  kinds: z
-    .string()
-    .optional()
-    .transform((value) =>
-      (value ?? "")
-        .split(",")
-        .map((part) => part.trim())
-        .filter((part): part is QuestionKind => (KINDS as readonly string[]).includes(part)),
-    ),
-  jlpt: z.coerce.number().int().min(1).max(5).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-  seed: z.coerce.number().int().optional(),
-});
-
-/**
- * GET /api/questions?skills=kanji,grammar&jlpt=5&limit=20&seed=42
- *
- * Samples the canonical question bank. Correct answers are never included;
- * grading is only available through POST /api/questions/check.
- */
 export async function GET(request: NextRequest) {
-  const limiter = rateLimit(`questions:list:${clientId(request)}`, { limit: 240 });
-  if (!limiter.allowed) {
-    return withHeaders(jsonError(429, "rate_limited", "Too many requests"), limiter.headers);
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const level = searchParams.get("level") as JLPTLevel | null;
+    const section = searchParams.get("section") as QuestionSection | null;
+    const category = searchParams.get("category") as QuestionCategory | null;
+    const mondaiNumber = searchParams.get("mondaiNumber")
+      ? parseInt(searchParams.get("mondaiNumber")!, 10)
+      : undefined;
+    const keyword = searchParams.get("keyword") || undefined;
+    const tag = searchParams.get("tag") || undefined;
+    const limit = searchParams.get("limit")
+      ? parseInt(searchParams.get("limit")!, 10)
+      : 50;
+    const offset = searchParams.get("offset")
+      ? parseInt(searchParams.get("offset")!, 10)
+      : 0;
+
+    const data = await TestService.queryQuestions({
+      level: level || undefined,
+      section: section || undefined,
+      category: category || undefined,
+      mondaiNumber,
+      keyword,
+      tag,
+      limit,
+      offset,
+    });
+
+    return NextResponse.json({
+      success: true,
+      total: data.total,
+      questions: data.questions,
+    });
+  } catch (error: any) {
+    console.error("GET /api/questions error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to fetch questions" },
+      { status: 500 }
+    );
   }
-
-  const parsed = parseQuery(new URL(request.url).searchParams, querySchema);
-  if (!parsed.ok) return withHeaders(parsed.response, limiter.headers);
-
-  const set = await getQuestions({
-    skills: parsed.data.skills,
-    kinds: parsed.data.kinds,
-    jlptLevel: parsed.data.jlpt ?? null,
-    limit: parsed.data.limit,
-    seed: parsed.data.seed ?? null,
-  });
-
-  return withHeaders(
-    jsonOk(set, {
-      meta: {
-        returned: set.questions.length,
-        matching: set.total,
-        grading: "server-side",
-        seeded: parsed.data.seed != null,
-      },
-      cacheSeconds: 0,
-      staleSeconds: 0,
-    }),
-    limiter.headers,
-  );
 }
 
-export const OPTIONS = optionsHandler;
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const {
+      id = `q-${Date.now()}`,
+      jlptLevel = "N5",
+      section,
+      category,
+      mondaiNumber = 1,
+      mondaiTitle = "問題１",
+      questionType = "multiple_choice",
+      prompt,
+      promptFurigana,
+      promptTranslation,
+      passage,
+      passageFurigana,
+      passageTranslation,
+      audioScript,
+      audioUrl,
+      options,
+      starOrderParts,
+      correctAnswer,
+      explanation,
+      explanationBreakdown,
+      difficulty = 3,
+      tags = [],
+    } = body;
+
+    if (!prompt || !options || !correctAnswer || !explanation) {
+      return NextResponse.json(
+        { success: false, error: "Missing required question fields" },
+        { status: 400 }
+      );
+    }
+
+    await db.insert(questionsTable).values({
+      id,
+      jlptLevel,
+      section: section || "vocab",
+      category: category || "contextual_use",
+      mondaiNumber,
+      mondaiTitle,
+      questionType,
+      prompt,
+      promptFurigana: promptFurigana || null,
+      promptTranslation,
+      passage: passage || null,
+      passageFurigana: passageFurigana || null,
+      passageTranslation: passageTranslation || null,
+      audioScript: audioScript || null,
+      audioUrl: audioUrl || null,
+      options,
+      starOrderParts: starOrderParts || null,
+      correctAnswer,
+      explanation,
+      explanationBreakdown: explanationBreakdown || null,
+      difficulty,
+      tags,
+      isActive: true,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Question created successfully",
+      id,
+    });
+  } catch (error: any) {
+    console.error("POST /api/questions error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to create question" },
+      { status: 500 }
+    );
+  }
+}

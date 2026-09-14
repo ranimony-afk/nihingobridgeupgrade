@@ -1,33 +1,21 @@
-import type { NextRequest } from "next/server";
-
-import { jsonOk, optionsHandler, withHeaders } from "@/lib/api/http";
-import { clientId, rateLimit } from "@/lib/api/rate-limit";
-import { listPublishedTests } from "@/services/jlpt/tests";
+import { NextRequest, NextResponse } from "next/server";
+import { TestService } from "@/services/jlpt/testService";
+import { JLPTLevel } from "@/types/quiz";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/jlpt/tests — published blueprints with live bank availability. */
 export async function GET(request: NextRequest) {
-  const limiter = rateLimit(`jlpt:tests:${clientId(request)}`, { limit: 120 });
-  if (!limiter.allowed) {
-    return withHeaders(jsonOk({ tests: [] }, { meta: { rateLimited: true } }), limiter.headers);
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const level = searchParams.get("level") as JLPTLevel | null;
+
+    const tests = await TestService.listTests(level || undefined);
+    return NextResponse.json({ success: true, tests });
+  } catch (error: any) {
+    console.error("GET /api/jlpt/tests error:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to list tests" },
+      { status: 500 }
+    );
   }
-
-  const tests = await listPublishedTests();
-  return withHeaders(
-    jsonOk(
-      { tests },
-      {
-        cacheSeconds: 60,
-        staleSeconds: 120,
-        meta: {
-          returned: tests.length,
-          levels: tests.map((test) => test.levelLabel).join(","),
-        },
-      },
-    ),
-    limiter.headers,
-  );
 }
-
-export const OPTIONS = optionsHandler;
