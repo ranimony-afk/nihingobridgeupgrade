@@ -56,6 +56,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const dueHorizon = body?.dueHorizon === "day" ? "day" : "now";
+
     const { session, skipped } = await SessionService.planSession({
       userId,
       deckId: deckId ?? null,
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
       maxCards,
       order: order as SessionQueueOrder | undefined,
       dailyNewBudget,
+      dueHorizon,
     });
 
     return NextResponse.json(

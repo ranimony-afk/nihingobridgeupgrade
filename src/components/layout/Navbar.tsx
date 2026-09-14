@@ -9,9 +9,13 @@ import {
   Zap,
   BarChart3,
   Layers,
+  Languages,
+  Network,
+  RefreshCw,
   Sparkles,
   Volume2,
   Clock,
+  CalendarClock,
   ChevronDown,
 } from "lucide-react";
 
@@ -29,10 +33,15 @@ export function Navbar() {
 
   const navItems = [
     { href: "/", label: "Overview", icon: Sparkles },
+    { href: "/kana", label: "Kana Chart", icon: Languages },
+    { href: "/kanji", label: "Kanji Tree", icon: Network },
     { href: "/jlpt/test/jlpt-n5-mock-01", label: "N5 Mock Exam", icon: Award },
     { href: "/quiz/drill", label: "Quick Drill", icon: Zap },
     { href: "/question-bank", label: "Question Bank", icon: BookOpen },
+    { href: "/review/today", label: "Today", icon: CalendarClock },
+    { href: "/review/personal", label: "Personalized", icon: Sparkles },
     { href: "/review", label: "SRS Review", icon: Layers },
+    { href: "/review/sync", label: "Sync", icon: RefreshCw },
     { href: "/analytics", label: "Analytics & Report", icon: BarChart3 },
   ];
 

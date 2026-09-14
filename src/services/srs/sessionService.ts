@@ -28,6 +28,8 @@ import {
 import { SrsService } from "./srsService";
 import { getScheduler, resolveParams } from "./scheduler";
 import { describeInterval } from "./strategies/shared";
+import { DailyQueueService, resolveDayWindow } from "./dailyQueueService";
+import { PersonalizationService } from "./personalizationService";
 
 type SessionRow = typeof sessionsTable.$inferSelect;
 type CardRow = typeof cardsTable.$inferSelect;
@@ -86,11 +88,20 @@ export class SessionService {
     maxCards?: number;
     order?: SessionQueueOrder;
     dailyNewBudget?: number;
+    /**
+     * 'now' (default) pulls only cards already due this instant.
+     * 'day' pulls everything due within the learner's current study day,
+     * so a session launched from the daily queue matches the daily count.
+     */
+    dueHorizon?: "now" | "day";
   }): Promise<{ session: SrsReviewSession; skipped: string }> {
     await SrsService.ensureSeeded();
 
     const userId = input.userId || "anonymous-user";
     const deckId = input.deckId || null;
+
+    /* ---- Learner day settings govern the optional day horizon ---- */
+    const settings = await DailyQueueService.getSettings(userId);
 
     /* ---- Resolve the deck scope ---- */
     const deckRows = await db.select().from(decksTable).where(eq(decksTable.ownerId, userId));
@@ -104,7 +115,14 @@ export class SessionService {
       deckId ? scopedDecks.find((d) => d.id === deckId)?.name ?? "Deck" : "All decks";
     const schedulerKeys = Array.from(new Set(scopedDecks.map((d) => d.schedulerKey)));
 
-    /* ---- Fetch due candidates ---- */
+    /* ---- Fetch due candidates within the requested horizon ---- */
+    const horizonEnd =
+      input.dueHorizon === "day"
+        ? new Date(
+            resolveDayWindow(new Date(), settings.timezone, settings.dayCutoffHour).end
+          )
+        : new Date();
+
     const candidateRows = await db
       .select()
       .from(cardsTable)
@@ -112,7 +130,7 @@ export class SessionService {
         and(
           inArray(cardsTable.deckId, scopedDeckIds),
           eq(cardsTable.isSuspended, false),
-          lte(cardsTable.dueAt, new Date())
+          lte(cardsTable.dueAt, horizonEnd)
         )
       );
 
@@ -132,23 +150,42 @@ export class SessionService {
 
     /* ---- Order each pool ---- */
     const order: SessionQueueOrder = input.order ?? DEFAULT_SESSION_CONFIG.order;
-    const sortedNew = this.orderCards(newPool, order);
-    const sortedReview = this.orderCards(reviewPool, order);
+    const sortedNew = await this.orderCards(newPool, order, userId);
+    const sortedReview = await this.orderCards(reviewPool, order, userId);
 
     /* ---- Interleave new cards proportionally through the reviews ---- */
     const newSlice = sortedNew.slice(0, effectiveNew);
     const reviewSlice = sortedReview.slice(0, effectiveReview);
 
+    /* Attach the personalization rationale so the UI can explain ordering. */
+    let reasonMap: Map<string, { reason: string; score: number }> | null = null;
+    if (order === "personalized") {
+      const ranked = await PersonalizationService.orderPersonalized(
+        [...newSlice, ...reviewSlice].map((c) => c.id),
+        await PersonalizationService.getPrefs(userId)
+      );
+      reasonMap = new Map(ranked.map((r) => [r.cardId, { reason: r.reason, score: r.score }]));
+    }
+
+    const toEntry = (c: CardRow, kind: "new" | "review"): SessionQueueEntry => {
+      const meta = reasonMap?.get(c.id);
+      return {
+        cardId: c.id,
+        kind,
+        ...(meta ? { priorityReason: meta.reason, priorityScore: meta.score } : {}),
+      };
+    };
+
     let entries: SessionQueueEntry[];
     if (order === "new-first") {
       entries = [
-        ...newSlice.map((c) => ({ cardId: c.id, kind: "new" as const })),
-        ...reviewSlice.map((c) => ({ cardId: c.id, kind: "review" as const })),
+        ...newSlice.map((c) => toEntry(c, "new")),
+        ...reviewSlice.map((c) => toEntry(c, "review")),
       ];
     } else {
       entries = this.interleave(
-        newSlice.map((c) => ({ cardId: c.id, kind: "new" as const })),
-        reviewSlice.map((c) => ({ cardId: c.id, kind: "review" as const }))
+        newSlice.map((c) => toEntry(c, "new")),
+        reviewSlice.map((c) => toEntry(c, "review"))
       );
     }
 
@@ -221,15 +258,37 @@ export class SessionService {
     return out;
   }
 
-  private static orderCards(rows: CardRow[], order: SessionQueueOrder): CardRow[] {
+  private static async orderCards(
+    rows: CardRow[],
+    order: SessionQueueOrder,
+    userId: string
+  ): Promise<CardRow[]> {
     const copy = [...rows];
+
     switch (order) {
       case "random":
         return copy.sort(() => Math.random() - 0.5);
+
       case "descending":
         return copy.sort((a, b) => b.intervalDays - a.intervalDays);
+
       case "new-first":
         return copy.sort((a, b) => a.totalReviews - b.totalReviews);
+
+      /* Prompt 11.5 — weakness-weighted ordering. Selection only: this never
+       * mutates dueAt, which remains owned by the registered scheduler. */
+      case "personalized": {
+        const prefs = await PersonalizationService.getPrefs(userId);
+        const ranked = await PersonalizationService.orderPersonalized(
+          copy.map((c) => c.id),
+          prefs
+        );
+        const rank = new Map(ranked.map((r, i) => [r.cardId, i]));
+        return copy.sort(
+          (a, b) => (rank.get(a.id) ?? copy.length) - (rank.get(b.id) ?? copy.length)
+        );
+      }
+
       case "due":
       default:
         return copy.sort(

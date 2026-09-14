@@ -289,7 +289,74 @@ export const srsReviews = pgTable("srs_reviews", {
   /** Prompt 11.2 — links the review to its review session (null for ad-hoc grades). */
   sessionId: text("session_id"),
 
+  /* ---- Prompt 11.4: SRS synchronization ----
+   * clientId is the DEVICE-generated idempotency key. A device that retries a
+   * push must never cause a review to be applied twice, so this column carries
+   * a UNIQUE constraint. NULL is allowed for server-originated reviews.
+   */
+  clientId: text("client_id").unique(),
+  /** Device that produced this review (null = server/web origin). */
+  deviceId: text("device_id"),
+
   reviewedAt: timestamp("reviewed_at").defaultNow().notNull(),
+});
+
+/* ============================================================
+ * PHASE 11 — Prompt 11.4: SRS Synchronization
+ *
+ * Mobile/Flutter and web clients study against the same account.
+ * This table tracks each device so clients can:
+ *   - pull only changes since their last cursor (delta pull)
+ *   - push offline-collected review events idempotently
+ * ============================================================ */
+export const srsSyncDevices = pgTable("srs_sync_devices", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").default("anonymous-user").notNull(),
+  /** Client-generated stable device identifier. */
+  deviceId: text("device_id").notNull(),
+  name: text("name").default("Unnamed device").notNull(),
+  platform: text("platform").default("web").notNull(), // web | ios | android | desktop
+  appVersion: text("app_version").default("unknown").notNull(),
+
+  /** ISO timestamp of the last successful pull (delta cursor). */
+  lastPulledAt: timestamp("last_pulled_at"),
+  /** ISO timestamp of the last successful push. */
+  lastPushedAt: timestamp("last_pushed_at"),
+  /** Last scheduler-registry fingerprint the device acknowledged. */
+  lastRegistryFingerprint: text("last_registry_fingerprint"),
+
+  /** Set when a device is lost/wiped so it can be revoked. */
+  isRevoked: boolean("is_revoked").default(false).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+});
+
+/**
+ * Append-only audit of sync operations. Never used as a data source for
+ * scheduling — the review log remains the single source of truth.
+ */
+export const srsSyncLog = pgTable("srs_sync_log", {
+  id: text("id").primaryKey(),
+  deviceId: text("device_id").notNull(),
+  userId: text("user_id").default("anonymous-user").notNull(),
+  /** push | pull | snapshot | register */
+  operation: text("operation").notNull(),
+  status: text("status").default("ok").notNull(), // ok | partial | failed
+
+  accepted: integer("accepted").default(0).notNull(),
+  duplicatesSkipped: integer("duplicates_skipped").default(0).notNull(),
+  conflictsResolved: integer("conflicts_resolved").default(0).notNull(),
+  cardsTouched: integer("cards_touched").default(0).notNull(),
+  payloadCount: integer("payload_count").default(0).notNull(),
+
+  cursorBefore: text("cursor_before"),
+  cursorAfter: text("cursor_after"),
+  registryFingerprint: text("registry_fingerprint"),
+  detail: jsonb("detail").default({}).notNull().$type<Record<string, unknown>>(),
+  message: text("message").default("").notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 /* ============================================================
@@ -331,6 +398,149 @@ export const srsReviewSessions = pgTable("srs_review_sessions", {
   lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
   cancelledReason: text("cancelled_reason"),
+});
+
+/* ============================================================
+ * PHASE 11 — Prompt 11.3: Daily Due Queue
+ *
+ * Per-user scheduling preferences that govern how "today" is defined
+ * and how much work each day should contain.
+ *
+ * NOTE: no daily *counts* are persisted anywhere. Streaks, history,
+ * and daily workload are always DERIVED from srs_reviews grouped by
+ * the learner's local day, so the dashboard can never drift from the
+ * review log (single source of truth).
+ * ============================================================ */
+export const srsUserSettings = pgTable("srs_user_settings", {
+  userId: text("user_id").primaryKey(),
+  /** IANA zone used to resolve the learner's local calendar day. */
+  timezone: text("timezone").default("UTC").notNull(),
+  /** Local hour at which one study day rolls into the next (Anki-style cutoff). */
+  dayCutoffHour: integer("day_cutoff_hour").default(4).notNull(),
+
+  dailyNewTarget: integer("daily_new_target").default(20).notNull(),
+  dailyReviewTarget: integer("daily_review_target").default(200).notNull(),
+  /** Hard ceiling on reviews pulled per day. 0 = unlimited. */
+  maxDailyReviews: integer("max_daily_reviews").default(0).notNull(),
+  /** Hard ceiling on new cards introduced per day. 0 = unlimited. */
+  maxDailyNew: integer("max_daily_new").default(0).notNull(),
+
+  /** Suggest redistributing a heavy backlog across following days. */
+  loadBalanceBacklog: boolean("load_balance_backlog").default(true).notNull(),
+  /** How many days forward the forecast horizon spans. */
+  forecastDays: integer("forecast_days").default(14).notNull(),
+
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+/* ============================================================
+ * PHASE 11 — Prompt 11.5: Personalized Review
+ *
+ * Stores USER INTENT ONLY (weighting preferences).
+ * Deliberately NO derived profile columns: accuracy, weakness,
+ * velocity and retention are always computed live from
+ * srs_reviews, so the profile can never drift from the log.
+ * ============================================================ */
+export const srsPersonalization = pgTable("srs_personalization", {
+  userId: text("user_id").primaryKey(),
+  weaknessWeight: real("weakness_weight").default(0.5).notNull(),
+  urgencyWeight: real("urgency_weight").default(0.3).notNull(),
+  difficultyWeight: real("difficulty_weight").default(0.2).notNull(),
+  preferWeakAreas: boolean("prefer_weak_areas").default(true).notNull(),
+  maxWeakCardsPerSession: integer("max_weak_cards_per_session").default(0).notNull(),
+  autoAdaptTargets: boolean("auto_adapt_targets").default(true).notNull(),
+  weakFirst: boolean("weak_first").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+/* ============================================================
+ * KNOWLEDGE LAYER — Kana Charts & Kanji Mind Tree
+ *
+ * Original, first-party reference data (no third-party datasets).
+ * Provenance is recorded per row via sourceRef so any future import
+ * from a licensed source can replace it without schema change.
+ * ============================================================ */
+
+/** Hiragana / katakana reference table. */
+export const kanaEntries = pgTable("kana_entries", {
+  id: text("id").primaryKey(), // "hira-a" | "kata-kya"
+  character: text("character").notNull(),
+  /** hiragana | katakana */
+  script: text("script").notNull(),
+  romaji: text("romaji").notNull(),
+  /** gojuon | dakuten | handakuten | yoon */
+  category: text("category").notNull(),
+  /** Consonant row: a | k | s | t | n | h | m | y | r | w | n-final */
+  rowKey: text("row_key").notNull(),
+  /** Vowel column: a | i | u | e | o */
+  columnKey: text("column_key").notNull(),
+  /** Unmodified base kana for dakuten / yoon forms. */
+  baseCharacter: text("base_character"),
+  /** True when the kana is historically obsolete but shown for completeness. */
+  isArchaic: boolean("is_archaic").default(false).notNull(),
+  mnemonic: text("mnemonic"),
+  sourceRef: text("source_ref").notNull(),
+  orderIndex: integer("order_index").notNull(),
+});
+
+/**
+ * Master element table for the mind tree. Holds classic radicals AND
+ * non-radical "primitive" components (building-block kanji), because a
+ * kanji's meaningful parts are frequently full characters (e.g. 寺 in 時).
+ */
+export const kanjiRadicals = pgTable("kanji_radicals", {
+  id: text("id").primaryKey(),
+  character: text("character").notNull().unique(),
+  /** Variant shapes the element takes inside a kanji (e.g. 氵 for 水). */
+  altForms: jsonb("alt_forms").default([]).notNull().$type<string[]>(),
+  meaning: text("meaning").notNull(),
+  readingKun: text("reading_kun"),
+  readingOn: text("reading_on"),
+  strokeCount: integer("stroke_count").notNull(),
+  /** Kangxi radical index when the element is a classical radical. */
+  kangxiNumber: integer("kangxi_number"),
+  /** radical | primitive */
+  category: text("category").notNull(),
+  /** semantic | phonetic | positional | structural */
+  typicalRole: text("typical_role").notNull(),
+  mnemonic: text("mnemonic"),
+  sourceRef: text("source_ref").notNull(),
+});
+
+/** Kanji headwords. */
+export const kanjiEntries = pgTable("kanji_entries", {
+  id: text("id").primaryKey(),
+  character: text("character").notNull().unique(),
+  meaning: text("meaning").notNull(),
+  readingsKun: jsonb("readings_kun").default([]).notNull().$type<string[]>(),
+  readingsOn: jsonb("readings_on").default([]).notNull().$type<string[]>(),
+  strokeCount: integer("stroke_count").notNull(),
+  jlptLevel: text("jlpt_level").notNull(),
+  gradeLevel: integer("grade_level"),
+  /** Primary / governing element. */
+  primaryRadicalId: text("primary_radical_id"),
+  mnemonic: text("mnemonic"),
+  /** Example vocabulary built on this kanji. */
+  vocabulary: jsonb("vocabulary").default([]).notNull().$type<
+    Array<{ word: string; reading: string; meaning: string }>
+  >(),
+  sourceRef: text("source_ref").notNull(),
+});
+
+/** Mind-tree edges: which elements make up which kanji, and how. */
+export const kanjiComposition = pgTable("kanji_composition", {
+  id: text("id").primaryKey(),
+  kanjiId: text("kanji_id").notNull(),
+  elementId: text("element_id").notNull(),
+  /** semantic | phonetic | positional | structural */
+  role: text("role").notNull(),
+  /** left | right | top | bottom | enclosure | anywhere */
+  position: text("position"),
+  /** Shape as it actually appears inside the kanji (may be an alt form). */
+  renderedAs: text("rendered_as").notNull(),
+  orderIndex: integer("order_index").default(0).notNull(),
 });
 
 export const userAnalytics = pgTable("user_analytics", {
