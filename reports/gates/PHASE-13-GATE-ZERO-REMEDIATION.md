@@ -214,7 +214,7 @@ To prove the gate holds for *someone else's* checkout rather than only this work
 
 ```text
 $ git clone -b arena/01a0a337-nihingobridgeupgrade https://github.com/ranimony-afk/nihingobridgeupgrade.git
-$ cd nihingobridgeupgrade && git rev-parse --short HEAD        → 364c1bc
+$ cd nihingobridgeupgrade && git rev-parse --short HEAD        → 364c1bc  *
 $ ls package-lock.json                                          → 235,631 bytes, tracked
 
 $ npm ci --no-audit --no-fund        → added 427 packages in 13s        exit 0
@@ -225,6 +225,8 @@ $ npm run lint                       → ✖ 3 problems (0 errors, 3 warnings)  
 $ npm run typecheck                  → exit 0
 $ npm run build                      → ✓ Compiled successfully in 8.2s         exit 0
 ```
+
+<sub>\* `364c1bc` was the branch head at clone time; it was superseded by `fff3125` when this section was added to the report by `--amend`. The two differ **only** in this report file — `package.json`, `package-lock.json`, `infra/github-actions-ci.yml`, and every file under `src/`/`tests/` are byte-identical, so the verified tree is the merged tree. Recorded explicitly because a dangling SHA in a gate report is precisely the documentation-drift failure mode this repository keeps hitting.</sub>
 
 **All six commands green from a clean clone, including 14/14 database-backed tests.** The required equation — *same lockfile + same `package.json` = same lint result* — is demonstrated on a machine state with no residue from this session.
 
@@ -242,6 +244,22 @@ $ npm run build                      → ✓ Compiled successfully in 8.2s      
 | `GET /kanji` | `200` |
 
 **Without any database:** build PASS (12/12 static), server boots, `/api/health` → `500 {"ok":false}`. The lazy-pool architecture guarantee is intact and now guarded by CI step 10. **Phase 13.2 retrieval is verified end-to-end for the first time from the canonical tree.**
+
+### 9b. Independent Vercel build evidence (platform-recorded)
+
+The repository's Vercel GitHub App auto-built this PR, which gives an outside check on P1 that no prior phase ever had:
+
+| Vercel deployment | Ref | Status |
+|---|---|---|
+| Preview | `fff3125` (this gate-zero head) | **`success` — "Deployment has completed"** |
+| Preview | `364c1bc` | created |
+| Preview | `ab07e57` (audit report only) | created |
+
+`gh pr checks 1` also reports the companion checks `Vercel` = **pass** and `Vercel Preview Comments` = **pass**; `Supabase Preview` = `skipping`, i.e. **no database branch was provisioned and no hosted data was touched by this PR.**
+
+Two honesty limits on this row: (a) this is the **deployment platform's own status**, not an application-level probe — this sandbox has no network egress to `*.vercel.app` (`GET /api/health` on the preview URL returned HTTP `000`, connection never established), so no claim is made that the deployed app answered; and (b) the preview deployment may point at a **real** hosted database via the Vercel project's own environment. Only `/api/health` was attempted (it executes `select 1`); routes that call `ensureSeeded()` (`/`, `/api/ai/retrieve`, `/api/srs/*`) were **deliberately not requested**, because they would have written to whatever database that deployment is configured against.
+
+Still unverified by this session: **production** (`main`) deployment, and whether the Vercel project's install command is set to `npm ci` — now that a lockfile is tracked, `npm ci` is the recommended value and will no longer fail.
 
 ## 10. Security analysis
 
@@ -316,7 +334,7 @@ Effects, each bounded and known: rollback re-exposes RC1 (`npm ci` → `EUSAGE`)
 6. **`dotenv` remains in `dependencies`** although only `tests/setup.ts` imports it; relocating it raises a Vercel runtime question outside this scope.
 7. **7 `npm audit` advisories** (1 critical, incl. `sharp`) and `eslint@9.39.4` EOL remain, unchanged by design — patching means version changes this prompt forbids.
 8. **Vitest 5 emits a `configLoader: 'native'` deprecation notice** for `vitest.config.ts` (§7). Cosmetic today; a future Vite major will require `.mts`/`"type": "module"`. Deliberately not "fixed" by a manifest-wide module flip.
-9. **No authentication, no hosted database, no Vercel deployment.** Gate Zero makes the repository *verifiable*; it does not make it *deployable*. Audit blocker B4 (auth) still gates public AI use.
+9. **No authentication, no migration tooling, and no verified *production* deployment.** A Vercel **preview** build of this branch succeeded (§9b), but `main` was never deployed by this session, the Vercel project's install command is not set to `npm ci` as far as this session can observe, and no hosted database was connected or probed. Gate Zero makes the repository *verifiable*; it does not make it *deployable*. Audit blocker B4 (auth) still gates public AI use.
 10. **History hygiene untouched.** The whole-tree delete/re-add pattern continues to destroy `git log -p` signal; this commit is focused by contrast, but changing the convention is a governance decision, not an infra fix.
 
 ### Recommended next prompts, in order
