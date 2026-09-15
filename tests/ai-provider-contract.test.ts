@@ -22,6 +22,7 @@ import {
   createAIProvider,
   getRegisteredProviderIds,
 } from "@/services/ai/factory";
+import { MockAIProvider } from "@/services/ai/providers/mock";
 
 // Snapshot env so we can restore after each test.
 const ENV_SNAPSHOT: Record<string, string | undefined> = {
@@ -29,6 +30,8 @@ const ENV_SNAPSHOT: Record<string, string | undefined> = {
   ANTHROPIC_API_KEY: undefined,
   OPENAI_API_KEY: undefined,
   MOCK_AI_MODEL: undefined,
+  MOCK_AI_SCENARIO: undefined,
+  MOCK_AI_LATENCY_MS: undefined,
 };
 
 beforeEach(() => {
@@ -222,17 +225,18 @@ describe("request/response: neutral shape", () => {
     expect(response.text).toContain("grounding:none");
   });
 
-  it("accepts responseFormat generation option (structured-output forward-compat)", async () => {
+  it("responseFormat=json is accepted at the type level (tested directly via 13.3C scenarios)", async () => {
+    // 13.3C adds full JSON-mode support in MockAIProvider; the contract
+    // test here just confirms the option is accepted without a type
+    // error when passed on a text-mode call (default responseFormat is
+    // text when omitted). The JSON-output behaviour itself is covered
+    // in the 13.3C scenario tests.
     setEnv("AI_PROVIDER", "mock");
     const provider = createAIProvider();
-    // Phase 13.3B mock returns plain text; the contract must accept the
-    // option without a type error. Adapter conformance for JSON mode is
-    // tested when a real adapter implements it.
     const response = await provider.chat(
-      baseRequest({ options: { responseFormat: { type: "json" } } }),
+      baseRequest({ options: { responseFormat: { type: "text" } } }),
     );
     expect(response.text).toBeTruthy();
-    // json field is present as optional and undefined for text-only mock.
     expect(response.json).toBeUndefined();
   });
 });
@@ -398,6 +402,187 @@ describe("factory invariants", () => {
     setEnv("AI_PROVIDER", "  mock  ");
     const p = createAIProvider();
     expect(p.id).toBe("mock");
+  });
+});
+
+/* ============================================================
+ * 11. Mock provider: 13.3C scenarios
+ * ============================================================ */
+describe("mock provider (13.3C): behaviour", () => {
+  it("totalTokens equals inputTokens + outputTokens", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    const provider = createAIProvider();
+    const response = await provider.chat(baseRequest());
+    expect(response.usage).toBeDefined();
+    expect(response.usage!.totalTokens).toBe(
+      (response.usage!.inputTokens ?? 0) + (response.usage!.outputTokens ?? 0),
+    );
+    expect(response.usage!.inputTokens).toBeGreaterThan(0);
+    expect(response.usage!.outputTokens).toBeGreaterThan(0);
+  });
+
+  it("returns stable providerResponseId across calls (deterministic)", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    const provider = createAIProvider();
+    const a = await provider.chat(baseRequest());
+    const b = await provider.chat(baseRequest());
+    expect(a.providerResponseId).toBe(b.providerResponseId);
+    expect(a.text).toBe(b.text);
+    expect(a.usage).toEqual(b.usage);
+  });
+
+  it("honours a custom model passed via constructor", async () => {
+    const p = new MockAIProvider({ model: "mock-custom-v42" });
+    const r = await p.chat(baseRequest());
+    expect(r.model).toBe("mock-custom-v42");
+    expect(r.provider).toBe("mock");
+  });
+
+  it("back-compat: constructor accepts a plain model string", async () => {
+    const p = new MockAIProvider("legacy-model");
+    expect(p.model).toBe("legacy-model");
+  });
+
+  it("supports structured JSON output when responseFormat=json is requested", async () => {
+    const p = new MockAIProvider();
+    const r = await p.chat(
+      baseRequest({
+        context: { text: "grounded", chunkCount: 3, estimatedTokens: 20 },
+        options: { responseFormat: { type: "json" } },
+      }),
+    );
+    expect(r.text).toContain("format:json");
+    expect(r.json).toBeDefined();
+    const j = r.json as Record<string, unknown>;
+    expect(j.answer).toBe(r.text);
+    expect(j.grounded).toBe(true);
+    expect(j.chunkCount).toBe(3);
+    expect(j.provider).toBe("mock");
+    expect(j.model).toBe(p.model);
+    expect(j.promptVersion).toBe("hana-v1");
+  });
+
+  it("json field is undefined for plain-text requests", async () => {
+    const p = new MockAIProvider();
+    const r = await p.chat(baseRequest());
+    expect(r.json).toBeUndefined();
+  });
+
+  it("MOCK_AI_MODEL env selects model when constructed via factory", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    setEnv("MOCK_AI_MODEL", "env-model-via-factory");
+    const provider = createAIProvider();
+    const r = await provider.chat(baseRequest());
+    expect(r.model).toBe("env-model-via-factory");
+  });
+});
+
+describe("mock provider (13.3C): error simulation via constructor", () => {
+  const scenarios: Array<{
+    name: string;
+    scenario:
+      | "invalid_request"
+      | "auth_error"
+      | "rate_limited"
+      | "timeout"
+      | "unavailable"
+      | "upstream_error"
+      | "unknown_error";
+    code: AIErrorCode;
+    retryable: boolean;
+    status?: number;
+  }> = [
+    { name: "invalid_request", scenario: "invalid_request", code: "INVALID_REQUEST", retryable: false, status: 400 },
+    { name: "auth_error", scenario: "auth_error", code: "AUTHENTICATION_ERROR", retryable: false, status: 401 },
+    { name: "rate_limited", scenario: "rate_limited", code: "RATE_LIMITED", retryable: true, status: 429 },
+    { name: "timeout", scenario: "timeout", code: "TIMEOUT", retryable: true },
+    { name: "unavailable", scenario: "unavailable", code: "PROVIDER_UNAVAILABLE", retryable: true, status: 503 },
+    { name: "upstream_error", scenario: "upstream_error", code: "UPSTREAM_ERROR", retryable: true, status: 500 },
+    { name: "unknown_error", scenario: "unknown_error", code: "UNKNOWN_ERROR", retryable: false },
+  ];
+  for (const s of scenarios) {
+    it(`scenario "${s.name}" throws ${s.code} (retryable=${s.retryable})`, async () => {
+      const p = new MockAIProvider({ scenario: s.scenario, latencyMs: 0 });
+      try {
+        await p.chat(baseRequest());
+        expect.unreachable("should throw");
+      } catch (err) {
+        expect(err).toBeInstanceOf(AIProviderError);
+        const e = err as AIProviderError;
+        expect(e.code).toBe(s.code);
+        expect(e.retryable).toBe(s.retryable);
+        expect(e.provider).toBe("mock");
+        if (s.status !== undefined) {
+          expect(e.status).toBe(s.status);
+        } else {
+          expect(e.status).toBeUndefined();
+        }
+      }
+    });
+  }
+});
+
+describe("mock provider (13.3C): error simulation via environment (integration path)", () => {
+  it("MOCK_AI_SCENARIO=rate_limited causes factory-built mock to throw", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    setEnv("MOCK_AI_SCENARIO", "rate_limited");
+    const provider = createAIProvider();
+    try {
+      await provider.chat(baseRequest());
+      expect.unreachable("should throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(AIProviderError);
+      expect((err as AIProviderError).code).toBe("RATE_LIMITED");
+      expect((err as AIProviderError).provider).toBe("mock");
+    }
+  });
+
+  it("MOCK_AI_SCENARIO=invalid value is ignored (falls back to success)", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    setEnv("MOCK_AI_SCENARIO", "garbage");
+    const provider = createAIProvider();
+    const r = await provider.chat(baseRequest());
+    expect(r.provider).toBe("mock");
+    expect(r.text).toContain("[mock]");
+  });
+});
+
+describe("mock provider (13.3C): latency + abort/timeout", () => {
+  it("MOCK_AI_LATENCY_MS cooperates with AbortSignal.timeout", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    // 50ms artificial latency; AbortSignal.timeout(10) fires well before.
+    setEnv("MOCK_AI_LATENCY_MS", "50");
+    const provider = createAIProvider();
+    const signal = AbortSignal.timeout(10);
+    await expect(
+      provider.chat(baseRequest({ signal })),
+    ).rejects.toThrow(DOMException);
+  });
+
+  it("constructor latencyMs={0} and no signal resolves successfully", async () => {
+    const p = new MockAIProvider({ latencyMs: 0 });
+    const r = await p.chat(baseRequest());
+    expect(r.provider).toBe("mock");
+    expect(r.finishReason).toBe("stop");
+  });
+
+  it("constructor latencyMs allows sufficient time to complete when not aborted", async () => {
+    const p = new MockAIProvider({ latencyMs: 5 });
+    const controller = new AbortController();
+    const r = await p.chat(baseRequest({ signal: controller.signal }));
+    expect(r.text).toContain("[mock]");
+  });
+});
+
+describe("mock provider (13.3C): server-only / no-network / no-secret invariants", () => {
+  it("mock module source contains no fetch/http/SDK imports", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/services/ai/providers/mock.ts", "utf8");
+    expect(src).not.toMatch(/\bfetch\s*\(/);
+    expect(src).not.toMatch(/require\(["']http["']\)/);
+    expect(src).not.toMatch(/@anthropic|@openai|from ["']anthropic["']|from ["']openai["']/);
+    expect(src).not.toMatch(/ANTHROPIC_API_KEY|OPENAI_API_KEY/);
+    expect(src).toContain('import "server-only"');
   });
 });
 
