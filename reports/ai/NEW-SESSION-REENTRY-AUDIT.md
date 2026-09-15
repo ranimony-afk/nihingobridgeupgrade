@@ -1,48 +1,53 @@
-# NEW-SESSION RE-ENTRY AUDIT — NihongoBridge
+# PHASE 13.3A — NEW SESSION RE-ENTRY AUDIT
 
-**Canonical production repository:** `https://github.com/ranimony-afk/nihingobridgeupgrade`
-**Audited branch:** `arena/01a0a337-nihingobridgeupgrade`
-**Audited revision:** `8cd2bd724346e29c9cc887dd2ece3545f212c6d2` (`audit b 13.2`) — **this is also `origin/main` HEAD**, i.e. the audited tree *is* canonical production state.
+**Repository:** `https://github.com/ranimony-afk/nihingobridgeupgrade`
 **Audit date:** 2026-09-15
-**Audit mode:** read-only with respect to source. No application code, schema, dependency manifest, or configuration was modified. Verification toolchain was executed live (install, lint, typecheck, build, production-server runtime). No migrations were run, no deployment was performed, nothing was pushed.
+**Audit mode:** READ-ONLY. No production source, configuration, schema, database, or dependency manifest was modified. No migration created. No deployment performed. No new dependency installed.
+**Method note:** every command in §J/§K was **actually executed** in this session against the checked-out tree. Where a command could not reach a pass/fail verdict on the code, the environmental reason is stated explicitly rather than reported as passing.
+**Governing rule applied:** source code wins over `reports/`. Where a committed report contradicts the tree, the tree is authoritative and the contradiction is recorded in §N.
 
 ---
 
-## 0. Executive verdict
+## A. Repository identity
 
-The repository is a **real, coherent, compiling Next.js 16 application** with a genuine Phase 13.2 retrieval layer. It is **not** yet a reproducible build, and the stored gate reports are **materially stale in the unsafe direction**: they certify gates (`npm ci` PASS, `lint` PASS) that fail on the canonical tree today.
+| Item | Value |
+|---|---|
+| Canonical remote | `https://github.com/ranimony-afk/nihingobridgeupgrade` (fetch + push configured) |
+| Working branch | `arena/01a0a337-nihingobridgeupgrade` |
+| Branch base | `8cd2bd724346e29c9cc887dd2ece3545f212c6d2` — **currently `origin/main`** |
+| Package name | `nextjs-postgresql-template` (starter identity never renamed; cosmetic) |
+| Framework | Next.js `16.2.6` (App Router), React `19.2.6`, TypeScript `5.9.3` strict |
+| Data layer | PostgreSQL via `pg 8.20.0` + `drizzle-orm 0.45.2`; `drizzle-kit 0.31.10` (dev) |
+| Styling | Tailwind CSS `4.1.17` via `@tailwindcss/postcss` |
+| Tests | `vitest ^5.0.0` (declared in **`dependencies`**, not `devDependencies`) |
+| Tracked files | 111 (+1 report added by this audit) |
+| Source files | 92 under `src/` — 39 API route handlers, 15 pages, 26 tables, 22 client components |
+| Deploy target | Vercel (documented in prompts; **no `vercel.json`, no CI, no `.nvmrc`, no README, no LICENSE** in repo) |
 
-| Gate | Report claim | **Verified at HEAD in this session** |
-|---|---|---|
-| `npm ci` (documented Vercel install command) | PASS (`VERCEL-BUILD-RECOVERY-GATE` §5) | **FAIL** — `EUSAGE`, no lockfile is tracked |
-| `npm run lint` | PASS — 0 errors, 3 warnings | **FAIL** — **15 errors**, 3 warnings |
-| `npm run typecheck` | PASS | **PASS** (exit 0, strict mode) |
-| `npm run build` | PASS | **PASS** — including with `DATABASE_URL` deliberately unset |
-| `npx vitest run` (14 tests) | PASS 14/14 | **NOT VERIFIABLE HERE** — 14 skipped, suite fails without live PostgreSQL; sandbox has no DB and no root to install one |
-| Runtime `/api/health` | `{ "ok": true }` | **`500 {"ok":false}`** — correct graceful degradation, but no database exists in this environment |
-
-Two of the three "PASS" claims could not be reproduced, and one is structurally impossible to reproduce from a clean clone. **Both failures are one root cause plus one toolchain-drift cause — neither indicates broken application logic.** Details in §6 and §8.
-
----
-
-## 1. Repository state
-
-### 1.1 Tree inventory
-
-- **111 tracked files.** Source layout: `src/app` (pages + `src/app/api/**/route.ts`), `src/components`, `src/data`, `src/db`, `src/services`, `src/types`, plus `tests/`, `reports/`.
-- **39 API route handlers**, **15 page routes**, **26 Drizzle tables** (`src/db/schema.ts`, 729 lines).
-- The prompt's assumed paths `src/api/` and `src/lib/` (incl. `src/lib/queries.ts`) **do not exist and never have** — routes live under `src/app/api/`. Confirmed again here; do not chase them.
-- `etl/` and `nihongobridge-integration-masterplan/` are **absent**. No ETL pipeline exists in this repository.
-- `README`, `LICENSE`, `vercel.json`, `.nvmrc`, and **any CI workflow are all absent**. There is no automated gate runner; every "gate" so far was an agent's local execution.
-- **No lockfile of any kind is tracked** (`package-lock.json`, `npm-shrinkwrap.json`, `pnpm-lock.yaml`, `yarn.lock`).
-- `.gitignore` **now exists** (added at HEAD) and covers `node_modules`, `.next`, and all `.env*` variants.
-
-### 1.2 Git history shape (a governance problem, not a code problem)
-
-History is a sequence of whole-tree delete/re-add snapshots with opaque subjects:
+Layout — note the paths assumed by the task brief that **do not exist**:
 
 ```text
-8cd2bd7 audit b 13.2          <- HEAD == origin/main
+src/app/**            pages + src/app/api/**/route.ts   (API routes live HERE)
+src/components/**     client UI
+src/data/**           kana.ts, kanji.ts, lexicon.ts (first-party corpus)
+src/db/**             index.ts (server-only client), schema.ts (26 tables)
+src/services/**       ai/, knowledge/, srs/, quiz/, jlpt/, gamification/
+src/types/**          srs.ts, quiz.ts, jlpt.ts, gamification.ts
+tests/                knowledge-retrieval.test.ts, setup.ts, mocks/server-only.ts
+reports/ai/, reports/gates/
+
+src/lib/        ABSENT (never existed at any revision — incl. src/lib/queries.ts)
+src/api/        ABSENT (routes are under src/app/api)
+etl/            ABSENT (no ETL pipeline exists in this repository)
+```
+
+---
+
+## B. Current commit
+
+```text
+9f10e5f1d066aa7dcb0c50285a36a5bad58218f2  (this audit's report, on arena/... branch only)
+8cd2bd724346e29c9cc887dd2ece3545f212c6d2  "audit b 13.2"   <- origin/main, canonical HEAD
 cf179f0 del A 13.1.1A
 c1be76c A 13.1.1A
 08abae1 DEL a13.3a
@@ -53,280 +58,331 @@ c1be76c A 13.1.1A
 e4fd323 b 12.1
 ```
 
-The sandbox clone arrived shallow/grafted at one commit; after `git fetch --deepen=20` the history above was recovered and used for the diffs below. Consequences: no reviewable per-change diffs, and **documentation and code can silently diverge — which is exactly what has happened (§3)**. Recommended: stop whole-tree delete/re-add commits; use focused commits so `git diff` remains a real audit instrument.
+**Uncommitted changes:** none — `git status --porcelain` empty before and after all verification runs (build artifacts and the temporary lockfile were removed; `git ls-files` confirms no `.next/` or `node_modules/` tracked).
 
-**Net diff `7c66bec` (13.3A-audited) → HEAD:**
-
-```text
-A  .gitignore                         A  reports/ai/REENTRY-AUDIT.md
-M  package.json                       A  reports/gates/VERCEL-BUILD-RECOVERY-GATE.md
-M  reports/ai/PHASE-13.3A-...md       M  src/db/index.ts
-A  tests/mocks/server-only.ts         M  vitest.config.ts
-```
-
-No Phase 13.2 retrieval source, no schema, and no route was touched since `5c1cb62`. Verified: `git diff 5c1cb62 HEAD -- src/services tests/knowledge-retrieval.test.ts src/db/schema.ts` is empty.
-
-### 1.3 Toolchain facts
-
-| Item | State |
-|---|---|
-| Next.js | `16.2.6` (exact) |
-| React / ReactDOM | `19.2.6` (exact) |
-| TypeScript | `5.9.3`, `"strict": true`, `@/* → ./src/*`, `moduleResolution: bundler`, `next` plugin |
-| `next.config.ts` | `{}` — **verified: no `ignoreBuildErrors`, no `eslint.ignoreDuringBuilds`, no weakening anywhere** |
-| ESLint | `9.39.4` + `eslint-config-next/core-web-vitals` flat config; `globalIgnores` limited to build output. No rule disables, no `eslint-disable` comments in `src` |
-| Drizzle | `drizzle-orm 0.45.2` + `pg 8.20.0`; `drizzle-kit 0.31.10` (dev) |
-| `server-only` | `^0.0.1` **present and used** (`src/db/index.ts:1`) |
-| Vitest | `^5.0.0` — **misplaced in `dependencies`, not `devDependencies`**; no `test` script in `package.json` |
-| `drizzle.config.json` | **Active and broken.** `npx drizzle-kit check` loads it as the default config and dies: `Please provide required params for AWS Data API driver: [x] database: undefined`. It also hardcodes a local DSN. Prior reports claimed drizzle-kit "does not load JSON configs" — the reality is worse: it loads it and misinterprets `dialect` as a driver hint |
-| `npm audit` | 7 vulnerabilities (4 moderate, 2 high, 1 critical), incl. `sharp` path. Unpatched; recorded, not silenced |
-
-Node in the verification sandbox: `v22.22.3` / `npm 10.9.8`. **No Node version is pinned in the repository** (`.nvmrc` absent, no `engines`).
-
----
-
-## 2. Actual architecture (verified from source, not from reports)
+**Production-source delta of the audit branch vs canonical `main`:**
 
 ```text
-Client page/component ("use client" × 22)
-  └─ browser fetch() → /api/** route handlers  (39)
-       └─ src/services/** (domain services: srs, quiz, jlpt, gamification, knowledge, ai)
-            └─ src/db/index.ts  ← `import "server-only"` + lazy pg.Pool + drizzle
-                 └─ PostgreSQL (26 tables, schema-only, push-managed)
+reports/ai/NEW-SESSION-REENTRY-AUDIT.md | 332 +++  → 1 file changed, documentation only
 ```
 
-**Verified boundary hygiene (this is a genuine strength):**
-
-- **Zero** client-marked components import `@/db`, `@/services`, `server-only`, or any provider SDK. All 22 `"use client"` files scanned.
-- `@/db` has 33 import sites; all are route handlers, `force-dynamic` server pages, or server services.
-- `NEXT_PUBLIC_*` appears **nowhere** in `src`, `package.json`, or `.env.example`. The only `process.env` reads in the entire source tree are the three `DATABASE_URL`/`NODE_ENV` lines in `src/db/index.ts`. **No secret is reachable from a client bundle.**
-- Data-bearing routes/pages consistently carry `export const dynamic = "force-dynamic"`; dynamic segments use Next 15/16 `params: Promise<…>` typing.
-
-**Canonical domain systems (all present, all must be preserved):** SRS (`srsService`, `sessionService`, `syncService`, `dailyQueueService`, `personalizationService`, and four strategies: SM-2, Leitner box, FSRS-lite, fixed ladder), JLPT test service + question bank + quiz engine, XP/gamification registry + rules, kana/kanji knowledge services, analytics surfaces, and the Phase 13.2 knowledge corpus + retriever.
+**History-shape finding (governance, not code):** history is a chain of whole-tree delete/re-add snapshots (`del`, `DEL`, `A`, `B` subjects). There are no per-change diffs, so `git log -p` cannot be used as an audit instrument, and documentation can drift from code without detection — which has happened (§N). The sandbox clone arrived grafted/shallow at one commit; full history above was recovered with `git fetch --deepen=20`.
 
 ---
 
-## 3. Documentation vs. reality — divergences found
+## C. Architecture map
 
-Source code wins. Every row below is a claim in a committed report that is **false for the current canonical tree**.
+```text
+Browser
+  └─ 22 "use client" components/pages  ──browser fetch()──►  /api/**  (39 route handlers)
+                                                               │
+                                                               ├─ src/services/** (domain logic)
+                                                               │    srs/     srsService, sessionService, syncService,
+                                                               │             dailyQueueService, personalizationService,
+                                                               │             scheduler + strategies/{sm2, leitnerBox,
+                                                               │             fsrsLite, fixedLadder, shared}
+                                                               │    quiz/     engine, seedData
+                                                               │    jlpt/     testService
+                                                               │    gamification/  xpService, xpRegistry, rules
+                                                               │    knowledge/ knowledgeService (kana/kanji), corpusService
+                                                               │    ai/       knowledgeRetriever  ← Phase 13.2
+                                                               │
+                                                               └─ src/db/index.ts   `import "server-only"`
+                                                                    lazy pg.Pool (Proxy) + drizzle client
+                                                                    errors only on FIRST query, never at import
+                                                                        │
+                                                                    PostgreSQL — 26 tables
+```
 
-| # | Claim (report) | Reality at HEAD | Severity |
-|---|---|---|---|
-| D1 | `package-lock.json` **added** — "makes `npm ci` deterministic and passing" (`VERCEL-BUILD-RECOVERY-GATE` §3 row 1, §5) | **Not tracked.** `npm ci` fails `EUSAGE`. The report file was committed; the artifact it certifies was not | **High** |
-| D2 | `npm ci — PASS`, `npx vitest run 14/14 PASS`, lint 0 errors (both 13.3A §8 and recovery gate §5) | All three were run in an ephemeral agent workspace whose generated lockfile was never committed. Not reproducible from a clean clone | **High** |
-| D3 | `npm run lint` PASS — 0 errors, 3 warnings | **15 errors** from floated `eslint-plugin-react-hooks@7.1.1` (`^7.0.0` range). See §6.2 — the *same files* pass at 0 errors/3 warnings under 7.0.0 | **High** |
-| D4 | `server-only` is "absent from `package.json`" (13.3A §3.5) | Present since HEAD (`^0.0.1`), imported by `src/db/index.ts`, with a vitest alias shim | Low (stale, now superseded) |
-| D5 | `src/db/index.ts` "throws at module scope when `DATABASE_URL` is unset" → build fails without env (REENTRY §3, §9.1) | **Already fixed** at HEAD: lazy proxy pool. Build verified green with `DATABASE_URL` unset | Low (report predates fix) |
-| D6 | `.gitignore` absent; secret-hygiene risk (REENTRY §9.4, §10 R8) | Present at HEAD | Low (resolved) |
-| D7 | "`npx drizzle-kit push`" is the schema workflow; JSON config "inert" | Config is loaded and **errors out**; only explicit CLI flags work; no migration history exists | **Medium** — see §7 |
-| D8 | Gate "PASS" statuses generally | **No CI exists.** Every gate is an unverifiable local assertion. There is no artifact (log, hash, commit link) to re-validate | **Medium** |
+Server-rendered pages (`src/app/**/page.tsx`) import `@/db`/`@/services` directly; 15 pages total, data-bearing ones carry `export const dynamic = "force-dynamic"`.
 
-**Interpretation:** the application is in better shape than D1–D3 suggest (the code compiles, types cleanly, and builds), but the *evidence chain* is not trustworthy. Restoring trust in gates is therefore a first-class deliverable, not bookkeeping.
+**Intended AI architecture vs reality:**
 
----
+```text
+Application → AI Application Service → Canonical Provider Interface → Factory → Adapter
+   [pages]      [NOT IMPLEMENTED]          [NOT IMPLEMENTED]         [NOT IMPL]  [NOT IMPL]
+                                  ↘ KnowledgeRetriever → Postgres   [IMPLEMENTED, Phase 13.2]
+```
 
-## 4. AI provider status
-
-Searched across `src`, `tests`, `package.json`, `next.config.ts`, `.env.example`:
-
-| Term | Production-source hits |
-|---|---|
-| `getProvider`, `LLMProvider`, `AnthropicClient`, `generateText`, `generateStructured`, `streamText`, `streamTutorCompletion`, `openai` | **0** |
-| `AIProvider` | 1 — a **comment** in `knowledgeRetriever.ts:8` describing the future port |
-| `anthropic`, `ANTHROPIC_API_KEY`, `AI_PROVIDER`, `AI_PROMPT_VERSION`, `AI_REQUEST_TIMEOUT_MS` | **0 in source** — only in `.env.example` |
-| `server-only` | 4 in `src/db/index.ts` (+ `package.json`, test shim) |
-
-**Conclusions:**
-
-1. **No provider contract exists.** `src/services/ai/provider.ts`, `providerFactory.ts`, and `src/services/ai/providers/` are **absent**. Phase 13.3B is confirmed **NOT STARTED** — correctly so; this audit implemented none of it.
-2. **No vendor SDK is installed** (`ai`, `@anthropic-ai/sdk`, `openai` all absent). No route imports a transport. The vendor-neutrality target is currently satisfied *vacuously* — there is nothing to violate it — which means 13.3B starts on a clean slate with **no duplicate abstraction to remove**.
-3. **`AI_PROVIDER` is read by no code.** The env keys are documentation of an unimplemented contract.
-4. **`.env.example` sets `AI_PROVIDER=mock` as the shown default.** Local-dev-appropriate, but it is now a live design constraint for 13.3B: the factory **must not** derive mock from absence/defaults — a missing or unrecognized `AI_PROVIDER` must fail closed, and `AI_PROVIDER=mock` must be rejected outright when `NODE_ENV === "production"`, or rule 12/13 is violated the moment the first adapter lands.
-5. **Retrieval is the grounding substrate and it is real.** Verified exports of `src/services/ai/knowledgeRetriever.ts` (653 lines): `KNOWLEDGE_DOMAINS` = `dictionary|kanji|grammar|sentence`, `KnowledgeRetriever.retrieve` (script classification → per-domain parallel search → deterministic dedupe/rank → JLPT filter), `retrieveEntity` (linked-record traversal), `formatContext` (citation-tagged `[domain:id | source=ref]` blocks + `estimatedTokens`).
-6. **The grounding contract already matches the mandated shape.** `KnowledgeChunk` carries exactly: `domain`, `id`, `title`, `content`, `relevance`, `matchedOn`, `record` (untouched source row), `sourceRef`, `jlptLevel`; `RetrievalResult` adds `sources: ProvenanceRecord[]`, `contextText`, `domainCounts`, `queryType`. **13.3B/13.4 must consume this type and must not define a parallel context shape.**
-7. **`GET /api/ai/retrieve`** exposes search mode (`q`, `domains`, `level`, `limit` clamped 1–50) and entity mode (`domain`+`id`); it seeds first, returns structured `{success,error:{code,message}}`, and calls no model. It stays retrieval-only and must not be converted into a generation route.
-
-**Gap:** retrieval results are consumed by **nothing** — no client component and no server caller uses `KnowledgeRetriever` except its own route and tests. The grounding path is therefore unexercised end-to-end until 13.4.
+No layer below `KnowledgeRetriever` exists yet. Nothing in the tree violates the vendor-neutrality rule, because no vendor coupling exists to violate — 13.3B starts on a clean slate with **no duplicate abstraction to remove**.
 
 ---
 
-## 5. Authentication status
+## D. Completed phases (verified against code, not against reports)
 
-- **No authentication of any kind.** No `middleware.ts`; no next-auth/Clerk/Lucia/JWT/bcrypt/argon dependency; no session cookie handling; zero login/logout surfaces.
-- Identity is **client-supplied and unvalidated**: 54 `userId` references across `src/app/api`, defaulting to `"anonymous-user"` (`?userId=` or request-body field), e.g. `src/app/api/srs/decks/route.ts:8`, `src/app/api/quiz/analytics/route.ts:15`, `src/app/api/knowledge/srs/route.ts:50`.
-- Every read **and write** surface — SRS mutations, XP grants, `POST /api/quiz/seed`, sync push — is unauthenticated. A public deployment today exposes writable data APIs to anyone (§9 B4).
-- Per instruction, **no authentication was invented in this prompt**. Recorded as a hard prerequisite for public AI use: any AI generation/quota route added in 13.4/13.5 must sit behind the canonical auth layer once it exists, and **must never** trust a client-supplied `userId` as identity.
-
----
-
-## 6. Build status
-
-### 6.1 Results (executed live in this session)
-
-| Command | Result | Evidence |
+| Phase | Verdict | Evidence |
 |---|---|---|
-| `npm ci` | **FAIL** | `npm error code EUSAGE … can only install with an existing package-lock.json`. Reproduced at HEAD before any local mutation |
-| `npm install --no-audit --no-fund` | **PASS** | 424 packages, exit 0 (deprecations: `eslint@9.39.4` EOL, two `@esbuild-kit/*`) |
-| `npm ci` *after generating a lockfile locally* | **PASS** | 432 packages, exit 0 → **D1's fix is confirmed to be a single committed file** |
-| `npm run typecheck` (`tsc --noEmit`) | **PASS** | exit 0, strict mode, zero errors |
-| `npm run lint` (`eslint .`) | **FAIL** | 15 errors / 3 warnings (§6.2) |
-| `npm run build` (`next build`) | **PASS** | exit 0 **with `DATABASE_URL` unset** — 39 API handlers + 15 pages compile; lazy-pool fix verified working |
-| `npx vitest run` | **FAIL (environment)** | `1 failed / 14 skipped`, `DATABASE_URL is required` at `src/db/index.ts:55`. Not a code defect: no PostgreSQL and no root in this sandbox (§8.3) |
-
-### 6.2 Lint failure root cause — toolchain drift, not code decay
-
-`eslint-config-next@16.2.6` declares `"eslint-plugin-react-hooks": "^7.0.0"`. With no committed lockfile, that caret floats to **7.1.1**, which promotes React-Compiler correctness rules to **error**. Reproduced both states in this session:
-
-| Installed `eslint-plugin-react-hooks` | `npm run lint` |
-|---|---|
-| `7.1.1` (fresh float) | **FAIL — 15 errors, 3 warnings** |
-| `7.0.0` (`npm i --no-save`) | **PASS — 0 errors, 3 warnings**, identical to the gate's historical evidence |
-
-Breakdown of the 15: `set-state-in-effect` ×11, `immutability` ×2, `purity` ×1, `preserve-manual-memoization` ×1 — all in **pre-existing client pages/components** (`kana`, `kanji`, `kanji/[character]`, `progress`, `question-bank`, `review`, `review/personal`, `review/session/[id]`, `review/sync`, `components/quiz/ExamTimer`). **None is Phase 13.x code, and none is a functional defect.** The 3 warnings are the long-standing `exhaustive-deps` ×2 and `@next/next/no-page-custom-font` ×1.
-
-**Why this matters beyond cosmetics:** the lint gate's pass/fail is currently decided by *the date you run it*. A gate that changes state without a code change is not a gate. **Fix by determinism (pin the validated baseline via a committed lockfile), not by disabling rules** — rules 16/17 forbid muting `react-hooks/*` or touching ESLint config to force green.
-
-### 6.3 Reproducibility of dependency ranges
-
-`package.json` mixes exact pins (`next`, `react`, `drizzle-orm`, `pg`, most dev deps) with carets (`lucide-react ^1.45.0`, `vitest ^5.0.0`, `eslint-config-next` is pinned but its *plugins* float). Without a lockfile, `lucide-react` alone drifted 1.45→1.46 in this session. `package-lock.json` is the one mechanism that freezes all of it.
+| ≤ 12.1 platform baseline — quiz engine, JLPT simulator, SRS (+sync, personalization, 4 strategies), XP/gamification, kana/kanji knowledge, analytics | **COMPLETE** | Full service + route + page tree present; compiles and typechecks clean |
+| 13.1 AI architecture audit | **COMPLETE** (documentation-only by design) | `PHASE-13.1-AI-ARCHITECTURE-AUDIT.md`; decisions: Repository A is sole AI owner; exactly one provider port with adapters behind it; Anthropic first adapter; retrieval stays model-free |
+| **13.2 Knowledge retrieval** | **COMPLETE — genuinely implemented** | `knowledgeRetriever.ts` (653 L), `corpusService.ts` (190 L), `knowledgeService.ts` (838 L), `lexicon.ts` (366 L), 4 additive tables, `GET /api/ai/retrieve`, 14 tests. Verified byte-identical to implementation commit `5c1cb62` (`git diff 5c1cb62 HEAD -- src/services tests/knowledge-retrieval.test.ts src/db/schema.ts` = empty). **Must be preserved** |
+| 13.3A provider boundary audit | **COMPLETE as an audit**, but **partially stale** | 341-line report; its §3.5 and §8 claims no longer match the tree (§N D3/D4) |
+| "Repository repair" (lockfile, `.gitignore`, `server-only`, lazy DB pool) | **PARTIAL — reported as done, not all landed** | `.gitignore` ✔ present · `server-only` ✔ installed+used ✔ · lazy DB pool ✔ implemented ✔ · **`package-lock.json` ✘ never committed** |
 
 ---
 
-## 7. Database status
+## E. Pending phases
 
-- **26 tables** in `src/db/schema.ts`: `users`, `questions`, `jlpt_tests`, `jlpt_test_questions`, `test_sessions`, `test_answers`, `srs_schedulers`, `srs_decks`, `srs_cards`, `srs_reviews`, `srs_sync_devices`, `srs_sync_log`, `srs_review_sessions`, `srs_user_settings`, `srs_personalization`, `kana_entries`, `kanji_radicals`, `kanji_entries`, `kanji_composition`, `xp_events`, `xp_rules`, `user_analytics`, + the four additive Phase 13.2 tables `knowledge_sources`, `dictionary_entries`, `grammar_patterns`, `example_sentences`.
-- **Schema integrity findings that directly constrain Phase 13.5 (measured, not assumed):**
-  - **`relations()` count = 0. `.references(` (FK) count = 0.** There is **no database-enforced referential integrity anywhere** in the canonical schema. All joins are application-level on `text` ids. Consequences: no `ON DELETE CASCADE` semantics to inherit, no DB-level orphan protection for future `ai_conversations`/`ai_messages`, and "reuse the existing `users` table" (DATABASE RULE step 2, "inspect all foreign keys") resolves to *"there are none — the FK discipline must be established deliberately, additively, in one approved prompt."*
-  - Conventions to follow if AI tables are later approved: `text` primary keys (app-generated, e.g. `gp-te-kara`, `first-party:dictionary-core:v1`), snake_case columns with explicit camelCase mapping, `timestamp("created_at").defaultNow().notNull()` (+ `updated_at` where mutable), `jsonb` with `.default([]).notNull().$type<T[]>()`, `sourceRef`/`jlptLevel` denormalized onto rows.
-  - `users.id` is a plain `text` PK with `name notNull` and nullable `email` — **no password/credential/identity-provider columns exist**, so it is an identity *registry*, not an auth table. Phase 13.5 may reference it; it must not be repurposed or extended casually.
-- **No migrations. No `drizzle/` directory. Schema is applied by out-of-band `drizzle-kit push`.** Environments converge only by manual ritual (drift risk R2).
-- **NEW HAZARD — ignored migration path:** `.gitignore` contains **`/drizzle`**. If anyone later runs `drizzle-kit generate` (the correct, reviewable, additive workflow rule 18/21 implies), the generated SQL migration folder is **gitignored by default and will not be committed** — silently defeating "every migration must be inspected before execution". Must be resolved in the same bounded prompt that first introduces migrations.
-- **`drizzle.config.json` is actively misleading** (§1.3): it fails `drizzle-kit check`, and its hardcoded `postgresql://postgres:postgres@127.0.0.1:5432/app_db` is a local DSN committed to a production repo. Recommend replacing with a `drizzle.config.ts` reading `process.env.DATABASE_URL` (no secret value in-repo) in the repository-repair prompt.
-- Seeding is **write-on-first-request** (`ensureSeeded()` inside `GET /api/ai/retrieve` and other routes). Runtime DB identity therefore needs DDL/insert privileges — a real deployment consideration, and an unauthenticated write trigger (R6).
-- **Zero kanji duplication confirmed:** retrieval reads the pre-existing canonical `kanji_entries`; no second kanji store exists.
+| Phase | Status | Note |
+|---|---|---|
+| **13.3B** canonical provider contract + explicit factory + server-only boundary | **NOT STARTED — and BLOCKED behind §P gate zero** | No `provider.ts`, `providerFactory.ts`, `providers/`; `AI_PROVIDER` read by no code |
+| 13.3C deterministic mock provider | NOT STARTED | — |
+| 13.3D Anthropic adapter | NOT STARTED | No SDK, no HTTP transport, no vendor import anywhere |
+| 13.4 grounded AI service (tutor, correction, vocab/kanji/grammar explanation) | NOT STARTED | No generation route exists |
+| 13.5 AI persistence (conversations, messages, usage, quotas, retention) | NOT STARTED | Blocked by §I findings (no FKs, no indexes, no migration path) |
+| 13.6 rate limiting, prompt-injection defense, evaluation, failure testing | NOT STARTED | No eval harness; retrieval is consumed by nothing |
+| 13.7 AI tutor UI / Hana-sensei modes | NOT STARTED | No AI UI; no consumer of `/api/ai/retrieve` |
+| 13.8 Vercel production hardening + deployment | NOT STARTED | Nothing deployed; install command currently broken |
+| 14–22 (Admin/CMS, multilingual, learner dashboard, Flutter, analytics, monetization, security, performance, release) | NOT STARTED | No admin surface, no i18n layer, no mobile app, no ETL |
+| **Authentication** | **NOT STARTED** — cross-cutting prerequisite | See §H |
+
+Stale phase branding: home page still advertises "Phase 10 — JLPT & Question Engine Ready"; `reports/gates/PHASE-13-CHECKLIST.md` header still reads `Current prompt: 13.2 … Last updated: 2026-02-24`. Actual position: **13.3A complete / 13.3B pending behind gate zero.**
 
 ---
 
-## 8. Test status
+## F. AI architecture status
+
+All mandated search terms, run over the **tracked** tree (`git grep -i`, paths: `src tests package.json next.config.ts eslint.config.mjs tsconfig.json drizzle.config.json .env.example`):
+
+| Term | Hits | Nature of hits |
+|---|---|---|
+| `AIProvider` | 1 | **Comment** — `knowledgeRetriever.ts:8`, "→ (later) single AIProvider port" |
+| `provider` | 7 | **All comments**: `api/ai/retrieve/route.ts:31` "No AI provider", `schema.ts:651` "No AI provider logic lives in these tables", `knowledgeRetriever.ts:11` "NO AI provider is called", `corpusService.ts:8` "no AI provider is called from here" |
+| `anthropic` | 4 | `.env.example` only (`ANTHROPIC_API_KEY=`, `ANTHROPIC_MODEL`, `ANTHROPIC_API_URL`) |
+| `server-only` | 7 | Real usage: `src/db/index.ts:1` import + docs; `package.json` dep; `tests/mocks/server-only.ts`; `vitest.config.ts` alias |
+| `LLMProvider`, `getProvider`, **`providerFactory`**, `openai`, `generateText`, `generateStructured`, `streamText`, `streamTutorCompletion` | **0** | Absent |
+
+**Determinations:**
+
+1. **No provider contract, no factory, no adapter, no mock provider exists.** Phase 13.3B/13.3C/13.3D are all genuinely unstarted.
+2. **No AI/vendor dependency installed**: `ai`, `@ai-sdk/anthropic`, `@anthropic-ai/sdk`, `openai` all absent from the full dependency set (verified against installed `node_modules`, not just `package.json`).
+3. **No route imports a transport.** The only AI-adjacent endpoint is deterministic retrieval.
+4. `AI_PROVIDER`, `AI_PROMPT_VERSION`, `AI_REQUEST_TIMEOUT_MS` are **declared in `.env.example` but read nowhere in code** — a documented, unimplemented contract.
+5. **Constraint for 13.3B (new hazard):** `.env.example` shows `AI_PROVIDER=mock` as the illustrated default. Acceptable locally, but the factory must **not** infer mock from an absent value: missing/unknown values must fail closed, and `mock` must be rejected outright when `NODE_ENV === "production"`, or rules 11–13 are violated the moment the first adapter lands.
+6. **The grounding contract already exists and must be consumed verbatim** (rule: no duplicate architecture). `KnowledgeChunk` = `domain, id, title, content, relevance, matchedOn, record` (untouched DB row), `sourceRef`, `jlptLevel`; `RetrievalResult` adds `sources: ProvenanceRecord[]`, `contextText`, `domainCounts`, `queryType`, `estimatedTokens`. This satisfies the mandated field list (domain / entity ID / title / content / source reference / provenance / JLPT level / relevance / matched fields) **already**. 13.3B/13.4 must not define a parallel context type.
+7. `formatContext()` emits `[domain:id | source=ref]` citation-tagged blocks headed `KNOWLEDGE CONTEXT (cite these records; do not invent facts)` — the anti-hallucination instruction seam is already in place.
+
+---
+
+## G. Knowledge retrieval status — COMPLETE (Phase 13.2), unmodified, must be preserved
+
+**`src/services/ai/knowledgeRetriever.ts`** (653 lines, class with static API):
+- `KNOWLEDGE_DOMAINS = ["dictionary","kanji","grammar","sentence"]`.
+- `KnowledgeRetriever.retrieve(query, {domains, maxPerDomain=5, maxTotal=12, jlptLevel})` → query-script classification (`japanese | romaji | english | empty`) → four parallel per-domain searches → deterministic dedupe/rank → JLPT filter.
+- `KnowledgeRetriever.retrieveEntity(domain, id)` → entity plus linked records (grammar→sentences, dictionary→sentences+kanji).
+- `formatContext(chunks)` → citation-tagged prompt text + `estimateTokens`.
+- 13 `ilike(...)` predicates across headword/reading/romaji/character/meaning/title — **model-free, credential-free, deterministic** by design.
+
+**`src/services/knowledge/corpusService.ts`** (190 lines) — `ProvenanceRecord {version, license, …}`; `ensureSources()`, `ensureSeeded()`, `getProvenance(sourceRefs[])`, `getDictionaryEntry()`, `getGrammarPattern(idOrSlug)`, `getSentence()`, `getStats()`. Provenance registration is decoupled from record seeding (idempotent).
+
+**Knowledge tables** — `knowledge_sources` (`id, name, version, license, url, description, domain, recordCount, importedAt`) + `dictionary_entries`, `grammar_patterns`, `example_sentences`. Kanji reuses the pre-existing canonical `kanji_entries` — **no second kanji store** (confirmed).
+
+**Provenance is broader than the four tables:** `source_ref` exists on **7 tables** — `srs_cards` (nullable), `kana_entries`, `kanji_radicals`, `kanji_entries`, and the three content tables (`notNull`). Every knowledge row points at `knowledge_sources.id` — **as a soft convention with no database-enforced FK** (see §I).
+
+**Retrieval API:** `GET /api/ai/retrieve` — search mode (`q`, `domains`, `level`, `limit` clamped to 1–50) and entity mode (`domain`+`id`); seeds first (`KnowledgeCorpusService.ensureSeeded()` + `KnowledgeService.ensureSeeded()`); `force-dynamic`; structured `{success, error:{code,message}}`.
+
+**Gap:** retrieval has **no consumer**. No client component and no server service calls `KnowledgeRetriever` except its own route and the tests — the grounding path is unexercised end-to-end until 13.4.
+
+**Runtime reachability could not be confirmed in this environment** (no PostgreSQL): `GET /api/ai/retrieve?q=mizu` returns `500` — expected fail-closed behavior, but note §M/S1 for what the message contains.
+
+---
+
+## H. Authentication status — NONE
+
+- No `middleware.ts` (neither root nor `src/`). No auth library of any kind in the dependency set (no next-auth, Clerk, Lucia, jose/jsonwebtoken, bcrypt, argon2). No session/cookie handling. No login/logout/signup route or page.
+- Identity is **client-supplied and unvalidated**: 34 `eq(<table>.userId)` filter sites plus 54 `userId` references across `src/app/api`; handlers default to `"anonymous-user"` from `?userId=` or the request body (e.g. `api/srs/decks/route.ts:8`, `api/quiz/analytics/route.ts:15`, `api/knowledge/srs/route.ts:50,78,105`).
+- **All 39 routes — reads and writes — are unauthenticated**, including mutating surfaces (`POST /api/quiz/seed`, SRS review/undo, sync push, XP grant).
+- `users` table exists but is an identity **registry**, not an auth table: `id text PK, name notNull, email nullable, avatarUrl, targetJlptLevel default 'N5', targetDate, createdAt, updatedAt` — **no credential, provider-id, or hash columns**. It is wired to no login flow.
+- Per instruction, **no authentication was designed or invented in this audit.** Recorded as a hard prerequisite: public AI production use requires canonical auth first, and 13.4/13.5 AI routes must resolve identity server-side — never from a client `userId`.
+
+---
+
+## I. Database status
+
+`src/db/schema.ts` — 729 lines, **26 tables**, single source of truth, `pgTable` only.
+
+`users`, `questions`, `jlpt_tests`, `jlpt_test_questions`, `test_sessions`, `test_answers`, `srs_schedulers`, `srs_decks`, `srs_cards`, `srs_reviews`, `srs_sync_devices`, `srs_sync_log`, `srs_review_sessions`, `srs_user_settings`, `srs_personalization`, `kana_entries`, `kanji_radicals`, `kanji_entries`, `kanji_composition`, `xp_events`, `xp_rules`, `user_analytics`, `knowledge_sources`, `dictionary_entries`, `grammar_patterns`, `example_sentences`.
+
+**Measured integrity/persistence characteristics (all four matter to 13.5):**
+
+| Property | Measured | Consequence |
+|---|---|---|
+| `relations()` declarations | **0** | No Drizzle relation metadata; every join hand-written |
+| `.references(` / FK constraints | **0** | **No database-enforced referential integrity anywhere.** The DATABASE RULE step "inspect all foreign keys" resolves to: *there are none* — FK discipline must be established deliberately and additively, not assumed |
+| `index()` / `uniqueIndex()` declarations | **0** | **No secondary indexes at all.** Only 26 primary keys + 5 `.unique()` (`srs_sync_devices.client_id`, `kanji_radicals.character`, `kanji_entries.character`, `xp_events.dedupe_key`, `grammar_patterns.slug`) |
+| Hot-path filters under those missing indexes | 34 `eq(t.userId)` + 12 `lte/gte(cardsTable.dueAt)` across the 8 SRS/gamification/jlpt services | Every per-learner queue, review, analytics and XP query is an **unindexed sequential scan**. Correct today at tiny scale; the first thing that breaks at real data volume |
+| Retrieval predicates | 13 `ilike(...)` with no trigram/GIN support available | `LIKE '%…%'` full scans on an unauthenticated route (bounded by corpus size, not by query cost) |
+| Timestamps | `timestamp(…).defaultNow().notNull()`, snake_case columns, `updatedAt` on mutable tables | Consistent conventions worth following for any future AI table |
+| Keys | app-generated `text` PKs (`gp-te-kara`, `first-party:dictionary-core:v1`) | No sequences/UUIDs; AI tables would follow the same convention |
+| Migrations | **None.** No `drizzle/` directory, no migration history; schema applied out-of-band by `drizzle-kit push` | Environments converge only by manual ritual |
+| `drizzle.config.json` | **Loads and errors.** `npx drizzle-kit check` → `Reading config file '…/drizzle.config.json'` then `Please provide required params for AWS Data API driver: [x] database: undefined` | The committed config is unusable; only explicit CLI flags work. It also hardcodes a local DSN (`postgres:postgres@127.0.0.1:5432/app_db`) into a production repo. Prior report's claim that drizzle-kit "does not load JSON configs" is wrong — it loads and misinterprets it |
+| **`.gitignore` contains `/drizzle`** | verified at HEAD | **If anyone later runs `drizzle-kit generate`, the generated SQL migrations are gitignored by default and silently never committed** — defeating "every migration must be inspected before execution" by construction. Must be fixed before 13.5 |
+| Data access mode | `ensureSeeded()` on first request inside GET handlers | Runtime DB role needs INSERT/DDL privileges; an unauthenticated GET triggers writes |
+
+`src/db/index.ts` verified as sound: `import "server-only"` first line; `DATABASE_URL` read lazily; pool created on first query; `DATABASE_URL is required` thrown at first real access (not at import); dev-global caching + production singleton retained; **no behavior weakened, no silent default DSN**.
+
+---
+
+## J. Build status — executed live in this session
+
+| Command | Result | Exact evidence |
+|---|---|---|
+| `npm ci` *(the documented Vercel install command)* | **FAIL** | `npm error code EUSAGE` / `` The `npm ci` command can only install with an existing package-lock.json `` — no lockfile is tracked |
+| Dependency-set check (`npm install --package-lock-only`) | **"up to date" in 572 ms** | Proves the declared set already satisfies itself: **no new dependency is needed**; the `npm ci` failure is packaging-only |
+| `npm run lint` (`eslint .`) | **FAIL** | **18 problems (15 errors, 3 warnings)**, exit 1 |
+| `npm run typecheck` (`tsc --noEmit`, strict) | **PASS** | exit 0, zero errors |
+| `npm run build` (`next build`) — **`DATABASE_URL` unset** | **PASS** | `✓ Compiled successfully in 7.8s`, `✓ Generating static pages (12/12)`, exit 0 |
+| `npm run build` — with env | **PASS** (same outcome; env no longer required at build time) | lazy-pool fix confirmed effective |
+
+**Lint root cause — toolchain drift, not code decay.** `eslint-config-next@16.2.6` declares `"eslint-plugin-react-hooks": "^7.0.0"`; with no lockfile the caret floats to the installed **7.1.1**, which promotes React-Compiler rules to error. Error breakdown: `set-state-in-effect` ×11, `immutability` ×2, `purity` ×1, `preserve-manual-memoization` ×1 — all in **pre-existing client pages/components** (`kana`, `kanji`, `kanji/[character]`, `progress`, `question-bank`, `review`, `review/personal`, `review/session/[id]`, `review/sync`, `components/quiz/ExamTimer`). **None is Phase 13.x code; none is a functional defect.** The 3 warnings are the long-standing `exhaustive-deps` ×2 and `@next/next/no-page-custom-font` ×1 (`layout.tsx` `fonts.googleapis.com` `<link>`). Reproduced previously: under `react-hooks@7.0.0` the identical files yield exactly **0 errors / 3 warnings** — matching the historical gate claim.
+
+**Consequence:** the lint gate currently changes state with the calendar, not with the code. A gate that behaves that way is not a gate. It must be resolved **by determinism (committed lockfile) or by real code fixes** — never by disabling `react-hooks/*`, editing `eslint.config.mjs`, or adding suppressions (rules 16/17). Verified clean on that point: **`eslint-disable`, `@ts-ignore`, `@ts-expect-error`, `@ts-nocheck` appear nowhere in `src` or `tests`; `next.config.ts` is `{}` with no `ignoreBuildErrors`/`ignoreDuringBuilds`; `tsconfig.json` strict is on.**
+
+---
+
+## K. Test status — 14 tests exist; **could not be executed in this environment**
 
 | Fact | Evidence |
 |---|---|
-| Exactly **one** test file: `tests/knowledge-retrieval.test.ts`, **14 `it()` blocks** | grep-verified; matches the 13.2 gate claim |
-| Coverage is retrieval/provenance/entity/JLPT-filter/blank-query only | test names enumerated at HEAD |
-| **No unit tests exist for SRS strategies, quiz engine, JLPT scoring, XP, or sync** despite ~4,000 lines of service logic | test inventory |
-| Tests require **live PostgreSQL** — they seed and assert real rows | `tests/setup.ts` (`dotenv/config`), `vitest.config.ts` 60s timeouts, `fileParallelism: false` |
-| **`package.json` has no `test` script** | scripts = `dev, build, start, lint, typecheck` |
-| No CI to run any of it | no workflow files |
-| Executed here: `Test Files 1 failed / Tests 14 skipped`, cause `DATABASE_URL is required` | live run; environment limitation |
-| `server-only` boundary handled correctly for tests via `resolve.alias` → `tests/mocks/server-only.ts` no-op; the guard stays fully active in Next build/runtime | `vitest.config.ts` + shim file |
+| Exactly one test file, `tests/knowledge-retrieval.test.ts`, **14 `it()` blocks** | grep-verified; names cover seeding all four domains, dictionary/kanji/grammar/sentence record retrieval, romaji+English matching, multi-domain results, JLPT filter, blank query, provenance resolution, citation-tagged context, entity + linked-sentence traversal, grammar-by-slug, dictionary→sentences+kanji |
+| Tests require **live PostgreSQL** | they query real rows and seed idempotently; `tests/setup.ts` = `import "dotenv/config"`; `vitest.config.ts` = node env, 60 s timeouts, `fileParallelism: false` |
+| Executed: `npx vitest run` | **exit 1** — `Test Files 1 failed`, `Tests 14 skipped`, `Caused by: Error: DATABASE_URL is required` at `src/db/index.ts:55` |
+| **Why it cannot be made to pass here** | The sandbox has **no PostgreSQL** (`/usr/lib/postgresql` absent; no `docker`, `pg_ctl`, `initdb`, or `postgres` binary) and is **not root** (`uid 1001`, `apt-get update` → permission denied), so a database cannot be provisioned. Per audit constraint, no dependency was installed to work around it |
+| `package.json` has **no `test` script** | scripts = `dev, build, start, lint, typecheck`; vitest is only reachable via `npx` |
+| No CI anywhere | no workflow file → nothing runs lint/typecheck/build/tests automatically |
+| Coverage gaps | **Zero unit tests** for SRS strategies (SM-2/Leitner/FSRS-lite/fixed-ladder), quiz engine, JLPT scoring, XP rules, or sync — despite all being pure/deterministic and needing no DB |
 
-**Honest status: Phase 13.2's 14 tests are *plausibly* green against a real database — but they were NOT executed in this session, and they cannot be, so this audit does not certify them.** Any future claim of "14/14 PASS" must come with a reproducible path (CI, or a documented DB bootstrap). `vitest` sitting in `dependencies` also means the test framework installs into the production artifact.
-
----
-
-## 9. Runtime verification (production server, executed here)
-
-`npm run build` → `npm run start` (`next start`, Next 16.2.6, ready in 133 ms, bound `0.0.0.0:3000`). No PostgreSQL and no root in this sandbox, so all data surfaces are expected to fail; what was verified is the **failure contract**.
-
-| Surface | Result | Assessment |
-|---|---|---|
-| `GET /api/health` | `500 {"ok":false}` | **Correct** — try/catch around `select 1`, no stack leak |
-| `GET /kanji` (static client page shell) | `200` | OK — prerendered shell |
-| `GET /` (server page, queries DB) | `500` Next error page | Expected without DB |
-| `GET /api/ai/retrieve?q=mizu&domains=dictionary` | `500 {"success":false,"error":{"code":"INTERNAL_ERROR","message":"Failed query: select cast(count(*) as int) from \"kana_entries\"…"}}` | **Contract OK, content NOT OK — see B3** |
-| `GET /api/ai/retrieve` (no params) | `500` with same raw SQL leak | Same |
-| `GET /api/srs/decks` | `500` leaking full `insert … on conflict do update` statement **and bound parameter values** | Same |
-| `GET /api/jlpt/tests` | `500` leaking the `select` column list | Same |
-
-### FINDING B3 — internal SQL disclosure on the AI surface
-
-`src/app/api/ai/retrieve/route.ts` catch block returns `message: error instanceof Error ? error.message : …`. Drizzle's `DrizzleQueryError.message` **embeds the complete SQL text and, in some paths, bound parameter values**. The route is unauthenticated. So today: an unauthenticated caller can make `GET /api/ai/retrieve` echo schema/table/column internals. The same pass-through pattern recurs across the other API routes (e.g. `/api/srs/decks` leaked seed parameters, including config JSON).
-
-This is pre-existing, **not a Phase 13.2 logic bug**, and deliberately left unfixed by this audit. It is a **blocking design requirement for 13.3B/13.4**: the provider layer must normalize errors into stable public codes (`PROVIDER_UNAVAILABLE`, `TIMEOUT`, `RATE_LIMITED`, `CONFIGURATION_ERROR`) with opaque public messages and server-side-only detail logging. If 13.3B copies the existing route error idiom, it will institutionalize the leak into the AI generation path — where it would also risk echoing provider request internals.
+**Verdict: Phase 13.2's 14 tests are *plausibly* green against a real database but are NOT certified by this audit.** The historical "14/14 PASS" claims were produced in ephemeral agent workspaces and are not reproducible from a clean clone.
 
 ---
 
-## 10. Deployment status
+## L. Deployment status — NOTHING DEPLOYED, nothing claimed
 
-**Nothing is deployed and no deployment is claimed.** No `vercel.json`, no CI, no release artifacts.
+| Requirement | State |
+|---|---|
+| Framework / Root / Build | Next.js · `.` · `npm run build` — **PASS** |
+| Install `npm ci` | **FAIL** (no lockfile). Vercel silently falling back to `npm install` would "succeed" while floating transitive deps — reproducing the §J lint failure inside the build pipeline |
+| `DATABASE_URL` at build time | **NOT required** (verified). Required at **runtime**; missing → loud first-query failure (fail-closed, correct) |
+| Database | **No hosted PostgreSQL provisioned or referenced anywhere.** The 26-table schema must be applied out-of-band (`npx drizzle-kit push --dialect postgresql --schema ./src/db/schema.ts --url "$DATABASE_URL"`), and because seeding runs on first request the runtime role needs write/DDL privileges |
+| AI secrets | `ANTHROPIC_API_KEY` etc. are `.env.example` placeholders only; **nothing to configure yet** because no adapter exists |
+| Secret exposure | **None** — `NEXT_PUBLIC_*` appears in **zero** files; `git grep` for `sk-ant-…`/long api-key literals/password literals over tracked content → no hits; only `.env.example` is tracked, no `.env`; `src/db/index.ts` hardcodes no DSN |
+| Node version | Not pinned (no `.nvmrc`, no `engines`). Verified toolchain: Node `v22.22.3`, `npm 10.9.8` |
+| Health endpoint | `/api/health` verified: `500 {"ok":false}` here (no DB) — degrades gracefully, catches, no stack trace. `{ok:true}` **not verifiable without a database** |
+| `npm audit` | 7 vulnerabilities (4 moderate, 2 high, 1 critical, incl. `sharp`); `eslint@9.39.4` EOL + 2 `@esbuild-kit/*` deprecation warnings. Unpatched and un-suppressed |
 
-Verified deployment requirements for Vercel:
-
-1. **BLOCKER — install command.** `npm ci` (this prompt's stated install step) fails on a clean clone until `package-lock.json` is committed. Vercel's silent fallback to `npm install` would "succeed" while floating transitive deps — reproducing exactly the §6.2 lint-drift failure inside the build pipeline.
-2. **`DATABASE_URL` at build time: NO LONGER REQUIRED** (verified: build green with it unset). Still **required at runtime** for every data surface, failing loudly at first query — correct fail-closed behavior, unchanged.
-3. **BLOCKER — database.** No hosted Postgres is provisioned or referenced; the 26-table schema must be applied out-of-band, and because seeding happens on first request, the runtime role needs INSERT/DDL privileges.
-4. **Secrets: verified clean.** No `NEXT_PUBLIC_*` anywhere, no `.env` tracked (only `.env.example`), no key material in git history for the audited range, and only `DATABASE_URL`/`NODE_ENV` read in source. No credential exposure exists in the client bundle path, and `server-only` now makes a future client import a build error.
-5. **MEDIUM — no authentication** on a public URL (§5, B4).
-6. **LOW — hygiene:** `vitest` in `dependencies` inflates the production install; no `engines`/`.nvmrc`; `next.config.ts` has no `serverExternalPackages` pin for `pg` (fine on the Node runtime today); `layout.tsx` keeps a runtime `fonts.googleapis.com` `<link>` (external dependency + the existing lint warning).
+**No deployment is claimed by this audit.**
 
 ---
 
-## 11. Blockers (each needs its own bounded prompt)
+## M. Security risks
 
-| # | Blocker | Why it blocks | Minimal resolution |
+| # | Risk | Severity | Evidence |
 |---|---|---|---|
-| **B1** | No committed `package-lock.json` | `npm ci` fails; every gate (install→lint→typecheck→build→test→deploy) is non-deterministic; this is the *sole root cause* of B2 | Commit a lockfile generated from the existing `package.json` **with no dependency changes**. Verified here: `npm ci` → PASS. Rollback: `git rm package-lock.json` |
-| **B2** | `npm run lint` fails with 15 errors | Gate rule "lint passes" cannot be honestly satisfied; drift makes the gate date-dependent | Resolve **by determinism, never by rule-disabling**: after B1, either the pinned baseline reproduces 0 errors/3 warnings (confirmed here at 7.0.0), or the 11 `set-state-in-effect` + 2 `immutability` + 1 `purity` + 1 memo findings are fixed as real code changes in a separate bounded prompt |
-| **B3** | Unauthenticated routes echo raw SQL/params | Information disclosure on the AI surface; will be inherited by 13.4 generation routes if not answered now | Provider layer must define normalized error mapping; route handlers must emit stable codes + opaque messages. Additive; no schema change |
-| **B4** | No authentication at all | Public writable APIs; 13.5 quotas/retention and 13.7 tutor UI have no secure subject | Explicitly deferred (per instructions). **Mandatory before public AI production use**; must be the canonical auth architecture, never a second one |
-| **B5** | No test script, no CI, tests need live PostgreSQL | "Tests pass" is unverifiable and unenforceable | Add `"test": "vitest run"`, separate the vitest dependency to devDependencies, add a CI workflow (typecheck+lint+build+tests with a Postgres service) |
-| **B6** | `drizzle.config.json` errors out; `/drizzle` gitignored; zero migrations, zero FKs | Blocks safe Phase 13.5 persistence; a future `drizzle-kit generate` would silently drop migrations from version control | Replace with `drizzle.config.ts` reading `process.env.DATABASE_URL`; remove the `/drizzle` ignore entry **before** any migration is introduced; decide FK policy additively |
+| **S1** | **Internal SQL disclosure on the AI surface.** `api/ai/retrieve/route.ts` catch block returns `message: error instanceof Error ? error.message : …`; Drizzle's `DrizzleQueryError.message` embeds the **full SQL and, on write paths, bound parameter values**. Live-observed at HEAD: retrieval 500 leaked `select cast(count(*) as int) from "kana_entries"`; `/api/srs/decks` leaked an entire `insert … on conflict do update` with all seed values | **High** | The route is unauthenticated, so any caller can elicit schema/table/column internals. **13.3B must not inherit this idiom** into the generation path, where it could also echo provider request internals |
+| **S2** | No authentication on any route, including writes (`/api/quiz/seed`, SRS review/undo, sync push, XP) | **High** | §H |
+| **S3** | Unauthenticated, unbounded retrieval + 13 `ilike` full scans = unguarded compute surface (DoS amplification as corpus grows) | **Medium** | §G, §I |
+| **S4** | Client-supplied `userId` (default `"anonymous-user"`) is treated as identity → trivial cross-user data access/spoofing once any per-user data matters | **Medium-High** | 34 `eq(t.userId)` sites |
+| **S5** | Local DSN `postgres:postgres@127.0.0.1:5432/app_db` committed in `drizzle.config.json` (and `.env.example`) | **Low-Medium** | Not a live secret, but a bad template; encourage env-only config |
+| **S6** | Migration path gitignored (`/drizzle`) → future schema changes could ship unreviewed | **Medium** | §I |
+| **S7** | `.gitignore` correctly protects `.env*`, `node_modules`, `.next` — the historic secret-leak risk is **closed** | Mitigated | present at HEAD |
+| **S8** | Client/server boundary — **verified clean** | None | §M-below |
+| **S9** | Prompt-injection surface (future): no separation yet between retrieved context / learner input / system instructions / model output | **Medium, planned** | 13.6 |
+
+**Boundary scan (mandated item 7), executed as a resolver rather than a grep:** all 92 `src/**/*.{ts,tsx}` files parsed, 22 `"use client"` files identified, then each searched for **direct and depth-2 transitive** imports reaching `@/db`, `@/db/schema`, `@/services/**`, `@/data/**`, `server-only`, `pg`, or `drizzle`:
+
+```text
+DIRECT client→server imports:        0
+TRANSITIVE (depth ≤ 2) client leaks: 0
+```
+
+`server-only` on `src/db/index.ts` makes any future leak a **build error**, and a vitest alias (`tests/mocks/server-only.ts`) keeps the guard fully active in Next build/runtime while remaining testable. **No client component imports DB or service code.**
 
 ---
 
-## 12. Risks
+## N. Duplicate-architecture risks
 
-| # | Risk | Severity | Mitigation |
-|---|---|---|---|
-| R1 | Agents keep trusting "gate PASS" text in `reports/` instead of re-running gates. D1–D3 prove reports drift from the tree | **High** | This audit re-executes gates live. Keep doing so; every future gate report must embed commit hash + exact commands + output |
-| R2 | No committed lockfile ⇒ transitive floats silently re-gate the build (proven in §6.2) | **High** | B1 |
-| R3 | No migrations + inert/misleading drizzle config + `/drizzle` ignored ⇒ environments converge only by manual `push` ritual; AI tables added ad hoc | **High** | B6 before 13.5 |
-| R4 | Public deployment without auth exposes writable SRS/XP/seed and the retrieval endpoint | **High** | B4; keep AI routes non-public until auth lands |
-| R5 | Zero FKs/`relations()` means future `ai_conversations`/`ai_messages` inherit no integrity or deletion semantics; naive `userId` FKs would be cosmetic | **Med-High** | Design in 13.5 with an explicit, additive FK/cascade decision; do not assume DB enforcement exists |
-| R6 | Whole-tree delete/re-add commits destroy review signal; code and docs can diverge again undetected | **Medium** | Focused commits; regenerate gate evidence per commit |
-| R7 | 13.3B implemented against a shape only described in prose (13.3A §6) — the only existing contract | **Medium** | 13.3B must consume `KnowledgeChunk`/`RetrievalResult` verbatim (§4.6) and add no parallel context type |
-| R8 | `AI_PROVIDER=mock` default in `.env.example` tempts implicit mock selection | **Medium** | Factory must fail closed on missing/unknown values and reject `mock` in production (§4.4) |
-| R9 | Retrieval is exercised by no consumer; grounding quality unmeasured end-to-end | **Medium** | Add an evaluation harness in 13.6 before any UI |
-| R10 | Test suite is DB-coupled and unrunnable offline; pure-logic SRS/quiz/XP code has no unit coverage despite being deterministic | **Medium** | B5; add pure unit tests for strategies/engine — no DB needed |
-| R11 | Unbounded `ilike` scans on an unauthenticated retrieval route | **Low-Med** | Clamp limits (already 1–50), add auth + rate limiting in 13.6 |
-| R12 | `npm audit` 7 findings (1 critical, incl. `sharp`); `eslint@9.39.4` EOL | **Low-Med** | Separate bounded dependency-refresh prompt; never `--force` blind |
-
----
-
-## 13. Phase ledger (verified against HEAD `8cd2bd7`)
-
-| Phase | Status | Basis |
+| Candidate duplicate | Exists? | Determination |
 |---|---|---|
-| ≤ 12.1 platform baseline (quiz, JLPT simulator, SRS + sync + personalization + 4 strategies, XP/gamification, kana/kanji knowledge, analytics) | **COMPLETE** | Full service/route/page tree present and compiling |
-| 13.1 AI architecture audit | **COMPLETE (docs-only, by design)** | Report present; decisions: Repository A is sole AI owner; one provider port; Anthropic first adapter; retrieval stays model-free |
-| 13.2 Knowledge retrieval | **COMPLETE — genuinely implemented** | `KnowledgeRetriever` (653 L), `corpusService` (190 L), `knowledgeService` (838 L), `lexicon.ts` (366 L), 4 additive tables, `GET /api/ai/retrieve`, 14 tests. Byte-identical to impl commit `5c1cb62`; **must be preserved** |
-| 13.3A Provider boundary audit | **COMPLETE (audit-only)** — but **parts now stale** (D3, D4) | 341-line report; approved creation set remains valid |
-| Repository repair (`package-lock.json`, `.gitignore`, `server-only`, lazy DB pool) | **PARTIAL — REPORTED AS DONE, NOT ACTUALLY LANDED** | `.gitignore`, `server-only`, lazy pool **are** at HEAD; **`package-lock.json` is not** (B1) |
-| **13.3B** provider contract + factory + Anthropic + mock | **NOT STARTED** — *correct; not implemented by this audit* | No `provider.ts`, `providerFactory.ts`, `providers/`; no provider SDK; `AI_PROVIDER` unread |
-| 13.4–13.8 (grounded app service, persistence, rate limiting/eval, UI, Vercel hardening) | **NOT STARTED** | No AI routes/tables/UI; nothing deployed |
-| 14–22 (admin/CMS, multilingual, dashboard, Flutter, analytics, monetization, security, perf, release) | **NOT STARTED** | No `etl/`, no admin surface, no i18n layer, no mobile app |
+| Second AI provider abstraction (`LLMProvider`, `getProvider`, `lib/anthropic.ts`) | **No** | 0 source hits. Rejected prototypes live only in external repos described by 13.1; they were never imported |
+| Second kanji database | **No** | Retrieval reads canonical `kanji_entries`; `kanji_radicals`/`kanji_composition` are the existing system |
+| Second dictionary/grammar/sentence store | **No** | Single `dictionary_entries` / `grammar_patterns` / `example_sentences` set |
+| Second search/retrieval engine | **No** | One `KnowledgeRetriever`; corpus/knowledge services feed the same tables |
+| Second SRS engine | **No** | Four strategies sit behind one `scheduler` abstraction — intended design, not duplication |
+| Second auth system | **N/A** | No auth exists at all |
+| Second DB connection/pool | **No** | Single `@/db` client; **17 importing files** (6 API routes + 1 server page + 10 services), 33 import lines counting `@/db/schema` — all server-side |
+| Second AI persistence layer | **No** | No AI tables beyond 13.2 knowledge corpus |
+| **Documentation duplicating/conflicting with code** | **YES — active risk** | See table below |
 
-**Stale branding (cosmetic):** the home page still advertises "Phase 10 — JLPT & Question Engine Ready" / "Phase 10 Production Target", and `reports/gates/PHASE-13-CHECKLIST.md` still reads `Current prompt: 13.2 … Last updated: 2026-02-24`. Actual position: **13.3A complete, 13.3B pending, blocked behind gate-zero repair.**
+**Report-vs-code divergences (source wins; each marked incomplete):**
 
----
+| # | Documentation claim | Reality at canonical HEAD | Effect |
+|---|---|---|---|
+| D1 | `VERCEL-BUILD-RECOVERY-GATE` §3: "`package-lock.json` **Added** — makes `npm ci` deterministic and passing"; §5 "`npm ci` PASS" | **Not tracked.** `npm ci` fails `EUSAGE` | **Gate claim false for the canonical tree.** Report was committed; the artifact it certifies was not |
+| D2 | 13.3A §8 and recovery gate §5: `npm ci` PASS · `npx vitest run` 14/14 PASS · lint 0 errors | None reproducible from a clean clone; vitest not executable without a DB | Evidence chain untrustworthy; produced in ephemeral workspaces |
+| D3 | 13.3A §8: "lint PASS — 0 errors, 3 warnings" | **15 errors** under floated `react-hooks@7.1.1` | Lint status is date-dependent (§J) |
+| D4 | 13.3A §3.5: "`server-only` … absent from `package.json`" | Present (`^0.0.1`) and imported by `src/db/index.ts` | Stale; 13.3B must build on the existing guard, **not re-add it** |
+| D5 | `REENTRY-AUDIT` §3/§9: "`src/db/index.ts` throws at module scope; build fails unless `DATABASE_URL` is set at build time" | **Fixed at HEAD** — lazy proxy pool; build verified green with env unset | Resolved; do not re-fix |
+| D6 | `REENTRY-AUDIT`: "`.gitignore` ABSENT, secret-hygiene risk" | Present at HEAD | Resolved |
+| D7 | 13.3A §4: drizzle JSON config "inert" | Loaded **and** errors out | Misleading tooling guidance |
+| D8 | Every "gate PASS" in `reports/` | **No CI exists** — gates are prose assertions with no log/artifact to re-validate | Highest-leverage fix in §P |
 
-## 14. Recommended next bounded prompt
-
-**Do NOT implement Phase 13.3B next.** Its own acceptance criteria (`npm ci`, lint, vitest, deployability) are currently unsatisfiable or non-reproducible, so 13.3B would land on a failing gate — violating rules 24/25 ("stop immediately if a gate fails").
-
-> ### Phase 13.3B-G0 — Repository Reproducibility Repair (gate zero; documentation, dependencies-of-record and scripts only)
->
-> Make the canonical tree deterministically verifiable. **Allowed changes, and nothing else:**
-> 1. Generate `package-lock.json` **from the current `package.json` only** (`npm install --package-lock-only`), with **zero** dependency additions, removals, or version-range edits — then prove the §6.2 baseline (0 errors / 3 warnings) is reproduced; if `7.1.1` is what the pinned manifest yields instead, do **not** pin around it — report that lint legitimately fails and stop for a separate bounded lint-repair prompt. **Never** disable a rule, edit `eslint.config.mjs`, add `eslint-disable` comments, or touch `next.config.ts` to force green.
-> 2. Add `"test": "vitest run"` to `package.json`; move `vitest` from `dependencies` to `devDependencies`. No other manifest edits.
-> 3. Replace the broken `drizzle.config.json` with a `drizzle.config.ts` reading `process.env.DATABASE_URL` (hardcode **no** DSN/credential), and remove the `/drizzle` entry from `.gitignore`. **Create no tables, run no push/generate/migration — configuration and ignore rules only.**
-> 4. Add a CI workflow (`.github/workflows/ci.yml`) running install → lint → typecheck → build → vitest against a PostgreSQL service container, so gates become machine-enforced instead of prose.
-> 5. Record evidence in `reports/gates/PHASE-13.3B-G0-REPRODUCIBILITY-GATE.md`: commit hash, every command, every exit code, the before/after lint table, and the explicit statement of which gates remain unverifiable without a hosted database.
->
-> **Forbidden in this prompt:** any AI code (`provider.ts`, `providerFactory.ts`, adapters), any route change, any schema change, any authentication, any migration, any dependency introduction, and any edit to `knowledgeRetriever.ts` / `corpusService.ts` / `knowledgeService.ts` / `/api/ai/retrieve` / `tests/knowledge-retrieval.test.ts`.
->
-> **Gate:** `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build` all green from a clean clone, and `npm test` runnable (green where a database is reachable; explicitly reported as environment-blocked where it is not). Only after this gate PASSES may Phase 13.3B (contract + factory + Anthropic + deterministic mock, per 13.3A §6, consuming `KnowledgeChunk`/`RetrievalResult` verbatim and implementing fail-closed provider selection with normalized errors per §4.4 and B3) begin.
+**Net:** no duplicate production architecture exists. The genuine duplication risk is **forward-looking** — 13.3B adding a second provider/context/error abstraction alongside the already-canonical `KnowledgeChunk`/`RetrievalResult` types (§F.6) and `src/db/index.ts` guard (§N, D4), or re-implementing retrieval inside the AI layer instead of consuming it.
 
 ---
 
-*Audit ends here. No application source, configuration, schema, dependency manifest, or database was modified. `npm install`, `npm ci`, lint, typecheck, build, vitest and a `next start` production server were executed locally for evidence only; nothing was committed beyond this report and nothing was pushed to `main`.*
+## O. Exact Phase 13.3B prerequisites
+
+**Blocking (must be green before 13.3B starts):**
+
+1. **P1 — Commit `package-lock.json` generated from the current `package.json` with zero dependency changes.** Sole root cause of the `npm ci` failure and of P2. Confirmed here: dependency resolution reports "up to date", and `npm ci` passes once a lockfile exists.
+2. **P2 — Make `npm run lint` deterministically green.** After P1, either the pinned baseline reproduces 0 errors/3 warnings, or the 15 React-Compiler findings are fixed as real code changes in their own bounded prompt. **Forbidden:** disabling rules, editing `eslint.config.mjs` to mute `react-hooks/*`, adding `eslint-disable`, or touching `next.config.ts`.
+3. **P3 — Add `"test": "vitest run"`** and move `vitest` to `devDependencies`.
+4. **P4 — Provide a reproducible database path**: CI with a Postgres service container, so the 14 tests can actually be run by someone other than the agent asserting them. Without this, no gate in 13.3B+ is verifiable.
+5. **P5 — Replace `drizzle.config.json` with a `drizzle.config.ts` reading `process.env.DATABASE_URL`** (no hardcoded DSN), and **remove `/drizzle` from `.gitignore`** so future migrations are reviewable. Configuration only — **create no tables, run no push/generate**.
+
+**Design constraints carried into 13.3B (non-blocking, binding):**
+
+6. **P6 —** Exactly one contract (`src/services/ai/provider.ts`) + one selection point (`providerFactory.ts`); adapters under `src/services/ai/providers/`. Routes must not import vendor SDKs.
+7. **P7 —** Fail-closed selection: no key-presence inference; missing/unknown `AI_PROVIDER` throws; `mock` rejected when `NODE_ENV === "production"`; no silent production fallback (rules 10–13).
+8. **P8 —** `import "server-only"` at the top of the provider boundary (matching the existing `src/db/index.ts` precedent) and server-only throughout; no `NEXT_PUBLIC_*` for any AI secret.
+9. **P9 —** Consume `KnowledgeChunk`/`RetrievalResult`/`formatContext()` verbatim as the grounding contract; no parallel context type; no retrieval re-implementation.
+10. **P10 —** Normalize errors into stable public codes with opaque client messages and server-side detail only — explicitly **not** the current `error.message` pass-through (S1).
+11. **P11 —** Preserve unchanged: `knowledgeRetriever.ts`, `corpusService.ts`, `knowledgeService.ts`, `api/ai/retrieve/route.ts`, `tests/knowledge-retrieval.test.ts`, `src/db/schema.ts`, `src/db/index.ts`, and every SRS/quiz/JLPT/XP/kana/kanji/analytics surface. No tutor route, no streaming, no persistence table, no migration, no auth change in 13.3B.
+12. **P12 —** Timeout/abort/usage metadata in the contract (`.env.example` already names `AI_REQUEST_TIMEOUT_MS=45000`), so 13.5 usage accounting and 13.6 rate limiting extend rather than re-cut the interface.
+
+---
+
+## P. Recommended next prompt
+
+> ### Phase 13.3B-G0 — Repository Reproducibility Repair (gate zero)
+>
+> Read-only audit findings established the repository cannot verify its own gates. Make it able to. **No feature work.**
+>
+> **Allowed changes, nothing else:** (1) generate and commit `package-lock.json` from the current `package.json` with **zero** dependency additions/removals/range edits; (2) add `"test": "vitest run"` and move `vitest` to `devDependencies`; (3) replace `drizzle.config.json` with `drizzle.config.ts` reading `process.env.DATABASE_URL` (no hardcoded credential) and delete the `/drizzle` line from `.gitignore`; (4) add `.github/workflows/ci.yml` running install → lint → typecheck → build → `vitest` against a PostgreSQL service container; (5) write `reports/gates/PHASE-13.3B-G0-REPRODUCIBILITY-GATE.md` with the commit hash, every command, every exit code, and an explicit list of what remains unverifiable without a hosted database.
+>
+> **If committing the lockfile leaves `eslint-plugin-react-hooks@7.1.1` as the pinned resolution, do not pin around it and do not disable rules** — report that lint legitimately fails with 15 errors and stop for a separate bounded lint-repair prompt (fix `set-state-in-effect` ×11, `immutability` ×2, `purity` ×1, `preserve-manual-memoization` ×1 in the client pages).
+>
+> **Forbidden:** any AI/provider code, `provider.ts`, `providerFactory.ts`, adapters, route changes, schema changes, migrations, `drizzle-kit push/generate`, auth changes, any edit to `knowledgeRetriever.ts` / `corpusService.ts` / `knowledgeService.ts` / `/api/ai/retrieve` / `tests/knowledge-retrieval.test.ts`, any ESLint/TS/build-config weakening, any new dependency.
+>
+> **Gate:** `npm ci`, `npm run lint`, `npm run typecheck`, `npm run build` all green from a clean clone, CI running, `npm test` executable (green where a DB is reachable; otherwise reported as environment-blocked). **Only after this gate PASSES may Phase 13.3B begin.**
+
+Rationale for ordering: rules 24/25 forbid building downstream phases on a failing gate. 13.3B's own acceptance criteria (`npm ci`, lint, vitest, deployability) are precisely the ones failing now, so gate zero is a prerequisite, not optional cleanup.
+
+---
+
+## Audit summary
+
+| Area | Verdict |
+|---|---|
+| Repository inspected at current GitHub HEAD (`8cd2bd7` = `origin/main`) | **DONE** |
+| Source code left unmodified; no deps installed; no DB/migration/deploy | **DONE** — `git status` clean, delta vs `main` is one report file |
+| Architecture, phases, AI status, retrieval, auth, DB, boundaries, env, build, tests, deployment, security, duplication | **ESTABLISHED** |
+| Application code quality | **Sound** — strict TS clean, build green, retrieval real and preserved, client/server boundary verified clean (0 direct, 0 transitive leaks), no secret exposure, no rule suppressions |
+| Reproducibility / verification infrastructure | **BROKEN** — `npm ci` fails, `lint` fails, tests unrunnable without a DB, no CI |
+| Trust in `reports/` gate claims | **FAILING** — 8 documented divergences (D1–D8), including a committed "package-lock.json Added" claim for a file that was never committed |
+| Phase 13.3B readiness | **NOT READY** — prerequisites P1–P5 unmet |
+
+Two of these are materially different from the picture painted by the stored reports, and both point the wrong way: an incoming session reading `reports/` alone would believe the lockfile exists and that lint is green. The code is in better shape than the evidence chain suggests; the evidence chain is what must be repaired first.
+
+RE-ENTRY AUDIT GATE: **FAIL**
+
+*The audit deliverable itself is complete and every finding above is backed by a command executed in this session. The gate is recorded FAIL because the repository at canonical HEAD cannot satisfy the mandated gate criteria — `npm ci` fails, `npm run lint` fails with 15 errors, and `npx vitest run` fails for lack of a provisioned database — and the governing rule forbids proceeding to Phase 13.3B on a failing gate or reporting a pass that was not observed. Nothing was fabricated. Resolve §P (gate zero), then re-run this audit's gate table.*
