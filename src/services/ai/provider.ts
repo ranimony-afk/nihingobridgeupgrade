@@ -25,8 +25,14 @@ import "server-only";
  * Canonical provider identifiers. Adding a real vendor means adding an
  * entry here AND creating an adapter in src/services/ai/providers/. The
  * "mock" provider is always available but must be explicitly selected.
+ *
+ * Phase 13.3B ships with the mock adapter only. "anthropic" is a
+ * recognized, designed-for id; selecting it fails CLOSED with a clear
+ * CONFIGURATION_ERROR until the Anthropic adapter lands in a subsequent
+ * phase. Additional providers (e.g. openai) will add their id here when
+ * their adapter is introduced.
  */
-export const AI_PROVIDERS = ["mock"] as const;
+export const AI_PROVIDERS = ["mock", "anthropic"] as const;
 export type AIProviderId = (typeof AI_PROVIDERS)[number];
 
 /* ============================================================
@@ -39,6 +45,16 @@ export interface ChatMessage {
   content: string;
 }
 
+/**
+ * Desired response shape. Adapters that cannot honour a requested format
+ * MUST throw INVALID_REQUEST rather than silently return plain text.
+ * Phase 13.3B only guarantees text mode; "json" is a forward-compatible
+ * hook for structured generation in a subsequent phase.
+ */
+export type ResponseFormat =
+  | { type: "text" }
+  | { type: "json"; schema?: unknown };
+
 /** Provider-neutral generation knobs. Adapters map these to vendor params. */
 export interface GenerationOptions {
   /** Upper bound on generated tokens. Provider default when omitted. */
@@ -47,6 +63,8 @@ export interface GenerationOptions {
   temperature?: number;
   /** Nucleus sampling, 0–1 range. Provider default when omitted. */
   topP?: number;
+  /** Response-format hint for structured generation. Defaults to text. */
+  responseFormat?: ResponseFormat;
 }
 
 /**
@@ -108,6 +126,13 @@ export interface TokenUsage {
 export interface ChatResponse {
   /** The generated text, ready for downstream presentation. */
   text: string;
+  /**
+   * Structured payload when the request asked for responseFormat.type="json"
+   * AND the adapter supports JSON mode. Adapters MUST set this to a parsed
+   * JSON value (not a string) when available, so orchestration can rely on
+   * it without reparsing. Phase 13.3B mock leaves this undefined.
+   */
+  json?: unknown;
   /** Provider identifier (matches the adapter that produced this). */
   provider: AIProviderId;
   /** Model identifier the adapter resolved for this request. */

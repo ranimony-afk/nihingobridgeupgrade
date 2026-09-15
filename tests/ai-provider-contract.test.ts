@@ -95,17 +95,40 @@ describe("provider selection: unsupported id fails closed", () => {
       const e = err as AIProviderError;
       expect(e.code).toBe("CONFIGURATION_ERROR");
       expect(e.retryable).toBe(false);
+      // "anthropic" and "mock" should be listed as supported values.
+      expect(e.message).toMatch(/mock/);
+      expect(e.message).toMatch(/anthropic/);
     }
   });
 
   it("registered ids include exactly the built-ins", () => {
     const ids = getRegisteredProviderIds();
     expect(ids).toContain("mock");
-    // Future adapters will add their id here; the contract requires that
-    // "anthropic"/"openai" ids only appear when the corresponding adapter
-    // is actually implemented — neither is present yet in 13.3B.
-    expect(ids).not.toContain("anthropic");
+    // Future adapters will add their id here; "anthropic" is a recognised
+    // id but its adapter is not shipped in 13.3B — selection must fail
+    // closed rather than resolve to an instance.
     expect(ids).not.toContain("openai");
+  });
+});
+
+/* ============================================================
+ * 2b. Anthropic is a designed id but adapter is not yet shipped
+ * ============================================================ */
+describe("provider selection: anthropic id recognised but not implemented", () => {
+  it("AI_PROVIDER=anthropic fails with CONFIGURATION_ERROR (adapter deferred)", () => {
+    setEnv("AI_PROVIDER", "anthropic");
+    setEnv("ANTHROPIC_API_KEY", "sk-test-not-a-real-key");
+    try {
+      createAIProvider();
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(AIProviderError);
+      const e = err as AIProviderError;
+      expect(e.code).toBe("CONFIGURATION_ERROR");
+      expect(e.provider).toBe("anthropic");
+      expect(e.retryable).toBe(false);
+      expect(e.message).toMatch(/anthropic/i);
+    }
   });
 });
 
@@ -197,6 +220,20 @@ describe("request/response: neutral shape", () => {
     const provider = createAIProvider();
     const response = await provider.chat(baseRequest({ context: undefined }));
     expect(response.text).toContain("grounding:none");
+  });
+
+  it("accepts responseFormat generation option (structured-output forward-compat)", async () => {
+    setEnv("AI_PROVIDER", "mock");
+    const provider = createAIProvider();
+    // Phase 13.3B mock returns plain text; the contract must accept the
+    // option without a type error. Adapter conformance for JSON mode is
+    // tested when a real adapter implements it.
+    const response = await provider.chat(
+      baseRequest({ options: { responseFormat: { type: "json" } } }),
+    );
+    expect(response.text).toBeTruthy();
+    // json field is present as optional and undefined for text-only mock.
+    expect(response.json).toBeUndefined();
   });
 });
 
