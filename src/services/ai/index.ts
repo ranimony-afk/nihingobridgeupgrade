@@ -1,10 +1,9 @@
 /**
  * AI services public surface.
  *
- * Phase 13.3B. Re-exports the canonical provider contract and factory so
- * downstream modules have a single, stable import path. Concrete provider
- * adapters are deliberately NOT re-exported: only the factory is allowed
- * to instantiate them.
+ * Phase 13.3B + 13.4A. Re-exports the canonical provider contract,
+ * factory, and the grounded answer application service. Concrete
+ * provider adapters are deliberately NOT re-exported.
  */
 
 import "server-only";
@@ -30,6 +29,12 @@ export {
   createAIProvider,
   getRegisteredProviderIds,
 } from "@/services/ai/factory";
+export { GroundedAnswerService } from "@/services/ai/groundedAnswerService";
+export type {
+  Citation,
+  GroundedAnswerRequest,
+  GroundedAnswerResponse,
+} from "@/services/ai/groundedAnswerService";
 // KnowledgeRetriever remains the canonical retrieval entry point. It is
 // exported from its own module to make the "retrieval happens upstream of
 // the provider" boundary explicit in imports.
