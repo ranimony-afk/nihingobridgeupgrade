@@ -27,11 +27,16 @@ import { MockAIProvider } from "@/services/ai/providers/mock";
 // Snapshot env so we can restore after each test.
 const ENV_SNAPSHOT: Record<string, string | undefined> = {
   AI_PROVIDER: undefined,
+  AI_REQUEST_TIMEOUT_MS: undefined,
   ANTHROPIC_API_KEY: undefined,
+  ANTHROPIC_MODEL: undefined,
+  ANTHROPIC_API_URL: undefined,
   OPENAI_API_KEY: undefined,
   MOCK_AI_MODEL: undefined,
   MOCK_AI_SCENARIO: undefined,
   MOCK_AI_LATENCY_MS: undefined,
+  AI_DEBUG_LOGS: undefined,
+  NODE_ENV: undefined,
 };
 
 beforeEach(() => {
@@ -107,31 +112,45 @@ describe("provider selection: unsupported id fails closed", () => {
   it("registered ids include exactly the built-ins", () => {
     const ids = getRegisteredProviderIds();
     expect(ids).toContain("mock");
-    // Future adapters will add their id here; "anthropic" is a recognised
-    // id but its adapter is not shipped in 13.3B — selection must fail
-    // closed rather than resolve to an instance.
+    expect(ids).toContain("anthropic");
+    // Future adapters will add their id here.
     expect(ids).not.toContain("openai");
   });
 });
 
 /* ============================================================
- * 2b. Anthropic is a designed id but adapter is not yet shipped
+ * 2b. Anthropic provider selection (13.3D)
  * ============================================================ */
-describe("provider selection: anthropic id recognised but not implemented", () => {
-  it("AI_PROVIDER=anthropic fails with CONFIGURATION_ERROR (adapter deferred)", () => {
+describe("provider selection: anthropic adapter", () => {
+  it("AI_PROVIDER=anthropic without ANTHROPIC_API_KEY fails closed with AUTHENTICATION_ERROR", () => {
     setEnv("AI_PROVIDER", "anthropic");
-    setEnv("ANTHROPIC_API_KEY", "sk-test-not-a-real-key");
+    setEnv("ANTHROPIC_API_KEY", "");
+    setEnv("ANTHROPIC_MODEL", "claude-test");
     try {
       createAIProvider();
       expect.unreachable("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(AIProviderError);
       const e = err as AIProviderError;
-      expect(e.code).toBe("CONFIGURATION_ERROR");
+      // Missing key is an authentication/credential failure, not a
+      // silent fallback to mock.
+      expect(e.code).toBe("AUTHENTICATION_ERROR");
       expect(e.provider).toBe("anthropic");
       expect(e.retryable).toBe(false);
-      expect(e.message).toMatch(/anthropic/i);
     }
+  });
+
+  it("AI_PROVIDER=anthropic with a key creates an AnthropicProvider instance", () => {
+    setEnv("AI_PROVIDER", "anthropic");
+    setEnv("ANTHROPIC_API_KEY", "sk-test-not-a-real-key");
+    setEnv("ANTHROPIC_MODEL", "claude-test-model");
+    const p = createAIProvider();
+    expect(p.id).toBe("anthropic");
+    expect(p.model).toBe("claude-test-model");
+  });
+
+  it("anthropic is in the registered provider ids list", () => {
+    expect(getRegisteredProviderIds()).toContain("anthropic");
   });
 });
 
@@ -597,11 +616,16 @@ describe("server-only boundary", () => {
     const providerSrc = fs.readFileSync("src/services/ai/provider.ts", "utf8");
     const factorySrc = fs.readFileSync("src/services/ai/factory.ts", "utf8");
     const mockSrc = fs.readFileSync("src/services/ai/providers/mock.ts", "utf8");
+    const anthropicSrc = fs.readFileSync(
+      "src/services/ai/providers/anthropic.ts",
+      "utf8",
+    );
     const indexSrc = fs.readFileSync("src/services/ai/index.ts", "utf8");
     for (const [name, src] of [
       ["provider.ts", providerSrc],
       ["factory.ts", factorySrc],
       ["providers/mock.ts", mockSrc],
+      ["providers/anthropic.ts", anthropicSrc],
       ["index.ts", indexSrc],
     ] as const) {
       expect(src, `${name} must import "server-only"`).toContain(
