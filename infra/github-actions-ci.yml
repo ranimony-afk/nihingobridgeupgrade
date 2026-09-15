@@ -1,0 +1,152 @@
+# Phase 13 Gate Zero — deterministic CI for the canonical NihongoBridge repository.
+#
+# ACTIVATION REQUIRED (deliberate path, not a mistake):
+#   GitHub forbids a GitHub App installation from creating or updating files
+#   under `.github/workflows/` unless it is granted the `workflows` permission,
+#   and the Arena agent token is not. `git push` is rejected with
+#   "refusing to allow a GitHub App to create or update workflow".
+#   This file is therefore staged at a reviewable, pushable path. A maintainer
+#   enables it with exactly one command (it is otherwise byte-identical):
+#
+#     mkdir -p .github/workflows && git mv infra/github-actions-ci.yml .github/workflows/ci.yml && git commit -m "ci: activate Gate Zero workflow"
+#
+#   Every step in this workflow HAS been executed and passed locally against a
+#   real PostgreSQL 18.4 instance during Gate Zero — see
+#   reports/gates/PHASE-13-GATE-ZERO-REMEDIATION.md §8/§9. What has NOT been
+#   observed is this file being *scheduled* by GitHub Actions.
+#
+# Purpose (reports/gates/PHASE-13-GATE-ZERO-REMEDIATION.md §8):
+#   prove that `npm ci` and the existing Vitest suite run reproducibly from a
+#   clean checkout against a REAL PostgreSQL instance — which no prior phase
+#   ever did (every earlier "gate PASS" was asserted from an ephemeral agent
+#   workspace whose lockfile and database were never part of the tree).
+#
+# Database safety:
+#   - This job touches ONLY the disposable, per-run `postgres` service container
+#     below: created empty, destroyed with the job, no data of record.
+#   - It holds NO production credentials and cannot reach a hosted database:
+#     DATABASE_URL is assembled from hard-coded throwaway container values and is
+#     never read from repository secrets.
+#   - `--force` on `drizzle-kit push` is acceptable ONLY because the target is a
+#     freshly created empty schema. It must never be pointed at a real database.
+#   - No migration history is introduced by this prompt; schema is
+#     push-initialised to match the repository's existing pre-13.5 convention.
+#
+# Least privilege: read-only `contents` token, no write scopes, no secrets.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Install · Schema · Test · Typecheck · Lint · Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: nihongo
+          POSTGRES_PASSWORD: nihongo_ci_only
+          POSTGRES_DB: nihongo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nihongo -d nihongo_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      # Disposable CI-only DSN — deliberately NOT a GitHub secret. There is no
+      # credential worth protecting here, and inlining it makes it impossible
+      # for this job to point at production by accident.
+      DATABASE_URL: postgresql://nihongo:nihongo_ci_only@localhost:5432/nihongo_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Satisfies package.json engines (>=22). Gate Zero was verified locally
+          # on Node v22.22.3 / npm 10.9.8.
+          node-version: "22"
+          cache: npm
+
+      - name: Install (P1 — deterministic from the committed lockfile)
+        run: npm ci --no-audit --no-fund
+
+      - name: Assert toolchain determinism (P2 — lint verdict must not float)
+        # Fails loudly if the floating `eslint-plugin-react-hooks: ^7.0.0` range
+        # ever resolves off the pinned baseline. A 7.1.0+ resolution silently
+        # promotes React-Compiler rules to error, which is exactly how the lint
+        # gate drifted. Any future bump must be an intentional, documented change
+        # (ideally accompanied by fixing the findings rather than re-pinning).
+        run: |
+          node -e '
+            const fs = require("fs");
+            const installed = JSON.parse(fs.readFileSync("node_modules/eslint-plugin-react-hooks/package.json", "utf8")).version;
+            const locked = JSON.parse(fs.readFileSync("package-lock.json", "utf8")).packages["node_modules/eslint-plugin-react-hooks"].version;
+            console.log("eslint-plugin-react-hooks — installed:", installed, "| lockfile:", locked);
+            if (installed !== locked) { console.error("installed tree does not match the committed lockfile"); process.exit(1); }
+            if (locked !== "7.0.1") { console.error("lockfile no longer pins the verified 0-error baseline 7.0.1 (see Gate Zero §6)"); process.exit(1); }
+          '
+
+      - name: Initialize disposable schema
+        # Explicit CLI flags because the committed drizzle.config.json is unusable
+        # (drizzle-kit loads it, then fails on the `dialect` key). Recorded as an
+        # out-of-scope limitation in Gate Zero §15 — deliberately NOT fixed here.
+        run: npx drizzle-kit push --dialect postgresql --schema ./src/db/schema.ts --url "$DATABASE_URL" --force
+
+      - name: Test (P3/P4 — real Vitest run against PostgreSQL)
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npm run build
+
+      - name: Assert build/runtime contract — no database dependency at boot
+        # Protects the architecture guarantee that `next build` and `next start`
+        # never require a reachable DATABASE_URL (the lazy pool in src/db/index.ts).
+        # With the DB unreachable, the server must still boot and /api/health must
+        # degrade to {"ok":false} with a 500 rather than crash.
+        run: |
+          set -uo pipefail
+          export DATABASE_URL="postgresql://nihongo:nihongo_ci_only@127.0.0.1:1/nihongo_test"
+          npx next start -p 3100 >/tmp/next-start.log 2>&1 &
+          SERVER=$!
+          trap 'kill $SERVER 2>/dev/null || true' EXIT
+          code=000
+          for _ in $(seq 1 30); do
+            code=$(curl -s -o /tmp/health.json -w '%{http_code}' http://127.0.0.1:3100/api/health || echo 000)
+            [ "$code" = "500" ] && break
+            sleep 1
+          done
+          echo "GET /api/health -> HTTP $code"
+          cat /tmp/health.json 2>/dev/null || true
+          if [ "$code" != "500" ]; then
+            echo "--- server log ---"; tail -n 30 /tmp/next-start.log
+            echo "expected a graceful 500 from /api/health with no reachable database"; exit 1
+          fi
+          grep -q '"ok":false' /tmp/health.json
+          echo "OK: server boots without a reachable database and /api/health degrades gracefully"
