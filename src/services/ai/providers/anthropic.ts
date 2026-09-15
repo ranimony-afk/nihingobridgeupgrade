@@ -458,12 +458,15 @@ export class AnthropicProvider implements AIProvider {
       // Non-JSON error body (HTML gateway page, etc.) — treat as upstream.
     }
 
-    // Safe-log without leaking the error body (may contain prompt echoes).
+    // Safe-log without leaking the error body (Anthropic echoes request
+    // content in many validation/error messages, which we must never log).
+    // We log only the status, Anthropic error type, and body LENGTH.
+    // There is no verbose flag that bypasses this — body content never
+    // reaches logs, period.
     this.log("error", ctx, {
       status,
       anthropicErrorType: errorType,
-      // Never include errorMessage — it can echo request content.
-      bodyPreview: safePreview(text),
+      bodyLength: typeof text === "string" ? text.length : 0,
     });
 
     const base: Partial<AIErrorOptions> = {

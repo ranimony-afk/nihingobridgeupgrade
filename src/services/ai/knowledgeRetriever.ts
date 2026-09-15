@@ -17,6 +17,8 @@
  *     kanji store is introduced.
  */
 
+import "server-only";
+
 import { db } from "@/db";
 import {
   dictionaryEntries as dictionaryTable,

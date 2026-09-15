@@ -501,18 +501,42 @@ describe("anthropic adapter: error mapping", () => {
  * ============================================================ */
 
 describe("anthropic adapter: timeout and cancellation", () => {
-  it("throws TIMEOUT when request exceeds AI_REQUEST_TIMEOUT_MS", async () => {
-    // Mock fetch that hangs forever (never resolves). The adapter must
-    // abort via its internal controller.
-    const hangingFetch: typeof fetch = (() =>
-      new Promise<Response>(() => {
-        /* never resolves */
+  /**
+   * A fetch that never resolves on its own, BUT listens for the signal
+   * and rejects when it aborts. This mirrors how real fetch() behaves
+   * (Node 18+ rejects with AbortError when the signal fires) and keeps
+   * vitest from hanging on an open promise after the test assertion.
+   */
+  function hangingFetch(): typeof fetch {
+    return ((_url: RequestInfo, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal as AbortSignal | undefined;
+        if (signal) {
+          if (signal.aborted) {
+            reject(new DOMException(signal.reason?.message ?? "aborted", "AbortError"));
+            return;
+          }
+          signal.addEventListener(
+            "abort",
+            () =>
+              reject(
+                new DOMException(
+                  signal.reason instanceof Error ? signal.reason.message : "aborted",
+                  signal.reason instanceof DOMException ? signal.reason.name : "AbortError",
+                ),
+              ),
+            { once: true },
+          );
+        }
       })) as unknown as typeof fetch;
+  }
+
+  it("throws TIMEOUT when request exceeds AI_REQUEST_TIMEOUT_MS", async () => {
     const p = new AnthropicProvider({
       apiKey: "sk",
       model: "m",
       timeoutMs: 20,
-      fetchImpl: hangingFetch,
+      fetchImpl: hangingFetch(),
     });
     const start = Date.now();
     try {
@@ -531,15 +555,11 @@ describe("anthropic adapter: timeout and cancellation", () => {
     const controller = new AbortController();
     // Abort before the request resolves.
     setTimeout(() => controller.abort(), 10);
-    const hangingFetch: typeof fetch = (() =>
-      new Promise<Response>(() => {
-        /* never resolves */
-      })) as unknown as typeof fetch;
     const p = new AnthropicProvider({
       apiKey: "sk",
       model: "m",
       timeoutMs: 5000,
-      fetchImpl: hangingFetch,
+      fetchImpl: hangingFetch(),
     });
     try {
       await p.chat(baseRequest({ signal: controller.signal }));
@@ -598,9 +618,6 @@ describe("anthropic adapter: timeout and cancellation", () => {
 
 describe("anthropic adapter: safety", () => {
   it("never logs API keys or prompt content on errors", async () => {
-    // Force debug logging on (test harness defaults to NODE_ENV=test which
-    // silences adapter logs; we bypass that by also setting AI_DEBUG_LOGS
-    // which the adapter checks).
     setEnv("AI_DEBUG_LOGS", "1");
     const errors: string[] = [];
     const origErr = console.error.bind(console);
@@ -615,7 +632,7 @@ describe("anthropic adapter: safety", () => {
           errorResponse(
             500,
             "api_error",
-            "echoed prompt: What does 水 mean?",
+            "echoed prompt: What does 水 mean? key=sk-super-secret-key-abcdef",
           ),
         ),
       });
@@ -630,10 +647,14 @@ describe("anthropic adapter: safety", () => {
     }
     const combined = errors.join(" ");
     expect(combined).toContain("[ai:anthropic]");
+    // No secret, no prompt content, no upstream message text anywhere.
     expect(combined).not.toContain("sk-super-secret-key-abcdef");
-    expect(combined).not.toContain("水"); // prompt contents must not leak
-    expect(combined).not.toContain("Japanese-language tutor"); // system prompt
-    expect(combined).not.toContain("echoed prompt"); // upstream message
+    expect(combined).not.toContain("水");
+    expect(combined).not.toContain("Japanese-language tutor");
+    expect(combined).not.toContain("echoed prompt");
+    // bodyPreview must NOT be present — only bodyLength.
+    expect(combined).not.toContain("bodyPreview");
+    expect(combined).toContain("bodyLength");
   });
 
   it("toJSON() on thrown AIProviderError does not leak causes", async () => {
