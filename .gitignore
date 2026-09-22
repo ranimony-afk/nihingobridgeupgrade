@@ -23,8 +23,7 @@ yarn-error.log*
 pnpm-debug.log*
 *.tsbuildinfo
 
-# Drizzle generated metadata
-/drizzle
+
 
 # OS / editor
 .DS_Store
