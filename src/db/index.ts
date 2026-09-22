@@ -33,9 +33,33 @@ const globalForDb = globalThis as typeof globalThis & {
 /** Module-level singleton for production (global cache is for dev HMR). */
 let productionPool: Pool | undefined;
 
+/**
+ * Local PostgreSQL servers — the disposable CI container and a developer's
+ * own instance — normally run with TLS disabled. `ssl: { … }` still
+ * *requests* TLS (it only relaxes certificate verification), so sending it
+ * to such a server fails with "The server does not support SSL
+ * connections". The explicit option is therefore applied only when the
+ * target is not a loopback host.
+ *
+ * Returns false when the host cannot be determined, so the production
+ * behaviour is the default.
+ */
+function isLoopbackTarget(connectionString: string | undefined): boolean {
+  if (!connectionString) return false;
+  let host: string;
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    return false;
+  }
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
 function createPool(): Pool {
+  const connectionString = process.env.DATABASE_URL;
+
   return new Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     // The Supabase transaction pooler presents a certificate chain that does
     // not terminate in a root inside the Node.js trust store, so full chain
     // verification fails with SELF_SIGNED_CERT_IN_CHAIN.
@@ -49,9 +73,13 @@ function createPool(): Pool {
     // TLS remains enabled; only server-certificate authentication is relaxed
     // (libpq `require` semantics). This is scoped to the database connection
     // and is not a global bypass such as NODE_TLS_REJECT_UNAUTHORIZED.
-    ssl: {
-      rejectUnauthorized: false,
-    },
+    ...(isLoopbackTarget(connectionString)
+      ? {}
+      : {
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        }),
   });
 }
 
