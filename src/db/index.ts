@@ -36,6 +36,22 @@ let productionPool: Pool | undefined;
 function createPool(): Pool {
   return new Pool({
     connectionString: process.env.DATABASE_URL,
+    // The Supabase transaction pooler presents a certificate chain that does
+    // not terminate in a root inside the Node.js trust store, so full chain
+    // verification fails with SELF_SIGNED_CERT_IN_CHAIN.
+    //
+    // This must stay an explicit Pool option rather than a DSN parameter:
+    // `pg` builds its config with
+    //     Object.assign({}, config, parse(connectionString))
+    // so any `sslmode` in DATABASE_URL overwrites this option. DATABASE_URL
+    // therefore carries no sslmode / sslrootcert / sslcert / sslkey.
+    //
+    // TLS remains enabled; only server-certificate authentication is relaxed
+    // (libpq `require` semantics). This is scoped to the database connection
+    // and is not a global bypass such as NODE_TLS_REJECT_UNAUTHORIZED.
+    ssl: {
+      rejectUnauthorized: false,
+    },
   });
 }
 
