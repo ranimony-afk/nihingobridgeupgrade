@@ -34,6 +34,7 @@ export function Navbar() {
 
   const navItems = [
     { href: "/", label: "Overview", icon: Sparkles },
+    { href: "/dictionary", label: "Dictionary", icon: BookOpen },
     { href: "/kana", label: "Kana Chart", icon: Languages },
     { href: "/kanji", label: "Kanji Tree", icon: Network },
     { href: "/jlpt/test/jlpt-n5-mock-01", label: "N5 Mock Exam", icon: Award },
