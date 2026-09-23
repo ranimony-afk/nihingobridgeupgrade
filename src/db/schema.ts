@@ -1,16 +1,52 @@
 import { pgTable, text, timestamp, boolean, integer, jsonb, real, uniqueIndex, index } from "drizzle-orm/pg-core";
 import type { SessionQueueOrder } from "@/types/srs";
 
-export const users = pgTable("users", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  email: text("email"),
-  avatarUrl: text("avatar_url"),
-  targetJlptLevel: text("target_jlpt_level").default("N5").notNull(),
-  targetDate: text("target_date"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    email: text("email"),
+    avatarUrl: text("avatar_url"),
+    targetJlptLevel: text("target_jlpt_level").default("N5").notNull(),
+    targetDate: text("target_date"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    /* ============================================================
+     * PHASE 13.4D-1 — application identity foundation (additive only).
+     *
+     * `authProvider` + `authSubject` record the external authentication
+     * identity (e.g. provider "supabase", subject = Auth `sub` claim) that
+     * this internal user was provisioned from. Both are NULLABLE so legacy
+     * rows stay valid; Postgres unique indexes treat NULLs as distinct, so
+     * unmapped rows can never collide. When both are set, the pair is
+     * globally unique: no two application users may represent the same
+     * provider identity. Deliberately NOT a foreign key and NOT equal to
+     * users.id — the mapping stays explicit and provider-independent, and
+     * can later grow into a `user_identities` table if a second provider
+     * is ever introduced (not needed now).
+     *
+     * `role` is the APPLICATION-level CMS role. It is owned here, never
+     * sourced from provider JWT claims. Validity is enforced at the
+     * application layer (consistent with this schema: zero CHECK
+     * constraints exist repository-wide). Default `learner`: existing rows
+     * and new rows are least-privileged unless explicitly elevated by a
+     * future audited operation.
+     * ============================================================ */
+    /** External auth provider key, e.g. "supabase". NULL = not yet mapped. */
+    authProvider: text("auth_provider"),
+    /** Stable provider subject, e.g. Supabase Auth `sub`. NULL = unmapped. */
+    authSubject: text("auth_subject"),
+    /** Controlled: learner | editor | reviewer | admin. Default learner. */
+    role: text("role").default("learner").notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_users_auth_identity_unique").on(
+      table.authProvider,
+      table.authSubject
+    ),
+  ]
+);
 
 export const questions = pgTable("questions", {
   id: text("id").primaryKey(),
@@ -775,6 +811,133 @@ export const entityTranslations = pgTable(
     index("idx_entity_translations_reverse").on(
       table.language,
       table.translatedText
+    ),
+  ]
+);
+
+/* ============================================================
+ * PHASE 13.2 — Knowledge CMS: editorial overlay lifecycle
+ *
+ * ADDITIVE ONLY. These three tables form the versioned editorial
+ * overlay on top of the canonical ETL knowledge baseline. They NEVER
+ * modify canonical tables:
+ *   - `entity_id IS NOT NULL` → overlay for an existing canonical entity
+ *     (validated at the application level; NO polymorphic FK by design)
+ *   - `entity_id IS NULL` → CMS-originated content with no canonical entity
+ *
+ * Controlled vocabularies are documented on each column and enforced by
+ * the CMS service layer (Phase 13.3+), consistent with the rest of this
+ * schema (e.g. srs_reviews.rating, questions.jlpt_level): no CHECK
+ * constraints, so vocabulary evolution never requires a migration.
+ *
+ * No foreign keys — including author/reviewer/actor references to users.
+ * The existing schema keeps every cross-table reference as an
+ * application-validated text key (zero FKs repository-wide); introducing
+ * FKs here would couple the CMS lifecycle to the users-table lifecycle
+ * and break that consistency. Trade-off documented per Phase 13.2 §7.
+ *
+ * Learner-visibility rule (resolved by a later CMS resolver, NOT here):
+ * published CMS payload if present, otherwise the canonical ETL record.
+ * Draft/review/approved/scheduled content is never learner-visible.
+ * ============================================================ */
+
+/** Current editorial object per CMS-managed knowledge item. */
+export const cmsContentItems = pgTable(
+  "cms_content_items",
+  {
+    id: text("id").primaryKey(),
+    /** Controlled: dictionary | kanji | radical | grammar | sentence | jlpt | article | learning_resource */
+    contentType: text("content_type").notNull(),
+    /** Canonical entity key when overlaying ETL content; NULL when CMS-originated. No FK (polymorphic). */
+    entityId: text("entity_id"),
+    title: text("title").notNull(),
+    /** Controlled: draft | review | approved | scheduled | published | archived */
+    status: text("status").default("draft").notNull(),
+    /** Denormalized pointer to the latest cms_content_versions.version_number (1-based). Maintained by the CMS service under concurrency protection. */
+    currentVersion: integer("current_version").default(1).notNull(),
+    /** Editable working payload; published resolution uses the published version snapshot. */
+    stagedPayload: jsonb("staged_payload")
+      .default({})
+      .notNull()
+      .$type<Record<string, unknown>>(),
+    /** Provenance ref into knowledge_sources (or a first-party editorial ref). Required on every item. */
+    sourceRef: text("source_ref").notNull(),
+    /** Controlled: canonical_override | editorial_curated | community_verified */
+    provenanceType: text("provenance_type").notNull(),
+    /** Canonical source preserved when this item overrides ETL content. */
+    originalSourceRef: text("original_source_ref"),
+    /** Author user key. No FK — consistent with users references elsewhere (e.g. srs_cards.user_id). */
+    authorId: text("author_id").notNull(),
+    reviewerId: text("reviewer_id"),
+    editorialNotes: text("editorial_notes"),
+    scheduledAt: timestamp("scheduled_at"),
+    publishedAt: timestamp("published_at"),
+    archivedAt: timestamp("archived_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_cms_content_items_type_status").on(
+      table.contentType,
+      table.status
+    ),
+    index("idx_cms_content_items_entity").on(table.entityId),
+    index("idx_cms_content_items_status_scheduled").on(
+      table.status,
+      table.scheduledAt
+    ),
+  ]
+);
+
+/** Immutable editorial snapshots. Rows are insert-only; never updated in place. */
+export const cmsContentVersions = pgTable(
+  "cms_content_versions",
+  {
+    id: text("id").primaryKey(),
+    /** Parent cms_content_items.id. No FK — application-validated, consistent with this schema. */
+    contentItemId: text("content_item_id").notNull(),
+    /** 1-based per item; unique with contentItemId so a version can never be silently overwritten. */
+    versionNumber: integer("version_number").notNull(),
+    snapshotPayload: jsonb("snapshot_payload")
+      .notNull()
+      .$type<Record<string, unknown>>(),
+    /** Item status at snapshot time (same controlled vocabulary as cms_content_items.status). */
+    statusAtSnapshot: text("status_at_snapshot").notNull(),
+    createdById: text("created_by_id").notNull(),
+    changeSummary: text("change_summary"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_cms_content_versions_unique").on(
+      table.contentItemId,
+      table.versionNumber
+    ),
+  ]
+);
+
+/** Immutable editorial action history. Rows are insert-only. */
+export const cmsAuditLog = pgTable(
+  "cms_audit_log",
+  {
+    id: text("id").primaryKey(),
+    /** Nullable so item-scoped and item-independent actions share one history. */
+    contentItemId: text("content_item_id"),
+    actorId: text("actor_id").notNull(),
+    /** Controlled: create_draft | edit | submit_review | approve | schedule | publish | archive | rollback | verify_translation */
+    action: text("action").notNull(),
+    /** Structured action context (status transitions, version refs, rejection reasons, ...). */
+    details: jsonb("details").default({}).notNull().$type<Record<string, unknown>>(),
+    ipAddress: text("ip_address"),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("idx_cms_audit_log_item_occurred").on(
+      table.contentItemId,
+      table.occurredAt
+    ),
+    index("idx_cms_audit_log_actor_occurred").on(
+      table.actorId,
+      table.occurredAt
     ),
   ]
 );

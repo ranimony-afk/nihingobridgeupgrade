@@ -12,6 +12,11 @@ import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
 import { KnowledgeService } from "@/services/knowledge/knowledgeService";
 import { TestService } from "@/services/jlpt/testService";
 import {
+  defaultPublicationStore,
+  resolveLearnerEntries,
+} from "@/services/publication";
+import type { PublicationStore } from "@/services/publication";
+import {
   type SearchTarget,
   type UnifiedSearchOptions,
   type UnifiedSearchResponse,
@@ -55,6 +60,8 @@ export class UnifiedSearchService {
     const jlptLevel = options.jlptLevel?.trim() || null;
     const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
     const offset = Math.max(options.offset ?? 0, 0);
+    const publicationStore: PublicationStore =
+      options.publicationStore ?? defaultPublicationStore;
 
     // If query is empty and no JLPT filter is provided, return an empty response early
     if (!query && !jlptLevel) {
@@ -80,7 +87,13 @@ export class UnifiedSearchService {
       searchPromises.push(
         (async () => {
           const tStart = performance.now();
-          const items = await this.searchTarget(target, query, jlptLevel, limit);
+          const items = await this.searchTarget(
+            target,
+            query,
+            jlptLevel,
+            limit,
+            publicationStore
+          );
           targetDurationsMs[target] = Number((performance.now() - tStart).toFixed(2));
           return items;
         })()
@@ -120,11 +133,12 @@ export class UnifiedSearchService {
     target: SearchTarget,
     query: string,
     jlptLevel: string | null,
-    limit: number
+    limit: number,
+    publicationStore: PublicationStore = defaultPublicationStore
   ): Promise<UnifiedSearchResultItem[]> {
     switch (target) {
       case "dictionary":
-        return this.searchDictionary(query, jlptLevel, limit);
+        return this.searchDictionary(query, jlptLevel, limit, publicationStore);
       case "kanji":
         return this.searchKanji(query, jlptLevel, limit);
       case "radicals":
@@ -145,7 +159,8 @@ export class UnifiedSearchService {
   private static async searchDictionary(
     query: string,
     jlptLevel: string | null,
-    limit: number
+    limit: number,
+    publicationStore: PublicationStore = defaultPublicationStore
   ): Promise<UnifiedSearchResultItem[]> {
     const escaped = escapeLikePattern(query);
     const pattern = `%${escaped}%`;
@@ -172,7 +187,22 @@ export class UnifiedSearchService {
       .where(conditions.length ? and(...conditions) : undefined)
       .limit(limit * 2);
 
-    return rows.map((r) => {
+    // 13.5F: published CMS overrides replace the displayed dictionary
+    // representation (entity identity and ranking inputs unchanged in
+    // shape). Overlay failure degrades to canonical rows.
+    let displayRows = rows;
+    try {
+      displayRows = (
+        await resolveLearnerEntries(publicationStore, rows)
+      ).entries;
+    } catch (error) {
+      console.warn(
+        "Dictionary publication overlay unavailable; serving canonical.",
+        error
+      );
+    }
+
+    return displayRows.map((r) => {
       const senses = Array.isArray(r.senses) ? r.senses : [];
       const glossList = senses.flatMap((s: any) => s.glosses || []);
       const meaningText = glossList.join("; ") || "No gloss available";
