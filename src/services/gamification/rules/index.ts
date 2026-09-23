@@ -507,6 +507,44 @@ export const streakDayRule: XpRule = {
   },
 };
 
+/* ============================================================
+ * RULE 7 — Content studied / read
+ * ============================================================ */
+export const contentReadRule: XpRule = {
+  key: "content-read",
+  version: "1.0.0",
+  eventType: "content.read",
+  name: "Content Studied",
+  description: "Awards XP when a user studies or reads a dictionary, kanji, grammar, or sentence item.",
+  basePoints: 5,
+  dailyCap: 200,
+  defaultParams: {
+    basePoints: 5,
+    n5Multiplier: 1.0,
+    n4Multiplier: 1.1,
+    n3Multiplier: 1.25,
+    n2Multiplier: 1.4,
+    n1Multiplier: 1.6,
+  },
+  paramFields: [
+    { key: "basePoints", label: "Base points", type: "number", min: 1, max: 50, step: 1, description: "XP for reading an item." },
+  ],
+  score(ctx: XpRuleContext): XpRuleOutcome {
+    const { payload: p, params } = ctx;
+    const breakdown: XpBreakdownLine[] = [];
+    const base = num(params, "basePoints", 5);
+    breakdown.push({ label: "Item studied", value: base, kind: "base" });
+
+    const levelKey = `${(p.jlptLevel ?? "N5").toLowerCase()}Multiplier`;
+    const multiplier = num(params, levelKey, 1);
+    if (multiplier !== 1) {
+      breakdown.push({ label: `${p.jlptLevel} level`, value: multiplier, kind: "multiplier" });
+    }
+
+    return finalise(this, ctx, base, multiplier, breakdown);
+  },
+};
+
 /** Every rule the platform knows about. */
 export const XP_RULES: XpRule[] = [
   reviewGradedRule,
@@ -515,4 +553,5 @@ export const XP_RULES: XpRule[] = [
   testCompletedRule,
   knowledgeAddedRule,
   streakDayRule,
+  contentReadRule,
 ];

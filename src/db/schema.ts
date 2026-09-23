@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, integer, jsonb, real } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, integer, jsonb, real, uniqueIndex, index } from "drizzle-orm/pg-core";
 import type { SessionQueueOrder } from "@/types/srs";
 
 export const users = pgTable("users", {
@@ -727,3 +727,54 @@ export const exampleSentences = pgTable("example_sentences", {
   tags: jsonb("tags").default([]).notNull().$type<string[]>(),
   sourceRef: text("source_ref").notNull(),
 });
+
+/* ============================================================
+ * PHASE 12B — Multilingual Translation Storage & Reverse Lookup
+ *
+ * Dedicated additive translation repository separating localised
+ * content from canonical Japanese records.
+ * Languages: en (English), ta (Tamil), ml (Malayalam)
+ * Sources: canonical | verified_human | machine
+ * ============================================================ */
+export const entityTranslations = pgTable(
+  "entity_translations",
+  {
+    id: text("id").primaryKey(),
+    /** Controlled: dictionary | kanji | grammar | sentence | radical | jlpt */
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    /** Controlled: en | ta | ml */
+    language: text("language").notNull(),
+    /** Primary localized searchable gloss (normalized) */
+    translatedText: text("translated_text").notNull(),
+    /** Optional secondary transliteration or romanization */
+    secondaryText: text("secondary_text"),
+    /** Optional cultural, contextual, or grammatical notes */
+    contextNotes: text("context_notes"),
+    /** Controlled: canonical | verified_human | machine */
+    sourceType: text("source_type").notNull(),
+    /** Attribution reference, e.g. dataset ref or model version */
+    sourceRef: text("source_ref"),
+    /** Whether the translation has been verified by a qualified speaker */
+    isVerified: boolean("is_verified").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("idx_entity_translations_unique").on(
+      table.entityType,
+      table.entityId,
+      table.language,
+      table.translatedText
+    ),
+    index("idx_entity_translations_lookup").on(
+      table.entityType,
+      table.entityId,
+      table.language
+    ),
+    index("idx_entity_translations_reverse").on(
+      table.language,
+      table.translatedText
+    ),
+  ]
+);
