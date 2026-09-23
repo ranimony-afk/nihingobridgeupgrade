@@ -450,6 +450,8 @@ export class SrsService {
     hint?: string;
     cardType?: string;
     sourceType?: string;
+    sourceRef?: string;
+    sourceQuestionId?: string;
   }): Promise<SrsCard | null> {
     await this.ensureSeeded();
 
@@ -476,6 +478,8 @@ export class SrsService {
         meaning: input.meaning || null,
         hint: input.hint || null,
         sourceType: input.sourceType || "manual",
+        sourceRef: input.sourceRef || null,
+        sourceQuestionId: input.sourceQuestionId || null,
         schedulerKey: deck.schedulerKey,
         dueAt: new Date(),
         phase: "learning",
