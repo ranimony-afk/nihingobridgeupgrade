@@ -31,3 +31,11 @@ Thumbs.db
 .idea/
 .vscode/
 *.pem
+
+# Knowledge Corpus & ETL Downloads (Phase 14)
+/data/
+*.gz
+*.xml
+*.xml.gz
+*.br
+

@@ -428,6 +428,18 @@ export class KnowledgeRetriever {
       .select()
       .from(dictionaryTable)
       .where(and(...filters))
+      .orderBy(
+        sql`CASE
+          WHEN ${dictionaryTable.headword} = ${query} AND ${dictionaryTable.jlptLevel} != 'NONE' THEN 1
+          WHEN ${dictionaryTable.headword} = ${query} THEN 2
+          WHEN ${dictionaryTable.reading} = ${query} AND ${dictionaryTable.jlptLevel} != 'NONE' THEN 3
+          WHEN ${dictionaryTable.reading} = ${query} THEN 4
+          WHEN lower(${dictionaryTable.romaji}) = lower(${query}) AND ${dictionaryTable.jlptLevel} != 'NONE' THEN 5
+          WHEN lower(${dictionaryTable.romaji}) = lower(${query}) THEN 6
+          WHEN ${dictionaryTable.jlptLevel} != 'NONE' THEN 7
+          ELSE 8
+        END`
+      )
       .limit(limit * 4);
 
     return rows

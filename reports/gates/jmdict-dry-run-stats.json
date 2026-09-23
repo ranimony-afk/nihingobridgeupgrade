@@ -1,0 +1,1171 @@
+{
+  "source": {
+    "sourceId": "upstream:jmdict:2023-08",
+    "sourceName": "JMdict Japanese-Multilingual Dictionary",
+    "version": "2023-08",
+    "releaseDate": "2023-08-20",
+    "license": "CC-BY-SA-3.0",
+    "attribution": "Electronic Dictionary Research and Development Group (EDRDG)",
+    "archiveSha256": "608800cfaff7806ad6642d68bf4aba3abb25d872030021a47faf8731f902eb16",
+    "archiveSizeBytes": 13383352,
+    "xmlSha256": "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162",
+    "xmlSizeBytes": 115331197
+  },
+  "timing": {
+    "startTime": "2026-09-23T12:31:50.217Z",
+    "endTime": "2026-09-23T12:32:02.686Z",
+    "durationMs": 12468,
+    "throughputRecordsPerSec": 16580,
+    "peakMemoryMb": 361
+  },
+  "counts": {
+    "totalXmlEntries": 206717,
+    "parsed": 206717,
+    "validTransformed": 206717,
+    "rejectedMalformed": 0,
+    "acceptedCanonical": 206717,
+    "duplicatesTotal": 0,
+    "duplicatesIdentical": 0,
+    "duplicatesConflicting": 0,
+    "kanaOnly": 39879,
+    "multiOrthography": 30936,
+    "multiReading": 33700,
+    "readingRestrictions": 3368,
+    "multiSense": 140310,
+    "multiPos": 40776,
+    "nonEnglishGlosses": 137578
+  },
+  "ids": {
+    "totalGenerated": 206717,
+    "uniqueIds": 206717,
+    "collisions": 0,
+    "sampleIds": [
+      "de-jmdict-1000000",
+      "de-jmdict-1001240",
+      "de-jmdict-1005860",
+      "de-jmdict-1011380",
+      "de-jmdict-5746414"
+    ]
+  },
+  "provenance": {
+    "stampedSourceRef": "upstream:jmdict:2023-08",
+    "verifiedCount": 206717,
+    "mismatchCount": 0
+  },
+  "romaji": {
+    "generatedCount": 206717,
+    "missingCount": 0,
+    "failures": 0
+  },
+  "jlptDistribution": {
+    "NONE": 206717
+  },
+  "posSummary": {
+    "recognizedCodesCount": 46,
+    "unknownCodesCount": 34,
+    "unknownCodeFrequencies": {
+      "adj-shiku": 8,
+      "v2m-s": 29,
+      "v4r": 37,
+      "vn": 9,
+      "adj-ku": 26,
+      "v2h-k": 2,
+      "v-unspec": 2,
+      "v4m": 3,
+      "v2r-k": 2,
+      "v2r-s": 23,
+      "vr": 13,
+      "v4s": 11,
+      "adj-nari": 30,
+      "v4k": 24,
+      "v2t-k": 4,
+      "v4h": 14,
+      "v4t": 7,
+      "v4g": 2,
+      "v2h-s": 8,
+      "v2g-s": 5,
+      "v2a-s": 3,
+      "v4b": 2,
+      "v2y-s": 5,
+      "v2d-s": 21,
+      "v2y-k": 5,
+      "v2k-k": 2,
+      "v2k-s": 5,
+      "v2g-k": 4,
+      "v2b-k": 3,
+      "v2s-s": 3,
+      "v2z-s": 1,
+      "v2t-s": 6,
+      "v2n-s": 3,
+      "v2w-s": 1
+    }
+  },
+  "diagnostics": {
+    "errorCount": 0,
+    "warningCount": 323,
+    "infoCount": 0,
+    "byCode": {
+      "UNKNOWN_POS_CODE": 323
+    }
+  },
+  "samples": {
+    "firstRecord": {
+      "id": "de-jmdict-1000000",
+      "headword": "ヽ",
+      "reading": "ヽ",
+      "romaji": "ヽ",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "unclassified"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "repetition mark in katakana"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "kana-only",
+        "gloss:dut:hitotsuten 一つ点: teken dat herhaling van het voorafgaande katakana-schriftteken aangeeft"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "lastRecord": {
+      "id": "de-jmdict-5746414",
+      "headword": "帝劇",
+      "reading": "ていげき",
+      "romaji": "teigeki",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "noun"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "Imperial Theatre (Tokyo)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [
+        "帝",
+        "劇"
+      ],
+      "tags": [
+        "misc:place",
+        "gloss:ger:Kaiserliches Theater (1911 in Marunouchi, Tōkyō, als erstes errichtetes Theater westl. Stils; Abk.)"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "deterministicSample": [
+      {
+        "id": "de-jmdict-1001240",
+        "headword": "おこしやす",
+        "reading": "おこしやす",
+        "romaji": "okoshiyasu",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "interjection"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "welcome!"
+            ],
+            "note": "used to greet customers"
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "kana-only",
+          "dialect:kyb",
+          "gloss:hun:fogadtatás",
+          "gloss:hun:szívesen látott",
+          "gloss:spa:bienvenido (en tiendas, etc.)"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-1005860",
+        "headword": "じっくり",
+        "reading": "じっくり",
+        "romaji": "jikkuri",
+        "jlptLevel": "NONE",
+        "isCommon": true,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "adverb",
+          "adverb taking to"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "(slowly and) carefully",
+              "without haste",
+              "thoroughly",
+              "deliberately",
+              "closely",
+              "meticulously"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "kana-only",
+          "misc:on-mim",
+          "gloss:dut:rustig",
+          "gloss:dut:kalm",
+          "gloss:dut:niet overhaast",
+          "gloss:dut:bezadigd",
+          "gloss:dut:zorgvuldig",
+          "gloss:dut:grondig",
+          "gloss:dut:bedachtzaam",
+          "gloss:dut:voldoende",
+          "gloss:fre:consciencieusement",
+          "gloss:ger:ordentlich",
+          "gloss:ger:gründlich",
+          "gloss:ger:bedachtsam",
+          "gloss:ger:reiflich",
+          "gloss:ger:sorgfältig",
+          "gloss:ger:in aller Ruhe",
+          "gloss:hun:határozottan",
+          "gloss:hun:kimérten",
+          "gloss:hun:szándékosan",
+          "gloss:rus:спокойно, не спеша",
+          "gloss:spa:con cuidado y minuciosamente",
+          "common"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-1011380",
+        "headword": "へぼ",
+        "reading": "へぼ",
+        "romaji": "hebo",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "na-adjective",
+          "noun"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "bungler",
+              "greenhorn",
+              "clumsy",
+              "poor hand"
+            ],
+            "note": "poss. from 平凡"
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "kana-only",
+          "gloss:ger:Stümperei",
+          "gloss:ger:Ungeschicklichkeit",
+          "gloss:ger:Stümper",
+          "gloss:ger:Pfuscher",
+          "gloss:ger:Halbwisser",
+          "gloss:ger:Halbkönner",
+          "gloss:ger:stümperhaft",
+          "gloss:ger:schlampig",
+          "gloss:ger:pfuscherhaft",
+          "gloss:ger:ungeschickt",
+          "gloss:ger:schlecht",
+          "gloss:hun:esetlen",
+          "gloss:rus:(разг.:) ~[な]",
+          "gloss:rus:1) неумелый, неопытный, плохой",
+          "gloss:rus:2) зелёный, неспелый"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-1055930",
+        "headword": "サイドブレーキ",
+        "reading": "サイドブレーキ",
+        "romaji": "saidobureeki",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "noun"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "handbrake",
+              "parking brake",
+              "emergency brake"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "alt-reading:サイド・ブレーキ",
+          "kana-only",
+          "gloss:dut:handrem",
+          "gloss:dut:parkeerrem",
+          "gloss:ger:Handbremse (an der Seite des Fahrersitzes)",
+          "gloss:rus:((яп.) от (англ.) side + brake) (авт.) стояночный тормоз"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-1110850",
+        "headword": "フォワード",
+        "reading": "フォワード",
+        "romaji": "fuォwaado",
+        "jlptLevel": "NONE",
+        "isCommon": true,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "noun",
+          "suru verb"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "forward"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "forwarding (email)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "forwards",
+              "forward contract"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "kana-only",
+          "field:sports",
+          "field:comp",
+          "field:finc",
+          "gloss:dut:{sportt.} voorspeler",
+          "gloss:dut:spitsspeler",
+          "gloss:dut:spits",
+          "gloss:dut:voorhoedespeler",
+          "gloss:dut:aanvaller",
+          "gloss:hun:csatár",
+          "gloss:hun:előre haladó",
+          "gloss:hun:haladó szellemű",
+          "gloss:hun:koraérett",
+          "gloss:hun:korai",
+          "common"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-1270220",
+        "headword": "お陰様で",
+        "reading": "おかげさまで",
+        "romaji": "okagesamade",
+        "jlptLevel": "NONE",
+        "isCommon": true,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "expression"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "thankfully",
+              "fortunately",
+              "luckily",
+              "by God's grace",
+              "under the gods' shadow"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "thanks to your (his, their, everyone's, etc.) kindness",
+              "thanks to your assistance",
+              "thanks to your support",
+              "thanks to your efforts"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [
+          "陰",
+          "様",
+          "蔭",
+          "御"
+        ],
+        "tags": [
+          "alt:お蔭様で",
+          "alt:お陰さまで",
+          "alt:おかげ様で",
+          "alt:御陰様で",
+          "alt:御蔭様で",
+          "misc:pol",
+          "misc:uk",
+          "gloss:dut:dankzij u ~",
+          "gloss:dut:bedankt dat ~",
+          "gloss:dut:gelukkigerwijs ~",
+          "gloss:fre:(je vais bien) merci",
+          "gloss:fre:grâce à toi",
+          "gloss:fre:heureusement",
+          "gloss:fre:grâce à Dieu",
+          "gloss:ger:dank Ihrer freundlichen Unterstützung",
+          "gloss:slv:po vaši zaslugi",
+          "gloss:spa:gracias a dios",
+          "gloss:spa:gracias a ti",
+          "gloss:spa:afortunadamente",
+          "gloss:spa:gracias a Dios",
+          "gloss:spa:gracias a Ud.",
+          "gloss:spa:gracias a su ayuda",
+          "common"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-1530050",
+        "headword": "無事息災",
+        "reading": "ぶじそくさい",
+        "romaji": "bujisokusai",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "noun"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "safe and healthy",
+              "health and longevity"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [
+          "無",
+          "事",
+          "息",
+          "災"
+        ],
+        "tags": [
+          "misc:yoji"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-2087930",
+        "headword": "蹴上げ",
+        "reading": "けあげ",
+        "romaji": "keage",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "noun"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "riser (in a building)",
+              "rise"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [
+          "蹴",
+          "上"
+        ],
+        "tags": [
+          "alt:蹴上",
+          "gloss:ger:Höhe einer Treppenstufen",
+          "gloss:ger:Nach-oben-Stoßen",
+          "gloss:ger:etw. nach oben Gestoßenes",
+          "gloss:ger:Dreckspritzer",
+          "gloss:ger:aufgewirbelter Dreck",
+          "gloss:rus:1) пинок кверху; подбрасывание ногой",
+          "gloss:rus:2) место, куда ставят ногу при подъёме",
+          "gloss:rus:3) высота ступени"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-2622070",
+        "headword": "グラーヴェ",
+        "reading": "グラーヴェ",
+        "romaji": "guraaヴェ",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "noun"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "grave (tempo indication)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "grave (accent in French, etc.)"
+            ],
+            "note": null
+          },
+          {
+            "glosses": [
+              "(untranslated)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "alt-reading:グラーベ",
+          "kana-only",
+          "field:music",
+          "gloss:ger:grave (eine Vortragsanweisung)"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      },
+      {
+        "id": "de-jmdict-5001450",
+        "headword": "おかしなホテル",
+        "reading": "おかしなホテル",
+        "romaji": "okashinahoteru",
+        "jlptLevel": "NONE",
+        "isCommon": false,
+        "frequencyRank": null,
+        "partsOfSpeech": [
+          "noun"
+        ],
+        "senses": [
+          {
+            "glosses": [
+              "Plaza Suite (film)"
+            ],
+            "note": null
+          }
+        ],
+        "kanjiCharacters": [],
+        "tags": [
+          "kana-only",
+          "misc:work"
+        ],
+        "sourceRef": "upstream:jmdict:2023-08"
+      }
+    ],
+    "kanaOnlySample": {
+      "id": "de-jmdict-1000000",
+      "headword": "ヽ",
+      "reading": "ヽ",
+      "romaji": "ヽ",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "unclassified"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "repetition mark in katakana"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "kana-only",
+        "gloss:dut:hitotsuten 一つ点: teken dat herhaling van het voorafgaande katakana-schriftteken aangeeft"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "multiReadingSample": {
+      "id": "de-jmdict-1000040",
+      "headword": "〃",
+      "reading": "おなじ",
+      "romaji": "onaji",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "noun"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "ditto mark"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "alt-reading:おなじく",
+        "gloss:ger:Wiederholungszeichen in Tabellen",
+        "gloss:rus:знак \"то же самое\"",
+        "gloss:spa:signo ídem"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "multiOrthographySample": {
+      "id": "de-jmdict-1000090",
+      "headword": "○",
+      "reading": "まる",
+      "romaji": "maru",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "noun",
+        "unclassified"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "circle"
+          ],
+          "note": "sometimes used for zero"
+        },
+        {
+          "glosses": [
+            "\"correct\"",
+            "\"good\""
+          ],
+          "note": "when marking a test, homework, etc."
+        },
+        {
+          "glosses": [
+            "*",
+            "_"
+          ],
+          "note": "placeholder used to censor individual characters or indicate a space to be filled in"
+        },
+        {
+          "glosses": [
+            "period",
+            "full stop"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "handakuten (diacritic)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "alt:〇",
+        "gloss:ger:Kreis",
+        "gloss:ger:(Markierung für) richtig",
+        "gloss:ger:Richtigkeit",
+        "gloss:ger:Maru (je nach Font gibt es verschiedene Versionen des Kreises)",
+        "gloss:hun:karika",
+        "gloss:hun:kerület",
+        "gloss:hun:körpálya",
+        "gloss:hun:körzet",
+        "gloss:rus:круг",
+        "gloss:rus:ноль",
+        "gloss:spa:círculo (a veces usado como cero)",
+        "gloss:spa:'correcto' (al calificar)"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "restrictedReadingSample": {
+      "id": "de-jmdict-1000110",
+      "headword": "CDプレーヤー",
+      "reading": "シーディープレーヤー",
+      "romaji": "shiideィ-pureeyaa",
+      "jlptLevel": "NONE",
+      "isCommon": true,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "noun"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "CD player"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "alt:CDプレイヤー",
+        "alt-reading:シーディープレイヤー",
+        "restr:シーディープレーヤー->CDプレーヤー",
+        "restr:シーディープレイヤー->CDプレイヤー",
+        "gloss:fre:lecteur CD",
+        "gloss:ger:CD-Spieler",
+        "gloss:ger:CD-Player",
+        "gloss:rus:CD плеер",
+        "gloss:rus:проигрыватель компакт-дисков",
+        "gloss:spa:reproductor de CD (eng: CD player)",
+        "common"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "multiSenseSample": {
+      "id": "de-jmdict-1000040",
+      "headword": "〃",
+      "reading": "おなじ",
+      "romaji": "onaji",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "noun"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "ditto mark"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "alt-reading:おなじく",
+        "gloss:ger:Wiederholungszeichen in Tabellen",
+        "gloss:rus:знак \"то же самое\"",
+        "gloss:spa:signo ídem"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "multiPosSample": {
+      "id": "de-jmdict-1000090",
+      "headword": "○",
+      "reading": "まる",
+      "romaji": "maru",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "noun",
+        "unclassified"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "circle"
+          ],
+          "note": "sometimes used for zero"
+        },
+        {
+          "glosses": [
+            "\"correct\"",
+            "\"good\""
+          ],
+          "note": "when marking a test, homework, etc."
+        },
+        {
+          "glosses": [
+            "*",
+            "_"
+          ],
+          "note": "placeholder used to censor individual characters or indicate a space to be filled in"
+        },
+        {
+          "glosses": [
+            "period",
+            "full stop"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "handakuten (diacritic)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "alt:〇",
+        "gloss:ger:Kreis",
+        "gloss:ger:(Markierung für) richtig",
+        "gloss:ger:Richtigkeit",
+        "gloss:ger:Maru (je nach Font gibt es verschiedene Versionen des Kreises)",
+        "gloss:hun:karika",
+        "gloss:hun:kerület",
+        "gloss:hun:körpálya",
+        "gloss:hun:körzet",
+        "gloss:rus:круг",
+        "gloss:rus:ноль",
+        "gloss:spa:círculo (a veces usado como cero)",
+        "gloss:spa:'correcto' (al calificar)"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    },
+    "nonEnglishGlossSample": {
+      "id": "de-jmdict-1000000",
+      "headword": "ヽ",
+      "reading": "ヽ",
+      "romaji": "ヽ",
+      "jlptLevel": "NONE",
+      "isCommon": false,
+      "frequencyRank": null,
+      "partsOfSpeech": [
+        "unclassified"
+      ],
+      "senses": [
+        {
+          "glosses": [
+            "repetition mark in katakana"
+          ],
+          "note": null
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ],
+          "note": null
+        }
+      ],
+      "kanjiCharacters": [],
+      "tags": [
+        "kana-only",
+        "gloss:dut:hitotsuten 一つ点: teken dat herhaling van het voorafgaande katakana-schriftteken aangeeft"
+      ],
+      "sourceRef": "upstream:jmdict:2023-08"
+    }
+  }
+}
