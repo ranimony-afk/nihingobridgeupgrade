@@ -10,6 +10,11 @@ import { eq, or, ilike, and, sql, inArray, type SQL } from "drizzle-orm";
 import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
 import { KnowledgeService } from "@/services/knowledge/knowledgeService";
 import { escapeLikePattern } from "@/services/search/matcher";
+import {
+  defaultPublicationStore,
+  resolveLearnerEntries,
+} from "@/services/publication";
+import type { PublicationStore } from "@/services/publication";
 
 export interface DictionarySearchOptions {
   query?: string;
@@ -43,7 +48,10 @@ export class DictionaryService {
   /**
    * List or search dictionary entries with multi-script queries, JLPT filters, and common-word filters.
    */
-  static async searchEntries(options: DictionarySearchOptions = {}) {
+  static async searchEntries(
+    options: DictionarySearchOptions = {},
+    publicationStore: PublicationStore = defaultPublicationStore
+  ) {
     await this.ensureInitialized();
 
     const query = options.query?.trim() || "";
@@ -88,10 +96,23 @@ export class DictionaryService {
       .limit(limit)
       .offset(offset);
 
+    // 13.5F: published CMS overrides replace the displayed representation
+    // (identity, order basis, and pagination unchanged). Overlay failure
+    // degrades to canonical — it must never break learner reads.
+    let entries = rows;
+    try {
+      entries = (await resolveLearnerEntries(publicationStore, rows)).entries;
+    } catch (error) {
+      console.warn(
+        "Dictionary publication overlay unavailable; serving canonical.",
+        error
+      );
+    }
+
     // Sort exact matches on headword, reading, or romaji first
     if (query) {
       const qLower = query.toLowerCase();
-      rows.sort((a, b) => {
+      entries.sort((a, b) => {
         const aExact =
           a.headword === query ||
           a.reading === query ||
@@ -107,7 +128,7 @@ export class DictionaryService {
     }
 
     return {
-      entries: rows,
+      entries,
       total: totalRow?.count ?? 0,
       limit,
       offset,
@@ -161,7 +182,10 @@ export class DictionaryService {
   /**
    * Full detailed view for a single dictionary entry including related kanji, sentences, grammar, and source provenance.
    */
-  static async getEntryDetail(idOrHeadword: string): Promise<DictionaryDetailedEntry | null> {
+  static async getEntryDetail(
+    idOrHeadword: string,
+    publicationStore: PublicationStore = defaultPublicationStore
+  ): Promise<DictionaryDetailedEntry | null> {
     await this.ensureInitialized();
 
     const [entry] = await db
@@ -177,19 +201,32 @@ export class DictionaryService {
 
     if (!entry) return null;
 
+    // 13.5F: resolve the learner-visible representation once; every
+    // related lookup below follows the same representation.
+    let resolvedEntry = entry;
+    try {
+      const resolved = await resolveLearnerEntries(publicationStore, [entry]);
+      resolvedEntry = resolved.entries[0] ?? entry;
+    } catch (error) {
+      console.warn(
+        "Dictionary publication overlay unavailable; serving canonical.",
+        error
+      );
+    }
+
     // 1. Fetch Source Provenance
     let source: typeof knowledgeSources.$inferSelect | null = null;
-    if (entry.sourceRef) {
+    if (resolvedEntry.sourceRef) {
       const [srcRow] = await db
         .select()
         .from(knowledgeSources)
-        .where(eq(knowledgeSources.id, entry.sourceRef))
+        .where(eq(knowledgeSources.id, resolvedEntry.sourceRef))
         .limit(1);
       source = srcRow ?? null;
     }
 
     // 2. Fetch Related Kanji
-    const kanjiChars = entry.kanjiCharacters || [];
+    const kanjiChars = resolvedEntry.kanjiCharacters || [];
     let relatedKanji: (typeof kanjiEntries.$inferSelect)[] = [];
     if (kanjiChars.length > 0) {
       relatedKanji = await db
@@ -204,8 +241,8 @@ export class DictionaryService {
       .from(exampleSentences)
       .where(
         or(
-          sql`${exampleSentences.dictionaryEntryIds}::jsonb ? ${entry.id}`,
-          ilike(exampleSentences.japanese, `%${entry.headword}%`)
+          sql`${exampleSentences.dictionaryEntryIds}::jsonb ? ${resolvedEntry.id}`,
+          ilike(exampleSentences.japanese, `%${resolvedEntry.headword}%`)
         )
       )
       .limit(6);
@@ -225,7 +262,7 @@ export class DictionaryService {
     }
 
     return {
-      entry,
+      entry: resolvedEntry,
       source,
       kanji: relatedKanji,
       sentences,

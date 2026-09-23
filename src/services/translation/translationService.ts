@@ -12,6 +12,18 @@ import {
   SUPPORTED_SOURCE_TYPES,
 } from "@/types/translation";
 import crypto from "crypto";
+import { sortTranslationsVerifiedFirst } from "@/services/publication";
+
+type Database = typeof db;
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/**
+ * Query executor for translation writes: the shared pool client or a
+ * transaction handle. Lets the CMS verification path run the canonical
+ * write inside its own transaction (atomicity) without duplicating the
+ * upsert. Defaults preserve standalone behavior exactly.
+ */
+export type TranslationWriteExecutor = Database | Transaction;
 
 export function normalizeTranslatedText(text: string): string {
   if (!text) return "";
@@ -55,14 +67,17 @@ export class TranslationService {
    * - Will upgrade verification status if new input is verified.
    * - Does not duplicate or corrupt canonical data.
    */
-  static async addTranslation(input: CreateTranslationInput): Promise<EntityTranslation> {
+  static async addTranslation(
+    input: CreateTranslationInput,
+    executor: TranslationWriteExecutor = db
+  ): Promise<EntityTranslation> {
     this.validateInput(input);
     const normalizedText = normalizeTranslatedText(input.translatedText);
     const id = generateTranslationId(input.entityType, input.entityId, input.language, normalizedText);
 
     const isVerified = Boolean(input.isVerified || input.sourceType === "canonical" || input.sourceType === "verified_human");
 
-    const [row] = await db
+    const [row] = await executor
       .insert(entityTranslations)
       .values({
         id,
@@ -122,11 +137,19 @@ export class TranslationService {
       .from(entityTranslations)
       .where(and(...conditions));
 
-    return rows as EntityTranslation[];
+    // 13.5F: verified human translations rank first for learner reads.
+    // Stable sort — rows without verified content keep exact DB order.
+    return sortTranslationsVerifiedFirst(rows as EntityTranslation[]);
   }
 
   /**
    * Upgrade translation to human-verified.
+   *
+   * STORAGE PRIMITIVE (13.5C decision A): performs no authorization and
+   * must never be wired to an API route. Human verification flows go
+   * through CmsService.verifyTranslationProposal(), which authorizes
+   * (cms.verify_translation), validates, writes via addTranslation(), and
+   * audits. Covered by a static no-bypass test.
    */
   static async verifyTranslation(translationId: string): Promise<boolean> {
     const res = await db

@@ -15,6 +15,20 @@
       "when": 1790056500000,
       "tag": "0001_multilingual_translations",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790138805559,
+      "tag": "0002_cms_content_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790142385759,
+      "tag": "0003_users_auth_identity",
+      "breakpoints": true
     }
   ]
 }

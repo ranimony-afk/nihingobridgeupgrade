@@ -1,4 +1,5 @@
 import type { JLPTLevel } from "@/etl/grammar/types";
+import type { PublicationStore } from "@/services/publication";
 
 export type SearchTarget =
   | "dictionary"
@@ -45,6 +46,11 @@ export interface UnifiedSearchOptions {
   limit?: number;
   offset?: number;
   includeMetadata?: boolean;
+  /**
+   * 13.5F: published-content port for the dictionary overlay. Defaults
+   * to the production Drizzle store; tests inject fakes.
+   */
+  publicationStore?: PublicationStore;
 }
 
 export interface UnifiedSearchMetrics {

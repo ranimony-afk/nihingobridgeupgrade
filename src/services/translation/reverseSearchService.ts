@@ -14,6 +14,7 @@ import {
   SUPPORTED_LANGUAGES,
 } from "@/types/translation";
 import { normalizeTranslatedText } from "./translationService";
+import { sortTranslationsVerifiedFirst } from "@/services/publication";
 
 export class ReverseSearchService {
   /**
@@ -47,9 +48,11 @@ export class ReverseSearchService {
       .where(and(...conditions))
       .limit(50);
 
+    // 13.5F: verified translations resolve first among the matches.
+    // Ranking applies within the existing limit — no index redesign.
     const results: ReverseLookupResult[] = [];
 
-    for (const match of matches) {
+    for (const match of sortTranslationsVerifiedFirst(matches)) {
       const canonical = await this.resolveCanonicalEntity(
         match.entityType as SupportedEntityType,
         match.entityId
