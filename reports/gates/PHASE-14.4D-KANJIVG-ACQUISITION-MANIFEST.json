@@ -1,0 +1,26 @@
+{
+  "source": "upstream:kanjivg:2024-08",
+  "version": "r20240807",
+  "releaseTag": "r20240807",
+  "releaseCommit": "a4b51d966d832544c371d566f9c84174e4beff3b",
+  "releaseDate": "2024-08-07",
+  "acquiredAt": "2026-09-23T11:14:00.000Z",
+  "URL": "https://github.com/KanjiVG/kanjivg/releases/tag/r20240807",
+  "license": "CC-BY-SA-3.0",
+  "attribution": "Ulrich Apel and the KanjiVG project (CC BY-SA 3.0)",
+  "archive": {
+    "filename": "kanjivg-r20240807.tar.gz",
+    "compressedSize": 6393856,
+    "sha256": "678a15b1ecf2e75bfc9f08ef40cca7d273ed71eae00f5135b52bba2ef62ac447",
+    "uncompressedFileCount": 11658,
+    "primaryStandardSvgCount": 6699,
+    "variantSvgCount": 4959
+  },
+  "index": {
+    "filename": "kanjivg-index.json",
+    "size": 293828,
+    "sha256": "0fcf17e85f1ec8baefcbc8e84d58ba8a0b9cc144838e4926a65e3ce6418b21d8",
+    "indexedCharacterCount": 6702
+  },
+  "status": "verified"
+}

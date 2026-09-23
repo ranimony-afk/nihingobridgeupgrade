@@ -13,34 +13,9 @@
  * - Real JMdict ent_seq sequence numbers for provenance tracking
  */
 
-export interface RawJMdictSourceRecord {
-  entSeq: string;
-  kanji: Array<{
-    keb: string;
-    keInf?: string[];
-    kePri?: string[];
-  }>;
-  readings: Array<{
-    reb: string;
-    reNoKanji?: boolean;
-    reRestr?: string[];
-    reInf?: string[];
-    rePri?: string[];
-  }>;
-  senses: Array<{
-    pos: string[];
-    misc?: string[];
-    dial?: string[];
-    field?: string[];
-    sInf?: string;
-    glosses: Array<{
-      lang: string;
-      text: string;
-    }>;
-  }>;
-  jlptLevel?: string;
-  frequencyRank?: number;
-}
+import type { RawJMdictSourceRecord } from "./types";
+
+export type { RawJMdictSourceRecord };
 
 export const JMDICT_PILOT_50_RECORDS: RawJMdictSourceRecord[] = [
   {

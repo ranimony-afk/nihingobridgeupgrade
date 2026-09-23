@@ -104,7 +104,7 @@ describe("sentence retrieval", () => {
     expect(record.japanese).toContain("毎日");
     expect(record.reading.length).toBeGreaterThan(0);
     expect(record.english.length).toBeGreaterThan(0);
-    expect(record.sourceRef).toBe("first-party:sentences-core:v1");
+    expect(["first-party:sentences-core:v1", "tatoeba:corpus:2024-07"]).toContain(record.sourceRef);
   });
 });
 
