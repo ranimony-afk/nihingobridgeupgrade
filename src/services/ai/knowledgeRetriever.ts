@@ -393,6 +393,13 @@ export class KnowledgeRetriever {
           .where(jsonbContainsText(dictionaryTable.kanjiCharacters, row.character))
           .limit(5);
         chunks.push(...words.map((w) => dictionaryChunk(w, 0.85, "kanji-link")));
+
+        const linkedSentences = await db
+          .select()
+          .from(sentenceTable)
+          .where(jsonbContainsText(sentenceTable.kanjiCharacters, row.character))
+          .limit(5);
+        chunks.push(...linkedSentences.map((s) => sentenceChunk(s, 0.82, "kanji-sentence-link")));
       }
     }
 
