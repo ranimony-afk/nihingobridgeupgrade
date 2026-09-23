@@ -12,7 +12,8 @@ export type XpEventType =
   | "quiz.answered"
   | "quiz.test_completed"
   | "knowledge.card_added"
-  | "streak.day_completed";
+  | "streak.day_completed"
+  | "content.read";
 
 export const XP_EVENT_TYPES: XpEventType[] = [
   "review.graded",
@@ -21,6 +22,7 @@ export const XP_EVENT_TYPES: XpEventType[] = [
   "quiz.test_completed",
   "knowledge.card_added",
   "streak.day_completed",
+  "content.read",
 ];
 
 export type XpParams = Record<string, number | boolean>;
