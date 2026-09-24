@@ -85,6 +85,40 @@ Registered at `src/services/knowledge/provenance/registry.ts:125`:
 
 Alias (`registry.ts:287`): `"tatoeba:corpus:2024-07" → "upstream:tatoeba:2024-07"`.
 
+### 2.1 Supersession policy — snapshot identity (DECIDED)
+
+Tatoeba publishes **rolling snapshots**, not versioned dataset releases like JMdict's
+`2023-08`. The `2024-07` label therefore **cannot** correctly describe a newly acquired
+artifact, and must not be reused for it.
+
+When a real artifact is verified, a new identity is registered:
+
+```
+upstream:tatoeba:snapshot-<YYYY-MM-DD>-<sha256-prefix>
+```
+
+| Property | Requirement |
+| :--- | :--- |
+| Immutable | never re-pointed at different bytes |
+| Artifact-specific | bound to one acquired artifact |
+| Date-stamped | from the artifact's own evidence — **never invented** |
+| SHA-linked | includes artifact hash prefix, so snapshots cannot collide |
+| Not `"latest"` | a moving label is not a provenance identity |
+
+Rules:
+
+1. **Retain** `upstream:tatoeba:2024-07` for historical provenance — do not rewrite its
+   meaning, do not delete it. Mark it **superseded**.
+2. The alias `tatoeba:corpus:2024-07 → upstream:tatoeba:2024-07` becomes historical with it.
+3. Registering a new identity is **not** silent substitution of another release — it is an
+   explicit, documented decision, which is what the prior phase specifications required.
+4. State the basis for the date component (filename, release metadata, or retrieval date) in
+   the acquisition manifest.
+
+This mirrors the multi-version convention already established in the registry, which carries
+parallel entries for JMdict (`2023-08` / `2024-07`), KANJIDIC2 (`2023-08` / `2024-07`), and
+KanjiVG (`2024-04` / `2024-08`).
+
 ### Verification status of each field
 
 | Field | Status | Note |

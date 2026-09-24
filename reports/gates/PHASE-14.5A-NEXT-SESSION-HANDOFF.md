@@ -72,11 +72,50 @@ reusing it verbatim.
 The R3 audit deliberately declined these even though npm and PyPI are reachable from the
 sandbox, because using them would circumvent the blocked official source.
 
-### 2.2 ETL source corpora — also required, for a different reason
+### 2.2 Fetch naming — what Tatoeba actually publishes
 
-Phase 14.5B is **canonical linkage** — it links sentences to `dictionary_entries` and
-`kanji_entries`. Those tables hold 206,747 dictionary rows and 13,108 kanji rows, and they
-are populated by ingesting source corpora that are **absent from this workspace**:
+**Verify these against the live site before relying on them.** All `tatoeba.org` hosts are
+blocked from this sandbox, so the paths below cannot be confirmed here and are given as
+guidance only.
+
+| Export | Likely path |
+| :--- | :--- |
+| Japanese sentences (per-language) | `.../exports/per_language/jpn/jpn_sentences.tsv.bz2` |
+| Japanese links (per-language) | `.../exports/per_language/jpn/jpn_links.tsv.bz2` |
+| Full corpus sentences | `.../exports/sentences.tar.bz2` |
+| Full corpus links | `.../exports/links.tar.bz2` |
+
+Notes to check at download time:
+
+- Files may be `.bz2`-compressed. If so, **preserve the compressed original untouched** and
+  record **both** the compressed SHA-256 and the derived `.tsv` SHA-256, plus the extraction
+  method and tool version. That is exactly the case the acquisition manifest's
+  `compression` field exists to capture.
+- Tatoeba's `sentences` and `sentences_detailed` exports differ — `sentences_detailed`
+  carries additional contributor/date columns. Record which one was obtained; do not assume
+  they are interchangeable.
+- The `links` file expresses translation relationships between sentence IDs. Confirm the
+  column order from the file itself rather than assuming it.
+
+---
+
+### 2.3 NOT part of the 14.5A gate — 14.5B bootstrap
+
+**Decision: do not fetch these as part of 14.5A, and do not mix them into its GO gate.**
+
+They are separately listed here only so they are not forgotten. Acquiring them is an
+**environment bootstrap for 14.5B**, and mixing it in would contaminate the phase boundary.
+
+```
+14.5A  Tatoeba acquisition            → GO
+          ↓
+       environment / corpus bootstrap  ← JMdict + KANJIDIC2 + KanjiVG
+          ↓
+14.5B  normalization + dictionary linkage
+```
+
+Phase 14.5B links sentences to `dictionary_entries` (206,747) and `kanji_entries` (13,108).
+Those tables are populated from source corpora **absent from this workspace**:
 
 ```
 data/JMdict.xml        ABSENT   →  upstream:jmdict:2023-08      (206,717 entries)
@@ -84,20 +123,17 @@ data/kanjidic2.xml     ABSENT   →  upstream:kanjidic2:2023-08   (13,108 entrie
 data/kanjivg/          ABSENT   →  upstream:kanjivg:2024-04
 ```
 
-Consequences if these remain absent:
+Two consequences, both **out of scope for 14.5A**:
 
-1. **14.5B stays blocked** even after 14.5A reaches GO — no canonical corpus to link against.
-2. **The regression suite stays red.** 62 of 715 tests currently fail for exactly this
-   reason (plus a missing `DATABASE_URL`). No future phase can pass a "full regression
-   green" gate until this is resolved.
+1. **14.5B cannot start** without them — no canonical corpus to link against.
+2. **The regression suite stays red** — 62 of 715 tests fail for exactly this reason plus a
+   missing `DATABASE_URL`. Per the decision above, this is an **environment problem, not a
+   Tatoeba acquisition problem**, and it must not be used to hold 14.5A's GO hostage.
 
-Their expected SHA-256 values are recorded in the repository at
-`reports/gates/PHASE-14.4B-KANJIDIC2-ACQUISITION-MANIFEST.json` and
-`PHASE-14.4D-KANJIVG-ACQUISITION-MANIFEST.json`, so retrieved files can be checked against
-known-good hashes. Similar volumes to the Tatoeba artifact: JMdict is the largest.
-
-If fetching these is out of scope for the same trip, record that decision explicitly — it
-determines whether 14.5B is reachable.
+Expected SHA-256 values for these are already recorded in the repository
+(`PHASE-14.4B-KANJIDIC2-ACQUISITION-MANIFEST.json`,
+`PHASE-14.4D-KANJIVG-ACQUISITION-MANIFEST.json`), so retrieved files can be checked against
+known-good hashes — unlike the Tatoeba artifact, whose prior SHA is unreproducible.
 
 ---
 
@@ -125,27 +161,41 @@ loop the last four sessions have been stuck in.
 
 ## 4. Pending Decisions Before the Next Session
 
-### 4.1 Source identity must change — the 2024-07 label will be wrong
+### 4.1 Source identity — DECIDED convention
 
-The registry entry asserts `version: "2024-07"` and `releaseDate: "2024-07-01"`. Tatoeba
-exports are published as **rolling snapshots**, not as versioned dataset releases like
-JMdict's `2023-08`. An artifact obtained today (2026-09-24) will be a **current** snapshot,
-**not** the 2024-07 release.
+**Decision (accepted):** establish an immutable, artifact-specific, date-stamped,
+SHA-linked identity derived from the actual artifact:
 
-Therefore:
+```
+upstream:tatoeba:snapshot-<YYYY-MM-DD>-<sha256-prefix>
+```
 
-- The existing `upstream:tatoeba:2024-07` identity will **not** correctly describe the new
-  artifact.
-- A new identity reflecting the actual snapshot date will be required, e.g.
-  `upstream:tatoeba:2026-09-24` (exact format to be decided from the artifact's own
-  evidence).
-- Updating the registry with a **new** identity is not "silently substituting another
-  release" — it is the explicit authorization the prior prompts required, and it should be
-  recorded as such.
-- The existing `2024-07` entry should be **retained**, not deleted, and marked superseded.
+Required properties:
 
-**Do not invent a version.** Derive it from the artifact's filename, any accompanying
-release metadata, or the retrieval date — and state the basis.
+```
+immutable          artifact-specific    date-stamped
+SHA-linked         not "latest"         not falsely versioned as 2024-07
+```
+
+Rationale: Tatoeba publishes **rolling snapshots**, not versioned dataset releases like
+JMdict's `2023-08`. An artifact obtained on 2026-09-24 is a September 2026 snapshot and is
+**not** the 2024-07 release. Asserting `2024-07` for it would be a false version claim.
+
+Rules for the next gate:
+
+1. Derive the date component from the artifact's own evidence — filename, accompanying
+   release metadata, or the retrieval date — and **state the basis** in the manifest.
+2. Include the artifact SHA prefix so the identity is bound to specific bytes; two different
+   snapshots can never collide.
+3. **Do not invent the version.** §3 of the phase spec forbids it.
+4. **Retain** the existing `upstream:tatoeba:2024-07` registration for historical provenance.
+   Do **not** rewrite its meaning and do **not** delete it. Mark it superseded.
+5. Registering a new identity is **not** "silently substituting another release" — it is the
+   explicit authorization the prior phase prompts required, and it must be recorded as an
+   explicit, documented decision.
+
+The alias `tatoeba:corpus:2024-07 → upstream:tatoeba:2024-07` (`registry.ts:287`) becomes
+historical along with the entry it points at.
 
 ### 4.2 Schema authorization — still open
 
@@ -159,15 +209,24 @@ Two options remain open, and neither is authorized:
    report, with alternatives considered, migration implications, and rollback strategy).
 2. **File-backed acquisition only**, deferring persistence further.
 
-14.5A verification (§5 below) needs **neither** — it is read-only. But 14.5B cannot persist
-linkage results without a decision.
+**This decision is deferred — deliberately.** Per §6.3, the schema must be designed from the
+**real artifact's** actual shape, not from assumptions about it. Deciding now would repeat
+the exact failure mode that produced the current situation. 14.5B builds the lossless
+staging/domain model first; the schema decision follows from what that reveals.
+
+14.5A verification (§5 below) needs **neither** option — it is read-only and schema-free.
+
+**Status: `SCHEMA-NECESSITY.md` is a DESIGN INPUT, not authorization.** It grants nothing and
+no migration may be generated from it without separate explicit authorization.
 
 ### 4.3 Canonical database — still absent
 
 No `DATABASE_URL`, port 5432 closed, `psql` unavailable. Canonical invariant checks report
-`BLOCKED — DATABASE UNAVAILABLE`, not verified. `scripts/run-disposable-pg.ts` (PGlite) can
-stand one up on `127.0.0.1:5432` — but only *after* §2.2's source corpora exist, otherwise
-it yields an empty schema that verifies nothing.
+`BLOCKED — DATABASE UNAVAILABLE`, not verified.
+
+`scripts/run-disposable-pg.ts` (PGlite) can stand one up on `127.0.0.1:5432` — but only
+**after** the §2.3 bootstrap corpora exist, otherwise it yields an empty schema that verifies
+nothing. Out of scope for 14.5A.
 
 ---
 
@@ -276,21 +335,57 @@ Two design notes worth capturing before implementation:
   avoids pulling in a morphological analyzer (MeCab/IPADIC) plus its dictionary licence and
   runtime cost. Position-aware longest-match over the raw string yields exact dictionary
   identity, kana/kanji boundaries, and overlapping matches, which is what §13 requires.
-- **Decide the offset unit first.** Whether positions are Unicode code points or UTF-16 code
-  units must be fixed and documented before any position is exposed externally. For BMP
-  Japanese text (kanji, kana, full-width punctuation) the two coincide, but the rule must be
-  stated so it cannot silently break on supplementary-plane characters.
+- **Decide the offset unit first — DECIDED:** expose character positions as
+  **Unicode code points**, not JavaScript's native UTF-16 code units.
+
+  ```
+  offsetUnit = "unicodeCodePoint"
+  ```
+
+  Required because JS string indexing is UTF-16-based, and JS `.length` / `.slice()`
+  silently return UTF-16 offsets. These coincide with code points for all BMP text — which
+  includes kanji, kana, and full-width punctuation, i.e. essentially every Japanese test
+  case — so the discrepancy is invisible until a supplementary-plane character (e.g. rare
+  kanji in Extension B, or emoji) appears. The contract must be stated and enforced at the
+  boundary, with an explicit conversion, so UTF-16 offsets cannot leak into the public API
+  merely because the first test cases happened to pass.
 
 Existing helpers to reuse rather than duplicate: `KANJI_REGEX`, `extractKanjiCharacters`,
 `katakanaToHiragana` (`src/services/knowledge/kanjiLexicalGraphService.ts:37,64,113`).
 
-### 6.3 Unresolved
+### 6.3 Mandatory sequencing — do NOT mutate `example_sentences`
 
-- Whether `jpn_links.tsv` alone is sufficient for **many-to-one** relationships (Japanese
-  sentence as translation *target*), or whether the full/reverse links file is needed. This
-  must be determined from the supplied artifact, not assumed.
+**Decision (accepted).** The R3 finding changed this architecture question, so 14.5B must
+**not** write to `example_sentences` on arrival. Required order:
+
+```
+14.5A  actual Tatoeba artifact
+          ↓
+14.5B  lossless normalized staging / domain model
+          ↓
+       schema decision + explicit authorization
+          ↓
+       canonical persistence
+```
+
+The staging model comes **first**, so the schema is designed from the real artifact's actual
+shape. Designing it from assumptions risks a schema the artifact then invalidates — which is
+precisely the failure mode that produced the current situation.
+
+Consequence for a core deliverable:
+
+> `reports/gates/PHASE-14.5A-SCHEMA-NECESSITY.md` is a **DESIGN INPUT, not authorization to
+> migrate.** It documents the incompatibility and a proposal; it grants nothing. No migration
+> may be generated from it without a separate, explicit authorization.
+
+### 6.4 Unresolved
+
+- Whether a per-language `jpn_links` file alone is sufficient for **many-to-one**
+  relationships (Japanese sentence appearing as a translation *target*), or whether the
+  full/reverse links file is also needed. Determine this from the supplied artifact — do not
+  assume.
 - Whether canonical sentence persistence should ever merge into `example_sentences`, or
-  remain in dedicated tables. Not decided; not proposed here.
+  remain in dedicated tables. **Not decided**, not proposed, and blocked behind §6.3.
 
 ---
 
