@@ -38,4 +38,7 @@ Thumbs.db
 *.xml
 *.xml.gz
 *.br
-
+# Phase 14.5A — verified Tatoeba official archives
+!/data/
+!/data/tatoeba/
+!/data/tatoeba/*.tar.bz2
