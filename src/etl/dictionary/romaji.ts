@@ -116,7 +116,11 @@ export function kanaToRomaji(kana: string): string {
         const lastChar = result[result.length - 1];
         if (["a", "i", "u", "e", "o"].includes(lastChar)) {
           result += lastChar;
+        } else {
+          result += "-";
         }
+      } else {
+        result += "-";
       }
       i++;
       continue;

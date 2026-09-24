@@ -89,10 +89,24 @@ export class DictionaryService {
       .from(dictionaryEntries)
       .where(whereClause);
 
+    const orderByClause = query
+      ? sql`CASE
+          WHEN ${dictionaryEntries.headword} = ${query} AND ${dictionaryEntries.jlptLevel} != 'NONE' THEN 1
+          WHEN ${dictionaryEntries.headword} = ${query} THEN 2
+          WHEN ${dictionaryEntries.reading} = ${query} AND ${dictionaryEntries.jlptLevel} != 'NONE' THEN 3
+          WHEN ${dictionaryEntries.reading} = ${query} THEN 4
+          WHEN lower(${dictionaryEntries.romaji}) = lower(${query}) THEN 5
+          WHEN ${dictionaryEntries.senses}::text ILIKE ${'%"' + escapeLikePattern(query) + '"%'} AND ${dictionaryEntries.isCommon} = true THEN 6
+          WHEN ${dictionaryEntries.senses}::text ILIKE ${'%"' + escapeLikePattern(query) + '"%'} THEN 7
+          ELSE 8
+        END, ${dictionaryEntries.frequencyRank} ASC NULLS LAST, ${dictionaryEntries.isCommon} DESC, ${dictionaryEntries.id} ASC`
+      : sql`${dictionaryEntries.id} ASC`;
+
     const rows = await db
       .select()
       .from(dictionaryEntries)
       .where(whereClause)
+      .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
 

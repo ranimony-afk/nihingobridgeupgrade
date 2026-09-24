@@ -39,7 +39,7 @@ export interface KanjiEntryInput {
   readingsKun: string[];
   readingsOn: string[];
   strokeCount: number;
-  jlptLevel: JLPTLevel | "N5" | "N4" | "N3" | "N2" | "N1";
+  jlptLevel: JLPTLevel | "N5" | "N4" | "N3" | "N2" | "N1" | "NONE";
   gradeLevel?: number | null;
   primaryRadicalId?: string | null;
   mnemonic?: string | null;
@@ -64,4 +64,111 @@ export interface KanjiETLResult {
   compositionUpdated: number;
   compositionSkipped: number;
   errors: string[];
+}
+
+// ---------------------------------------------------------------------------
+// KANJIDIC2 Raw & Parsed Types
+// ---------------------------------------------------------------------------
+
+export interface RawKanjidicCodepoint {
+  type: string; // "ucs", "jis208", "jis212", "jis213"
+  value: string;
+}
+
+export interface RawKanjidicRadical {
+  type: string; // "classical", "nelson_c"
+  value: number;
+}
+
+export interface RawKanjidicVariant {
+  type: string;
+  value: string;
+}
+
+export interface RawKanjidicMeaning {
+  lang: string; // "en", "fr", "es", "pt"
+  text: string;
+}
+
+export interface RawKanjidicReading {
+  type: "ja_on" | "ja_kun" | "pinyin" | "korean_r" | "korean_h" | "vietnam";
+  value: string;
+}
+
+export interface RawKanjidicCharacter {
+  literal: string;
+  codepoints: RawKanjidicCodepoint[];
+  radicals: RawKanjidicRadical[];
+  grade: number | null;
+  strokeCounts: number[];
+  variants: RawKanjidicVariant[];
+  frequency: number | null;
+  radicalNames: string[];
+  jlptOld: number | null;
+  dicRefs: Array<{ type: string; value: string }>;
+  queryCodes: Array<{ type: string; value: string }>;
+  readings: RawKanjidicReading[];
+  meanings: RawKanjidicMeaning[];
+  nanori: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Canonical Transformed KANJIDIC2 Record
+// ---------------------------------------------------------------------------
+
+export interface CanonicalKanjiRecord {
+  id: string; // e.g. "kanji-学"
+  character: string;
+  unicode: string; // e.g. "U+5B66"
+  hexCodepoint: string; // e.g. "5b66"
+  strokeCount: number;
+  additionalStrokeCounts: number[];
+  gradeLevel: number | null;
+  jlptLevel: "N5" | "N4" | "N3" | "N2" | "N1" | "NONE";
+  jlptOld: number | null;
+  frequencyRank: number | null;
+  classicalRadical: number | null;
+  nelsonRadical: number | null;
+  readingsOn: string[];
+  readingsKun: string[]; // with okurigana preserved (e.g. "まな.ぶ")
+  normalizedReadingsKun: string[]; // without okurigana (e.g. "まなぶ")
+  readingsNanori: string[];
+  meanings: string[]; // English meanings
+  primaryMeaning: string;
+  variants: Array<{ type: string; value: string }>;
+  radicalNames: string[];
+  sourceRef: string; // "upstream:kanjidic2:2023-08"
+}
+
+export interface KanjidicTransformResult {
+  record: CanonicalKanjiRecord | null;
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+export interface KanjidicDryRunReport {
+  sourceId: string;
+  sourceRelease: string;
+  sourceSha256: string;
+  totalRecords: number;
+  validRecords: number;
+  rejectedRecords: number;
+  warningsCount: number;
+  onReadingsCount: number;
+  kunReadingsCount: number;
+  nanoriCount: number;
+  kanjiWithMeaningsCount: number;
+  kanjiWithJlptCount: number;
+  kanjiWithGradeCount: number;
+  kanjiWithFrequencyCount: number;
+  kanjiWithVariantsCount: number;
+  kanjiWithRadicalCount: number;
+  strokeCountDistribution: Record<number, number>;
+  duplicateCharactersCount: number;
+  conflictingRecordsCount: number;
+  durationMs: number;
+  throughput: number;
+  peakHeapMb: number;
+  deterministicIdSample: Array<{ char: string; id: string }>;
 }

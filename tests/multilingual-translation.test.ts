@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { TranslationService } from "@/services/translation/translationService";
 import { ReverseSearchService } from "@/services/translation/reverseSearchService";
 import { db } from "@/db";
@@ -218,5 +218,12 @@ describe("Phase 12B: Multilingual Translation Storage & Reverse Lookup", () => {
       expect(kanji.character).toBe("水");
       expect(kanji.meaning).toBe("water");
     });
+  });
+
+  afterAll(async () => {
+    await db.delete(entityTranslations).where(eq(entityTranslations.entityId, dictId));
+    await db.delete(dictionaryEntries).where(eq(dictionaryEntries.id, dictId));
+    await db.delete(grammarPatterns).where(eq(grammarPatterns.id, grammarId));
+    await db.delete(exampleSentences).where(eq(exampleSentences.id, sentenceId));
   });
 });

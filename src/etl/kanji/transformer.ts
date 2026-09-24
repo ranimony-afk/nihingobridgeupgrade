@@ -3,7 +3,195 @@ import type {
   KanjiEntryInput,
   KanjiRadicalInput,
   KanjiCompositionInput,
+  RawKanjidicCharacter,
+  CanonicalKanjiRecord,
+  KanjidicTransformResult,
 } from "./types";
+
+export const KANJIDIC2_SOURCE_REF = "upstream:kanjidic2:2023-08";
+
+/**
+ * Normalizes KANJIDIC2 old JLPT level (1..4) to the modern JLPT level string (N1..N5, NONE).
+ * Old JLPT:
+ * 4 -> N5 (basic beginner)
+ * 3 -> N4 (elementary)
+ * 2 -> N2 (upper-intermediate)
+ * 1 -> N1 (advanced)
+ */
+export function mapOldJlptToModern(jlptOld: number | null): "N5" | "N4" | "N3" | "N2" | "N1" | "NONE" {
+  if (jlptOld === null || jlptOld === undefined) return "NONE";
+  switch (jlptOld) {
+    case 4:
+      return "N5";
+    case 3:
+      return "N4";
+    case 2:
+      return "N2";
+    case 1:
+      return "N1";
+    default:
+      return "NONE";
+  }
+}
+
+/**
+ * Strips okurigana delimiter '.' and hyphen prefixes/suffixes from a Kun'yomi reading.
+ * e.g., "た.べる" -> "たべる", "-づ.く" -> "づく", "お.える" -> "おえる".
+ */
+export function normalizeKunReading(kunReading: string): string {
+  if (!kunReading) return "";
+  return kunReading.replace(/\./g, "").replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Derives hexadecimal Unicode codepoint and standard "U+XXXX" string for a character.
+ */
+export function extractUnicodeCodepoints(character: string, rawUcs?: string): {
+  hexCodepoint: string;
+  unicode: string;
+} {
+  if (rawUcs && /^[0-9a-fA-F]+$/.test(rawUcs)) {
+    const hex = rawUcs.toLowerCase();
+    return {
+      hexCodepoint: hex,
+      unicode: `U+${hex.toUpperCase().padStart(4, "0")}`,
+    };
+  }
+
+  const codePoint = character.codePointAt(0);
+  if (codePoint === undefined) {
+    return { hexCodepoint: "", unicode: "" };
+  }
+  const hex = codePoint.toString(16).toLowerCase();
+  return {
+    hexCodepoint: hex,
+    unicode: `U+${hex.toUpperCase().padStart(4, "0")}`,
+  };
+}
+
+/**
+ * Generates deterministic canonical ID for a kanji character.
+ * Uses existing ID if present in existingIdMap (e.g. "kj-mei"),
+ * otherwise falls back to the deterministic "kanji-${character}" standard.
+ */
+export function generateKanjiId(
+  character: string,
+  existingIdMap?: Map<string, string>
+): string {
+  if (existingIdMap && existingIdMap.has(character)) {
+    return existingIdMap.get(character)!;
+  }
+  return `kanji-${character}`;
+}
+
+/**
+ * Transforms a raw KANJIDIC2 character into a validated canonical kanji record.
+ */
+export function transformKanjidicCharacter(
+  raw: RawKanjidicCharacter,
+  existingIdMap?: Map<string, string>
+): KanjidicTransformResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  const character = raw.literal?.trim();
+  if (!character) {
+    errors.push("Missing literal character");
+    return { record: null, isValid: false, errors, warnings };
+  }
+
+  // Stroke counts
+  if (!raw.strokeCounts || raw.strokeCounts.length === 0) {
+    errors.push(`Missing stroke count for kanji ${character}`);
+    return { record: null, isValid: false, errors, warnings };
+  }
+
+  const primaryStrokeCount = raw.strokeCounts[0];
+  if (primaryStrokeCount < 1 || !Number.isInteger(primaryStrokeCount)) {
+    errors.push(`Invalid stroke count ${primaryStrokeCount} for kanji ${character}`);
+    return { record: null, isValid: false, errors, warnings };
+  }
+  const additionalStrokeCounts = raw.strokeCounts.slice(1);
+
+  // Unicode codepoint
+  const rawUcs = raw.codepoints.find((cp) => cp.type === "ucs")?.value;
+  const { hexCodepoint, unicode } = extractUnicodeCodepoints(character, rawUcs);
+  if (!hexCodepoint || !unicode) {
+    errors.push(`Could not derive Unicode codepoint for kanji ${character}`);
+    return { record: null, isValid: false, errors, warnings };
+  }
+
+  // Radicals
+  const classicalRadical =
+    raw.radicals.find((r) => r.type === "classical")?.value ?? null;
+  const nelsonRadical =
+    raw.radicals.find((r) => r.type === "nelson_c")?.value ?? null;
+
+  // Readings separation
+  const readingsOn: string[] = [];
+  const readingsKun: string[] = [];
+  const normalizedReadingsKun: string[] = [];
+
+  for (const r of raw.readings) {
+    if (r.type === "ja_on") {
+      readingsOn.push(r.value);
+    } else if (r.type === "ja_kun") {
+      readingsKun.push(r.value);
+      const norm = normalizeKunReading(r.value);
+      if (norm && !normalizedReadingsKun.includes(norm)) {
+        normalizedReadingsKun.push(norm);
+      }
+    }
+  }
+
+  const readingsNanori = [...(raw.nanori || [])];
+
+  // Meanings (English)
+  const meanings = raw.meanings
+    .filter((m) => !m.lang || m.lang === "en")
+    .map((m) => m.text);
+  const primaryMeaning = meanings[0] || "";
+
+  if (meanings.length === 0) {
+    warnings.push(`Kanji ${character} has no English meanings in KANJIDIC2`);
+  }
+
+  const jlptLevel = mapOldJlptToModern(raw.jlptOld);
+
+  const id = generateKanjiId(character, existingIdMap);
+
+  const record: CanonicalKanjiRecord = {
+    id,
+    character,
+    unicode,
+    hexCodepoint,
+    strokeCount: primaryStrokeCount,
+    additionalStrokeCounts,
+    gradeLevel: raw.grade ?? null,
+    jlptLevel,
+    jlptOld: raw.jlptOld ?? null,
+    frequencyRank: raw.frequency ?? null,
+    classicalRadical,
+    nelsonRadical,
+    readingsOn,
+    readingsKun,
+    normalizedReadingsKun,
+    readingsNanori,
+    meanings,
+    primaryMeaning,
+    variants: raw.variants || [],
+    radicalNames: raw.radicalNames || [],
+    sourceRef: KANJIDIC2_SOURCE_REF,
+  };
+
+  return {
+    record,
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
 
 export interface TransformedKanjiData {
   radicals: KanjiRadicalInput[];

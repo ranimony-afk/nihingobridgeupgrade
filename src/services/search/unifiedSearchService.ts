@@ -31,15 +31,19 @@ import {
 } from "./matcher";
 
 export class UnifiedSearchService {
+  private static isInitialized = false;
+
   /**
    * Ensure necessary baseline tables are initialized before searching.
    */
   static async ensureInitialized(): Promise<void> {
+    if (this.isInitialized) return;
     await Promise.all([
       KnowledgeCorpusService.ensureSeeded(),
       KnowledgeService.ensureSeeded(),
       TestService.ensureSeeded(),
     ]);
+    this.isInitialized = true;
   }
 
   /**
@@ -92,7 +96,8 @@ export class UnifiedSearchService {
             query,
             jlptLevel,
             limit,
-            publicationStore
+            publicationStore,
+            detectedScript
           );
           targetDurationsMs[target] = Number((performance.now() - tStart).toFixed(2));
           return items;
@@ -134,11 +139,12 @@ export class UnifiedSearchService {
     query: string,
     jlptLevel: string | null,
     limit: number,
-    publicationStore: PublicationStore = defaultPublicationStore
+    publicationStore: PublicationStore = defaultPublicationStore,
+    script?: string
   ): Promise<UnifiedSearchResultItem[]> {
     switch (target) {
       case "dictionary":
-        return this.searchDictionary(query, jlptLevel, limit, publicationStore);
+        return this.searchDictionary(query, jlptLevel, limit, publicationStore, script);
       case "kanji":
         return this.searchKanji(query, jlptLevel, limit);
       case "radicals":
@@ -160,21 +166,33 @@ export class UnifiedSearchService {
     query: string,
     jlptLevel: string | null,
     limit: number,
-    publicationStore: PublicationStore = defaultPublicationStore
+    publicationStore: PublicationStore = defaultPublicationStore,
+    script?: string
   ): Promise<UnifiedSearchResultItem[]> {
     const escaped = escapeLikePattern(query);
     const pattern = `%${escaped}%`;
 
     const conditions: SQL[] = [];
     if (query) {
-      conditions.push(
-        or(
+      const orClauses: SQL[] = [];
+      if (script === "kanji") {
+        orClauses.push(ilike(dictionaryEntries.headword, pattern));
+      } else if (script === "kana") {
+        orClauses.push(ilike(dictionaryEntries.reading, pattern));
+        orClauses.push(ilike(dictionaryEntries.headword, pattern));
+      } else if (script === "romaji") {
+        orClauses.push(ilike(dictionaryEntries.romaji, pattern));
+      } else if (script === "english") {
+        orClauses.push(sql`${dictionaryEntries.senses}::text ILIKE ${pattern}`);
+      } else {
+        orClauses.push(
           ilike(dictionaryEntries.headword, pattern),
           ilike(dictionaryEntries.reading, pattern),
           ilike(dictionaryEntries.romaji, pattern),
           sql`${dictionaryEntries.senses}::text ILIKE ${pattern}`
-        ) as SQL
-      );
+        );
+      }
+      conditions.push(or(...orClauses) as SQL);
     }
 
     if (jlptLevel) {

@@ -1,0 +1,1552 @@
+{
+  "source": "upstream:kanjidic2:2023-08",
+  "targetLexicon": "upstream:jmdict:2023-08",
+  "generatedAt": "2026-09-23T10:36:49.543Z",
+  "status": "dry_run_prepared",
+  "metrics": {
+    "sampledKanjiCount": 20,
+    "totalLinkedCompounds": 300,
+    "onCompoundCount": 185,
+    "kunCompoundCount": 36,
+    "onSoloCount": 1,
+    "kunSoloCount": 2,
+    "specialCount": 76
+  },
+  "sampleLinkages": [
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1643160",
+      "headword": "日参",
+      "reading": "にっさん",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "daily visit to a temple or shrine (to worship)"
+          ]
+        },
+        {
+          "glosses": [
+            "visiting frequently",
+            "visiting daily"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1643170",
+      "headword": "日章旗",
+      "reading": "にっしょうき",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "the Japanese (rising sun) flag"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1644230",
+      "headword": "烈日",
+      "reading": "れつじつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ジツ",
+      "senses": [
+        {
+          "glosses": [
+            "blazing sun",
+            "scorching sun",
+            "hot day"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1644360",
+      "headword": "離日",
+      "reading": "りにち",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ニチ",
+      "senses": [
+        {
+          "glosses": [
+            "departure from Japan"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1647500",
+      "headword": "日本標準時",
+      "reading": "にほんひょうじゅんじ",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "Japan Standard Time",
+            "JST"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1648510",
+      "headword": "日朝",
+      "reading": "にっちょう",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "Japan and North Korea",
+            "Japanese-North Korean"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1650110",
+      "headword": "安息日",
+      "reading": "あんそくび",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "(Judeo-Christian) Sabbath"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1650480",
+      "headword": "初七日",
+      "reading": "しょなのか",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "memorial service held on the seventh day following a person's death"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1651050",
+      "headword": "日英",
+      "reading": "にちえい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ニチ",
+      "senses": [
+        {
+          "glosses": [
+            "Japan and Britain",
+            "Japanese-British",
+            "Anglo-Japanese"
+          ]
+        },
+        {
+          "glosses": [
+            "Japanese-English (translation, interpretation, etc.)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1653670",
+      "headword": "逐日",
+      "reading": "ちくじつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ジツ",
+      "senses": [
+        {
+          "glosses": [
+            "day by day",
+            "every day",
+            "with each passing day"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1655880",
+      "headword": "最終日",
+      "reading": "さいしゅうび",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "last day",
+            "final day"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1656390",
+      "headword": "日華",
+      "reading": "にっか",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "Japan and China"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1656400",
+      "headword": "日記帳",
+      "reading": "にっきちょう",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "diary"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1656410",
+      "headword": "日清戦争",
+      "reading": "にっしんせんそう",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "First Sino-Japanese war (1894-1895)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "日",
+      "dictionaryEntryId": "de-jmdict-1656420",
+      "headword": "日雇傭",
+      "reading": "ひやとい",
+      "compoundType": "KUN_COMPOUND",
+      "matchedReading": "ひ",
+      "senses": [
+        {
+          "glosses": [
+            "daily employment",
+            "hiring by the day",
+            "day laborer",
+            "day labourer"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1659700",
+      "headword": "三日月形",
+      "reading": "みかづきがた",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "crescent shape"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1662990",
+      "headword": "客月",
+      "reading": "きゃくげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "last month"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1663310",
+      "headword": "夕月夜",
+      "reading": "ゆうづきよ",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "evening moon",
+            "moonlit evening",
+            "moonlight evening"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1663410",
+      "headword": "星月夜",
+      "reading": "ほしづきよ",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "starry night"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1671910",
+      "headword": "無月",
+      "reading": "むげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "moonless sky (poetic usage)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1693080",
+      "headword": "五月病",
+      "reading": "ごがつびょう",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ガツ",
+      "senses": [
+        {
+          "glosses": [
+            "blues experienced by college freshmen or workplace recruits shortly after beginning school or work",
+            "the May blues"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1714620",
+      "headword": "寒月",
+      "reading": "かんげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "wintry moon",
+            "a winter month"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1720200",
+      "headword": "新月",
+      "reading": "しんげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "new moon",
+            "crescent moon"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1725680",
+      "headword": "霽月",
+      "reading": "せいげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "moon shining in a rain-cleansed sky"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1731680",
+      "headword": "蜜月",
+      "reading": "みつげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "honeymoon"
+          ]
+        },
+        {
+          "glosses": [
+            "being in an intimate relationship",
+            "honeymoon (period)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1738360",
+      "headword": "累月",
+      "reading": "るいげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "a number of months"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1739910",
+      "headword": "夕月",
+      "reading": "ゆうづき",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "the evening moon"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1743540",
+      "headword": "小正月",
+      "reading": "こしょうがつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ガツ",
+      "senses": [
+        {
+          "glosses": [
+            "Little New Year (festival held on January 15)",
+            "14th-16th days of the New Year",
+            "Koshōgatsu"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1754120",
+      "headword": "残月",
+      "reading": "ざんげつ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "ゲツ",
+      "senses": [
+        {
+          "glosses": [
+            "moon visible in the morning"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "月",
+      "dictionaryEntryId": "de-jmdict-1754780",
+      "headword": "産月",
+      "reading": "うみづき",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "final month of pregnancy",
+            "month in which childbirth is due"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1754620",
+      "headword": "散水車撒",
+      "reading": "さんすいしゃ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "water sprinkler truck",
+            "street washer"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1757780",
+      "headword": "冷水塊",
+      "reading": "れいすいかい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "cold water mass"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1757860",
+      "headword": "領水",
+      "reading": "りょうすい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "territorial waters"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1758160",
+      "headword": "利水",
+      "reading": "りすい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "irrigation"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1758170",
+      "headword": "利水工事",
+      "reading": "りすいこうじ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "irrigation works"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1762440",
+      "headword": "若水",
+      "reading": "わかみず",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "first water drawn from a well on New Year's Day"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1767370",
+      "headword": "死水",
+      "reading": "しにみず",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "give water to a dying person",
+            "water given to a dying person"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1770130",
+      "headword": "止水",
+      "reading": "しすい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "stagnant water",
+            "still water"
+          ]
+        },
+        {
+          "glosses": [
+            "water stopping"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1770930",
+      "headword": "導水",
+      "reading": "どうすい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "water conveyance"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1771700",
+      "headword": "増水",
+      "reading": "ぞうすい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "rising water (of river, lake, etc.)",
+            "swelling water",
+            "increased water",
+            "high water"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1772320",
+      "headword": "伏流水",
+      "reading": "ふくりゅうすい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "underground water"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1772580",
+      "headword": "海水魚",
+      "reading": "かいすいぎょ",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "saltwater fish"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1772590",
+      "headword": "海水帽",
+      "reading": "かいすいぼう",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "スイ",
+      "senses": [
+        {
+          "glosses": [
+            "bathing cap",
+            "swimcap"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1772790",
+      "headword": "海松水",
+      "reading": "みる",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "stag seaweed (Codium fragile)",
+            "green sea fingers",
+            "dead man's fingers",
+            "felty fingers",
+            "forked felt-alga",
+            "sponge seaweed",
+            "green sponge",
+            "green fleece",
+            "oyster thief"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "水",
+      "dictionaryEntryId": "de-jmdict-1774260",
+      "headword": "湯水",
+      "reading": "ゆみず",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "hot and cold water"
+          ]
+        },
+        {
+          "glosses": [
+            "abundant item",
+            "plentiful item"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "火",
+      "dictionaryEntryId": "de-jmdict-1773250",
+      "headword": "黒色火薬",
+      "reading": "こくしょくかやく",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "カ",
+      "senses": [
+        {
+          "glosses": [
+            "black powder",
+            "gunpowder"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "火",
+      "dictionaryEntryId": "de-jmdict-1778170",
+      "headword": "寄生火山",
+      "reading": "きせいかざん",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "カ",
+      "senses": [
+        {
+          "glosses": [
+            "parasite volcano"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "火",
+      "dictionaryEntryId": "de-jmdict-1775450",
+      "headword": "狼火",
+      "reading": "ろうか",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "カ",
+      "senses": [
+        {
+          "glosses": [
+            "signal fire",
+            "beacon"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "火",
+      "dictionaryEntryId": "de-jmdict-1776460",
+      "headword": "打上花火",
+      "reading": "うちあげはなび",
+      "compoundType": "SPECIAL",
+      "matchedReading": "ateji/gikun",
+      "senses": [
+        {
+          "glosses": [
+            "skyrocket (firework)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    },
+    {
+      "kanjiCharacter": "火",
+      "dictionaryEntryId": "de-jmdict-1776750",
+      "headword": "灯火管制",
+      "reading": "とうかかんせい",
+      "compoundType": "ON_COMPOUND",
+      "matchedReading": "カ",
+      "senses": [
+        {
+          "glosses": [
+            "blackout (to prevent being seen by enemy aircraft during a nighttime air raid)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        },
+        {
+          "glosses": [
+            "(untranslated)"
+          ]
+        }
+      ]
+    }
+  ]
+}
