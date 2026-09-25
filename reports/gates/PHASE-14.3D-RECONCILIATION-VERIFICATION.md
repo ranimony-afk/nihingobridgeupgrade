@@ -22,7 +22,8 @@ GO means the current working-tree implementation of Phase 14.3D was independentl
 | Remote `main` | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
 | Claimed verification commit `04f34a579e7708791bd2ac79014d56926f86de6f` | Not a commit. Absent locally (`git cat-file` fails) and absent on GitHub (HTTP 422). |
 | Working tree | Dirty safety-closure files were present and were not discarded. |
-| Remote branch `arena/01a0d755-nihingobridgeupgrade` | Did not exist at inspection. |
+| Remote branch at inspection | Did not exist. |
+| Remote branch after this gate | Pushed. Implementation commit `9dc8e3f9aa932709144708af80279918c7fb96f5`. Not merged to `main`. |
 
 Remote inspection was performed with the GitHub API, not from stale local refs.
 
