@@ -420,7 +420,7 @@ export async function runControlledPilot(): Promise<PilotVerificationResults> {
     ...originalStamped,
     tags: [...originalStamped.tags, "pilot:conflict-test-tag"],
   };
-  const updateResult = await adapter.upsertBatch([mutated]);
+  const updateResult = await adapter.upsertBatch([mutated], { conflictPolicy: "update" });
 
   const [mutatedRow] = await db
     .select()
@@ -430,7 +430,7 @@ export async function runControlledPilot(): Promise<PilotVerificationResults> {
   const verifiedUpdated = (mutatedRow?.tags as string[])?.includes("pilot:conflict-test-tag");
 
   // Revert mutation
-  const revertResult = await adapter.upsertBatch([originalStamped]);
+  const revertResult = await adapter.upsertBatch([originalStamped], { conflictPolicy: "update" });
   const [revertedRow] = await db
     .select()
     .from(dictionaryEntries)

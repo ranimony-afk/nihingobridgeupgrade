@@ -56,8 +56,12 @@ export interface ProvenanceContract {
   domain: SourceDomain;
   /** Operational lifecycle status */
   status: SourceStatus;
-  /** Cryptographic checksum or content hash of source archive, if computed */
+  /** Cryptographic checksum of the canonical artifact bytes, if pinned. */
   contentHash?: string | null;
+  /** Byte length of the canonical artifact, when the release pin specifies one. */
+  artifactBytes?: number | null;
+  /** SHA-256 of the compressed acquisition archive, when separately pinned. */
+  archiveSha256?: string | null;
   /** Target canonical database tables populated by this source */
   targetTables: string[];
 }

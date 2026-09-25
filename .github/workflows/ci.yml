@@ -75,6 +75,10 @@ jobs:
       # credential worth protecting here, and inlining it makes it impossible
       # for this job to point at production by accident.
       DATABASE_URL: postgresql://nihongo:nihongo_ci_only@localhost:5432/nihongo_test
+      # Explicit disposable classification for this throwaway service container.
+      # Loopback alone is not authorization. This does not classify production.
+      NIHONGO_DB_TARGET_CLASS: disposable
+      NIHONGO_DB_EXPECTED_DATABASE: nihongo_test
 
     steps:
       - name: Checkout

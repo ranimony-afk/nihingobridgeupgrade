@@ -76,9 +76,12 @@ export class DictionaryLoader {
    */
   static async loadBatch(
     entries: CanonicalDictionaryEntry[],
-    options: { dryRun?: boolean; adapter?: DictionaryPersistenceAdapter } = {}
+    options: { dryRun?: boolean; adapter?: DictionaryPersistenceAdapter; conflictPolicy?: "abort" | "update" } = {}
   ): Promise<BatchLoadResult> {
     const adapter = options.adapter || this.defaultAdapter;
-    return await adapter.upsertBatch(entries, { dryRun: options.dryRun });
+    return await adapter.upsertBatch(entries, {
+      dryRun: options.dryRun,
+      conflictPolicy: options.conflictPolicy ?? "abort",
+    });
   }
 }

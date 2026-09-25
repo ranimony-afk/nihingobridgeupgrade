@@ -161,7 +161,10 @@ export class DictionaryPipeline {
       // Execute in batches through adapter
       for (let i = 0; i < validEntries.length; i += batchSize) {
         const batch = validEntries.slice(i, i + batchSize);
-        const batchResult = await adapter.upsertBatch(batch, { dryRun: false });
+        const batchResult = await adapter.upsertBatch(batch, {
+          dryRun: false,
+          conflictPolicy: options.conflictPolicy ?? "abort",
+        });
         inserted += batchResult.inserted;
         updated += batchResult.updated;
         skipped += batchResult.skipped;
