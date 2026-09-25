@@ -1,0 +1,18 @@
+{
+  "sourceId": "upstream:jmdict:2023-08",
+  "sourceHash": "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162",
+  "releaseVersion": "2023-08-20",
+  "transformationVersion": "jmdict-v1",
+  "schemaContract": "dictionary_entries",
+  "deterministicIdStrategy": "de-jmdict-${entSeq}",
+  "lastProcessedEntSeq": "1000660",
+  "recordsProcessed": 50,
+  "recordsInserted": 50,
+  "recordsSkipped": 0,
+  "recordsUpdated": 0,
+  "recordsConflicted": 0,
+  "recordsRejected": 0,
+  "warningCount": 0,
+  "errorCount": 0,
+  "timestamp": "2026-09-25T05:37:26.734Z"
+}
