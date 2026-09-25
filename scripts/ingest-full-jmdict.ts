@@ -8,7 +8,9 @@
 
 import "dotenv/config";
 import fs from "fs";
-import { resolve } from "path";
+import { resolve, join } from "path";
+import { tmpdir } from "os";
+import { Readable } from "stream";
 import { createHash } from "crypto";
 import { Client } from "pg";
 import { db } from "@/db";
@@ -45,6 +47,7 @@ import { DictionaryService } from "@/services/dictionary/dictionaryService";
 import type {
   CanonicalDictionaryEntry,
   PersistenceCandidate,
+  DictionaryPersistenceAdapter,
 } from "@/etl/dictionary/types";
 
 export const EXPECTED_JMDICT_SHA256 = "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162";
@@ -138,17 +141,181 @@ export interface IngestionExecutionOptions {
   skipIdempotencyRun2?: boolean;
 }
 
+// Validate caller-owned configuration once, before any filesystem/client work.
+// Reject accessors/inherited configuration rather than reading it repeatedly.
+function optionRecord(value: unknown, allowed: readonly string[]): Record<string, unknown> {
+  if (!value || typeof value !== "object" ||
+      (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null)) {
+    throw new Error("Invalid options object");
+  }
+  const copy: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
+    if (typeof key !== "string" || !allowed.includes(key) || !Object.hasOwn(descriptor, "value")) {
+      throw new Error("Invalid option property");
+    }
+    copy[key] = descriptor.value;
+  }
+  return copy;
+}
+
+function nonemptyString(value: unknown, name: string): asserts value is string {
+  if (typeof value !== "string" || !value.trim() || /[\x00-\x1f]/.test(value)) {
+    throw new Error(`Invalid ${name}`);
+  }
+}
+
+export function validateIngestionOptions(input: unknown): IngestionExecutionOptions {
+  const flags = ["dryRun", "preflightOnly", "pilot", "resume", "verifyOnly", "rollbackTest",
+    "authorizeFullIngestion", "skipIdempotencyRun2"];
+  const options = optionRecord(input, [...flags, "pilotStage", "batchSize", "checkpointPath", "conflictPolicy"]);
+  for (const flag of flags) {
+    if (Object.hasOwn(options, flag) && typeof options[flag] !== "boolean") throw new Error(`Invalid ${flag}`);
+  }
+  if (Object.hasOwn(options, "batchSize") &&
+      (typeof options.batchSize !== "number" || !Number.isSafeInteger(options.batchSize) || options.batchSize <= 0)) {
+    throw new Error("Invalid batchSize");
+  }
+  if (Object.hasOwn(options, "pilotStage") &&
+      (typeof options.pilotStage !== "string" || !["A", "B", "C", "D", "E"].includes(options.pilotStage))) {
+    throw new Error("Invalid pilotStage");
+  }
+  if (Object.hasOwn(options, "checkpointPath")) nonemptyString(options.checkpointPath, "checkpointPath");
+  if (Object.hasOwn(options, "conflictPolicy") && !["abort", "update"].includes(options.conflictPolicy as string)) {
+    throw new Error("Invalid conflictPolicy");
+  }
+  return options as IngestionExecutionOptions;
+}
+
+const SOURCE_CHUNK_BYTES = 64 * 1024;
+const sourcePins = new WeakMap<SourceMetadata, { fd: number; streams: Set<Readable> }>();
+const candidateSources = new WeakMap<PersistenceCandidate, SourceMetadata>();
+const batchSources = new WeakMap<SourceBatch, SourceMetadata>();
+
+function freezeBatchPayload(value: unknown): void {
+  if (value === null || typeof value !== "object") return;
+  for (const child of Object.values(value)) freezeBatchPayload(child);
+  Object.freeze(value);
+}
+
+export function releaseVerifiedSource(source: SourceMetadata): void {
+  const pin = sourcePins.get(source);
+  if (!pin) return;
+  sourcePins.delete(source);
+  for (const stream of pin.streams) stream.destroy();
+  fs.closeSync(pin.fd);
+}
+
+export function openVerifiedSourceStream(source: SourceMetadata): Readable {
+  const pin = sourcePins.get(source);
+  if (!pin) throw new Error("Source is not a live verified snapshot");
+  // Positional synchronous reads avoid shared-offset and close/read races.
+  // Each pass has its own cursor; no pass opens the original pathname.
+  let position = 0;
+  const stream = new Readable({
+    read() {
+      try {
+        if (!sourcePins.has(source)) throw new Error("Source snapshot released");
+        const buffer = Buffer.allocUnsafe(SOURCE_CHUNK_BYTES);
+        const count = fs.readSync(pin.fd, buffer, 0, buffer.length, position);
+        position += count;
+        this.push(count ? buffer.subarray(0, count) : null);
+      } catch (error) { this.destroy(error as Error); }
+    },
+  });
+  stream.setEncoding("utf8");
+  pin.streams.add(stream);
+  stream.once("close", () => pin.streams.delete(stream));
+  return stream;
+}
+
+// Only records produced by the existing parser/transformer from a live snapshot
+// can enter an accepted batch. The mutable staging array is never persisted.
+export async function* readVerifiedRecords(source: SourceMetadata, dryRun = false) {
+  const stream = openVerifiedSourceStream(source);
+  const provenance = createETLProvenanceContext(source.sourceId, { dryRun });
+  try {
+    for await (const raw of streamJMdictEntries(stream)) {
+      const result = transformJMdictEntry(raw, source.sourceId);
+      if (result.isValid && result.record) {
+        result.record = provenance.stampRecord<CanonicalDictionaryEntry>(result.record);
+        freezeBatchPayload(result.record);
+        candidateSources.set(result.record, source);
+      }
+      yield { raw, ...result };
+    }
+  } finally { stream.destroy(); }
+}
+
+export interface SourceBatch {
+  readonly candidates: PersistenceCandidate[];
+  readonly source: SourceMetadata;
+  readonly lastProcessedEntSeq: string;
+}
+
+export function acceptSourceBatch(source: SourceMetadata, candidates: PersistenceCandidate[]): SourceBatch {
+  const payload = [...candidates];
+  if (!sourcePins.has(source) || payload.length === 0 ||
+      payload.some(candidate => candidateSources.get(candidate) !== source)) {
+    throw new Error("Batch does not belong to verified source");
+  }
+  const batch: SourceBatch = {
+    candidates: payload, source,
+    lastProcessedEntSeq: payload[payload.length - 1].id.replace("de-jmdict-", ""),
+  };
+  freezeBatchPayload(batch);
+  batchSources.set(batch, source);
+  return batch;
+}
+
+type CheckpointProgress = Pick<IngestionCheckpoint, "recordsProcessed" | "recordsInserted" |
+  "recordsSkipped" | "recordsUpdated" | "recordsConflicted" | "recordsRejected" | "warningCount" | "errorCount">;
+
+export async function commitSourceBatch(
+  source: SourceMetadata,
+  batch: SourceBatch,
+  adapter: Pick<DictionaryPersistenceAdapter, "upsertBatch">,
+  dryRun = false,
+  checkpoint?: { path: string; progress: CheckpointProgress },
+) {
+  if (!sourcePins.has(source) || batchSources.get(batch) !== source) {
+    throw new Error("Unaccepted batch or wrong source");
+  }
+  // Capture checkpoint inputs before handing control to asynchronous persistence.
+  const path = checkpoint?.path;
+  const progress = checkpoint ? Object.freeze({ ...checkpoint.progress }) : undefined;
+  const result = await adapter.upsertBatch(batch.candidates, { dryRun });
+  if (path !== undefined && progress) {
+    const value: IngestionCheckpoint = {
+      ...progress,
+      sourceId: source.sourceId, sourceHash: source.xmlSha256,
+      releaseVersion: source.releaseVersion, transformationVersion: source.transformationVersion,
+      schemaContract: source.schemaContract, deterministicIdStrategy: source.deterministicIdStrategy,
+      lastProcessedEntSeq: batch.lastProcessedEntSeq,
+      recordsInserted: progress.recordsInserted + result.inserted,
+      recordsUpdated: progress.recordsUpdated + result.updated,
+      recordsSkipped: progress.recordsSkipped + result.skipped,
+      timestamp: new Date().toISOString(),
+    };
+    freezeBatchPayload(value);
+    CheckpointManager.saveCheckpoint(path, value);
+  }
+  return result;
+}
+
 // ----------------------------------------------------
 // 1. Database Safety & Target Classification
 // ----------------------------------------------------
 export async function validateEnvironmentSafety(
   explicitConnStr?: string
 ): Promise<EnvironmentSafetyResult> {
-  const connStr = explicitConnStr || process.env.DATABASE_URL;
+  if (explicitConnStr !== undefined) nonemptyString(explicitConnStr, "connStr");
+  const connStr = explicitConnStr === undefined ? process.env.DATABASE_URL : explicitConnStr;
   if (!connStr) {
     throw new Error("[PRECHECK] FATAL: DATABASE_URL is missing. Safety stop!");
   }
 
+  nonemptyString(connStr, "connStr");
   let url: URL;
   try {
     url = new URL(connStr);
@@ -205,30 +372,16 @@ export async function validateEnvironmentSafety(
 // ----------------------------------------------------
 // 2. Source Contract & Hash Verification
 // ----------------------------------------------------
+// The caller owns the returned snapshot and must release it in a finally block.
 export function verifySourceContract(
   customXmlPath?: string,
   expectedHash: string = EXPECTED_JMDICT_SHA256,
   expectedRelease: string = EXPECTED_JMDICT_RELEASE
 ): SourceMetadata {
-  const xmlPath = customXmlPath || resolve(process.cwd(), "data/JMdict.xml");
-  if (!fs.existsSync(xmlPath)) {
-    throw new Error(`[SOURCE_VERIFIED] STOP — SOURCE FILE MISSING: "${xmlPath}" not found.`);
-  }
-
-  const stat = fs.statSync(xmlPath);
-  const xmlSizeBytes = stat.size;
-
-  const hash = createHash("sha256");
-  const buffer = fs.readFileSync(xmlPath);
-  hash.update(buffer);
-  const xmlSha256 = hash.digest("hex");
-
-  if (xmlSha256 !== expectedHash) {
-    throw new Error(
-      `[SOURCE_VERIFIED] STOP — SOURCE HASH MISMATCH: expected ${expectedHash}, got ${xmlSha256}`
-    );
-  }
-
+  if (customXmlPath !== undefined) nonemptyString(customXmlPath, "xmlPath");
+  nonemptyString(expectedHash, "expectedHash");
+  if (!/^[a-f0-9]{64}$/i.test(expectedHash)) throw new Error("Invalid expectedHash");
+  const xmlPath = customXmlPath === undefined ? resolve(process.cwd(), "data/JMdict.xml") : customXmlPath;
   const provDef = getRegisteredSource(JMDICT_SOURCE_ID);
   if (!provDef) {
     throw new Error(`[SOURCE_VERIFIED] STOP — PROVENANCE UNREGISTERED: "${JMDICT_SOURCE_ID}"`);
@@ -240,19 +393,59 @@ export function verifySourceContract(
     );
   }
 
-  return {
-    sourceId: JMDICT_SOURCE_ID,
-    releaseVersion: expectedRelease,
-    license: provDef.license,
-    attribution: provDef.attribution,
-    xmlPath,
-    xmlSizeBytes,
-    xmlSha256,
-    expectedEntries: EXPECTED_JMDICT_ENTRIES,
-    transformationVersion: "jmdict-v1",
-    schemaContract: "dictionary_entries",
-    deterministicIdStrategy: "de-jmdict-${entSeq}",
-  };
+  let input: number | undefined;
+  let writer: number | undefined;
+  let reader: number | undefined;
+  let directory: string | undefined;
+  try {
+    input = fs.openSync(xmlPath, "r");
+    if (!fs.fstatSync(input).isFile()) throw new Error("Source must be a regular file");
+    directory = fs.mkdtempSync(join(tmpdir(), "jmdict-verified-"));
+    const snapshotPath = join(directory, "source.xml");
+    writer = fs.openSync(snapshotPath, "wx", 0o600);
+    const hash = createHash("sha256");
+    const buffer = Buffer.allocUnsafe(SOURCE_CHUNK_BYTES);
+    let size = 0;
+    for (;;) {
+      const count = fs.readSync(input, buffer, 0, buffer.length, null);
+      if (!count) break;
+      let written = 0;
+      while (written < count) {
+        const n = fs.writeSync(writer, buffer, written, count - written);
+        if (n <= 0) throw new Error("Snapshot write made no progress");
+        written += n;
+      }
+      hash.update(buffer.subarray(0, count));
+      size += count;
+    }
+    const xmlSha256 = hash.digest("hex");
+    if (xmlSha256 !== expectedHash) throw new Error(`SOURCE HASH MISMATCH: expected ${expectedHash}, got ${xmlSha256}`);
+    fs.closeSync(input); input = undefined;
+    fs.closeSync(writer); writer = undefined;
+    reader = fs.openSync(snapshotPath, "r");
+    // Retain only the read-only descriptor: there is no writable pathname to reopen.
+    fs.unlinkSync(snapshotPath);
+    fs.rmdirSync(directory); directory = undefined;
+    const source: SourceMetadata = Object.freeze({
+      sourceId: JMDICT_SOURCE_ID,
+      releaseVersion: expectedRelease,
+      license: provDef.license,
+      attribution: provDef.attribution,
+      xmlPath,
+      xmlSizeBytes: size,
+      xmlSha256,
+      expectedEntries: EXPECTED_JMDICT_ENTRIES,
+      transformationVersion: "jmdict-v1",
+      schemaContract: "dictionary_entries",
+      deterministicIdStrategy: "de-jmdict-${entSeq}",
+    });
+    sourcePins.set(source, { fd: reader, streams: new Set() });
+    reader = undefined;
+    return source;
+  } finally {
+    for (const fd of [input, writer, reader]) if (fd !== undefined) fs.closeSync(fd);
+    if (directory) fs.rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 // ----------------------------------------------------
@@ -262,8 +455,13 @@ export async function runPreflight(options: {
   xmlPath?: string;
   connStr?: string;
 } = {}): Promise<PreflightReport> {
+  const checked = optionRecord(options, ["xmlPath", "connStr"]);
+  if (Object.hasOwn(checked, "xmlPath")) nonemptyString(checked.xmlPath, "xmlPath");
+  if (Object.hasOwn(checked, "connStr")) nonemptyString(checked.connStr, "connStr");
+  options = checked as typeof options;
   const env = await validateEnvironmentSafety(options.connStr);
   const source = verifySourceContract(options.xmlPath);
+  try {
 
   const [dictCountRow] = await db
     .select({ count: sql`cast(count(*) as int)` })
@@ -291,6 +489,7 @@ export async function runPreflight(options: {
     unexpectedIdCount: 0,
     isReadOnly: true,
   };
+  } finally { releaseVerifiedSource(source); }
 }
 
 // ----------------------------------------------------
@@ -390,7 +589,13 @@ export async function reconcileRandomSample(
   sampleSize: number = 100,
   customXmlPath?: string
 ): Promise<RandomReconciliationResult> {
+  if (!Number.isSafeInteger(sampleSize) || sampleSize <= 0) throw new Error("Invalid sampleSize");
   const source = verifySourceContract(customXmlPath);
+  try { return await reconcileVerifiedSample(sampleSize, source); }
+  finally { releaseVerifiedSource(source); }
+}
+
+async function reconcileVerifiedSample(sampleSize: number, source: SourceMetadata): Promise<RandomReconciliationResult> {
   const provContext = createETLProvenanceContext(source.sourceId, { dryRun: false });
 
   // Select 100 deterministic records distributed evenly across the corpus
@@ -401,10 +606,7 @@ export async function reconcileRandomSample(
     targetIndices.add(i * step);
   }
 
-  const fileStream = fs.createReadStream(source.xmlPath, {
-    encoding: "utf-8",
-    highWaterMark: 64 * 1024,
-  });
+  const fileStream = openVerifiedSourceStream(source);
 
   const sampleCandidates: CanonicalDictionaryEntry[] = [];
   let currentIndex = 0;
@@ -493,6 +695,7 @@ export async function executeIngestion(
   status: "SUCCESS" | "PREFLIGHT_ONLY" | "DRY_RUN_COMPLETE" | "VERIFY_COMPLETE" | "ROLLBACK_TEST_COMPLETE";
   report: Record<string, unknown>;
 }> {
+  options = validateIngestionOptions(options);
   console.log("================================================================================");
   console.log("PHASE 14.3D — CONTROLLED FULL JMdict POSTGRESQL INGESTION ENGINE");
   console.log("================================================================================");
@@ -511,6 +714,7 @@ export async function executeIngestion(
   // STEP 2: Source Verification
   log("SOURCE_VERIFIED", "Auditing source release hash and provenance registry...");
   const source = verifySourceContract();
+  try {
   log("SOURCE_VERIFIED", `Source: ${source.sourceId} (${source.releaseVersion})`);
   log("SOURCE_VERIFIED", `SHA-256: ${source.xmlSha256} (${source.xmlSizeBytes} bytes)`);
 
@@ -534,7 +738,7 @@ export async function executeIngestion(
   // STEP 5: Handle Verify Only Flag
   if (options.verifyOnly) {
     log("FINAL_RECONCILIATION", "Running post-ingestion verification and 100-record sample audit...");
-    const randRecon = await reconcileRandomSample(100);
+    const randRecon = await reconcileVerifiedSample(100, source);
     log("FINAL_RECONCILIATION", `Deterministic sample: ${randRecon.matchedCount}/${randRecon.sampleSize} matched (Mismatches: ${randRecon.mismatchCount})`);
     if (randRecon.mismatchCount > 0) {
       log("VALIDATION_ERROR", "Field mismatches detected:", randRecon.mismatches);
@@ -547,7 +751,7 @@ export async function executeIngestion(
   // Pilot staging configuration
   let maxEntriesToIngest = source.expectedEntries;
   if (options.pilot) {
-    const stage = options.pilotStage || "B";
+    const stage = options.pilotStage ?? "B";
     if (stage === "A") maxEntriesToIngest = 10;
     else if (stage === "B") maxEntriesToIngest = 100;
     else if (stage === "C") maxEntriesToIngest = 1000;
@@ -588,8 +792,8 @@ export async function executeIngestion(
     }
   }
 
-  const batchSize = options.batchSize || 1000;
-  const checkpointPath = options.checkpointPath || DEFAULT_CHECKPOINT_PATH;
+  const batchSize = options.batchSize ?? 1000;
+  const checkpointPath = options.checkpointPath ?? DEFAULT_CHECKPOINT_PATH;
   let resumeFromEntSeq: string | null = null;
 
   // Handle Resume
@@ -614,13 +818,7 @@ export async function executeIngestion(
     .from(dictionaryEntries);
   const totalBefore = Number(dictBeforeRow.count);
 
-  const provContext = createETLProvenanceContext(source.sourceId, { dryRun: Boolean(options.dryRun) });
   const adapter = new DrizzleDictionaryPersistenceAdapter();
-
-  const fileStream = fs.createReadStream(source.xmlPath, {
-    encoding: "utf-8",
-    highWaterMark: 64 * 1024,
-  });
 
   let processedCount = 0;
   let insertedCount = 0;
@@ -637,7 +835,7 @@ export async function executeIngestion(
   const startTime = Date.now();
   let batchIndex = 0;
 
-  for await (const raw of streamJMdictEntries(fileStream)) {
+  for await (const { raw, record: candidate, isValid, diagnostics } of readVerifiedRecords(source, Boolean(options.dryRun))) {
     if (!isPastResumePoint) {
       if (raw.entSeq === resumeFromEntSeq) {
         isPastResumePoint = true;
@@ -651,7 +849,6 @@ export async function executeIngestion(
 
     processedCount++;
 
-    const { record: candidate, isValid, diagnostics } = transformJMdictEntry(raw, source.sourceId);
     if (diagnostics && diagnostics.length > 0) {
       warningCount += diagnostics.length;
     }
@@ -668,45 +865,28 @@ export async function executeIngestion(
     }
     seenEntSeqs.add(raw.entSeq);
 
-    const stamped = provContext.stampRecord<CanonicalDictionaryEntry>(candidate);
-    currentBatch.push(stamped);
+    currentBatch.push(candidate);
 
     if (currentBatch.length >= batchSize) {
       batchIndex++;
       log("BATCH_START", `Batch #${batchIndex} (size: ${currentBatch.length})...`);
-      const lastSeq = currentBatch[currentBatch.length - 1].id.replace("de-jmdict-", "");
-
-      if (!options.dryRun) {
-        const batchRes = await adapter.upsertBatch(currentBatch);
-        insertedCount += batchRes.inserted;
-        updatedCount += batchRes.updated;
-        skippedCount += batchRes.skipped;
-        log("BATCH_COMMIT", `Batch #${batchIndex} committed: Ins=${batchRes.inserted}, Upd=${batchRes.updated}, Skip=${batchRes.skipped}`);
-      } else {
-        insertedCount += currentBatch.length;
-      }
-
-      currentBatch = [];
-
-      // Record Checkpoint
-      CheckpointManager.saveCheckpoint(checkpointPath, {
-        sourceId: source.sourceId,
-        sourceHash: source.xmlSha256,
-        releaseVersion: source.releaseVersion,
-        transformationVersion: source.transformationVersion,
-        schemaContract: source.schemaContract,
-        deterministicIdStrategy: source.deterministicIdStrategy,
-        lastProcessedEntSeq: lastSeq,
-        recordsProcessed: processedCount,
-        recordsInserted: insertedCount,
-        recordsSkipped: skippedCount,
-        recordsUpdated: updatedCount,
-        recordsConflicted: 0,
-        recordsRejected: rejectedCount,
-        warningCount,
-        errorCount,
-        timestamp: new Date().toISOString(),
+      const batch = acceptSourceBatch(source, currentBatch);
+      const lastSeq = batch.lastProcessedEntSeq;
+      const batchRes = await commitSourceBatch(source, batch, adapter, Boolean(options.dryRun), {
+        path: checkpointPath,
+        progress: {
+          recordsProcessed: processedCount, recordsInserted: insertedCount,
+          recordsSkipped: skippedCount, recordsUpdated: updatedCount, recordsConflicted: 0,
+          recordsRejected: rejectedCount, warningCount, errorCount,
+        },
       });
+      insertedCount += batchRes.inserted;
+      updatedCount += batchRes.updated;
+      skippedCount += batchRes.skipped;
+      if (!options.dryRun) {
+        log("BATCH_COMMIT", `Batch #${batchIndex} committed: Ins=${batchRes.inserted}, Upd=${batchRes.updated}, Skip=${batchRes.skipped}`);
+      }
+      currentBatch = [];
       log("CHECKPOINT", `Checkpoint saved at ent_seq=${lastSeq} (${processedCount} processed)`);
     }
   }
@@ -716,7 +896,7 @@ export async function executeIngestion(
     batchIndex++;
     log("BATCH_START", `Final partial Batch #${batchIndex} (size: ${currentBatch.length})...`);
     if (!options.dryRun) {
-      const batchRes = await adapter.upsertBatch(currentBatch);
+      const batchRes = await commitSourceBatch(source, acceptSourceBatch(source, currentBatch), adapter);
       insertedCount += batchRes.inserted;
       updatedCount += batchRes.updated;
       skippedCount += batchRes.skipped;
@@ -749,7 +929,7 @@ export async function executeIngestion(
 
   // Random reconciliation check (100 records)
   log("FINAL_RECONCILIATION", "Running 100-record deterministic random sample audit...");
-  const randomRecon = await reconcileRandomSample(100, source.xmlPath);
+  const randomRecon = await reconcileVerifiedSample(100, source);
   log("FINAL_RECONCILIATION", `Sample audit: ${randomRecon.matchedCount}/${randomRecon.sampleSize} matched (0 mismatches required).`);
 
   if (randomRecon.mismatchCount > 0) {
@@ -761,24 +941,18 @@ export async function executeIngestion(
   let idempotencyRun2Result = null;
   if (!options.dryRun && !options.skipIdempotencyRun2 && !options.pilot) {
     log("PRECHECK", "Executing full Idempotency Verification Pass (Run 2)...");
-    const stream2 = fs.createReadStream(source.xmlPath, {
-      encoding: "utf-8",
-      highWaterMark: 64 * 1024,
-    });
 
     let run2Inserted = 0;
     let run2Updated = 0;
     let run2Skipped = 0;
     let run2Batch: PersistenceCandidate[] = [];
 
-    for await (const raw of streamJMdictEntries(stream2)) {
-      const { record: candidate, isValid } = transformJMdictEntry(raw, source.sourceId);
+    for await (const { record: candidate, isValid } of readVerifiedRecords(source)) {
       if (!isValid || !candidate) continue;
-      const stamped = provContext.stampRecord<CanonicalDictionaryEntry>(candidate);
-      run2Batch.push(stamped);
+      run2Batch.push(candidate);
 
       if (run2Batch.length >= batchSize) {
-        const res = await adapter.upsertBatch(run2Batch);
+        const res = await commitSourceBatch(source, acceptSourceBatch(source, run2Batch), adapter);
         run2Inserted += res.inserted;
         run2Updated += res.updated;
         run2Skipped += res.skipped;
@@ -786,7 +960,7 @@ export async function executeIngestion(
       }
     }
     if (run2Batch.length > 0) {
-      const res = await adapter.upsertBatch(run2Batch);
+      const res = await commitSourceBatch(source, acceptSourceBatch(source, run2Batch), adapter);
       run2Inserted += res.inserted;
       run2Updated += res.updated;
       run2Skipped += res.skipped;
@@ -832,12 +1006,13 @@ export async function executeIngestion(
       verdict: "GO — PHASE 14.3D COMPLETE",
     },
   };
+  } finally { releaseVerifiedSource(source); }
 }
 
 // ----------------------------------------------------
 // CLI Interface
 // ----------------------------------------------------
-function parseCliArgs(args: string[]): IngestionExecutionOptions {
+export function parseCliArgs(args: string[]): IngestionExecutionOptions {
   const options: IngestionExecutionOptions = {};
 
   for (let i = 0; i < args.length; i++) {
@@ -849,7 +1024,7 @@ function parseCliArgs(args: string[]): IngestionExecutionOptions {
     } else if (arg === "--pilot") {
       options.pilot = true;
       const nextArg = args[i + 1];
-      if (nextArg && ["A", "B", "C", "D", "E"].includes(nextArg.toUpperCase())) {
+      if (nextArg !== undefined && !nextArg.startsWith("--")) {
         options.pilotStage = nextArg.toUpperCase() as any;
         i++;
       } else {
@@ -857,10 +1032,9 @@ function parseCliArgs(args: string[]): IngestionExecutionOptions {
       }
     } else if (arg === "--batch") {
       const nextArg = args[i + 1];
-      if (nextArg && !isNaN(Number(nextArg))) {
-        options.batchSize = Number(nextArg);
-        i++;
-      }
+      if (nextArg === undefined || nextArg.startsWith("--")) throw new Error("Invalid batchSize");
+      options.batchSize = Number(nextArg);
+      i++;
     } else if (arg === "--resume") {
       options.resume = true;
     } else if (arg === "--verify") {
@@ -872,7 +1046,7 @@ function parseCliArgs(args: string[]): IngestionExecutionOptions {
     }
   }
 
-  return options;
+  return validateIngestionOptions(options);
 }
 
 if (process.argv[1] && process.argv[1].endsWith("ingest-full-jmdict.ts")) {
