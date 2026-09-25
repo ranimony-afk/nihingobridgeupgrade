@@ -18,6 +18,7 @@ No database connection was opened. No rows were written. `--authorize-full-inges
 | Local HEAD at inspection | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
 | Remote `main` | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
 | Safety closure | `9dc8e3f9aa932709144708af80279918c7fb96f5`, preserved and not discarded |
+| This gate commit | `be40c1ab7b25958047e74d0f1a24b1b69cdca447` |
 | Claimed commit `04f34a579e7708791bd2ac79014d56926f86de6f` | Absent. Not treated as present. |
 
 The write path still refuses production. The only code change is a separate read-only decision, `ALLOW_READONLY`. It is not `ALLOW`. Ingestion does not request it, and `--authorize-full-ingestion` does not grant it.
