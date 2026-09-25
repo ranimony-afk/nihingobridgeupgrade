@@ -22,7 +22,7 @@ import {
   EXPECTED_JMDICT_SHA256,
   JMDICT_SOURCE_ID,
 } from "@/etl/dictionary/jmdictContract";
-import { classifyDatabaseTarget, deriveTargetIdentityHash } from "@/etl/dictionary/targetClassification";
+import { classifyDatabaseTarget, classifyReadOnlyProductionInspection, READONLY_INSPECTION_CONFIRMATION, deriveTargetIdentityHash } from "@/etl/dictionary/targetClassification";
 import { getRegisteredSource } from "@/services/knowledge/provenance";
 import {
   CheckpointManager,
@@ -30,6 +30,7 @@ import {
   buildPreflightReport,
   commitSourceBatch,
   executeIngestion,
+  inspectReadOnlyProduction,
   loadResumeCheckpoint,
   PILOT_BOUNDS,
   parseCliArgs,
@@ -394,5 +395,35 @@ describe("14.3D-R checkpoint, resume, source, and classification", () => {
       declaredClass: "disposable",
       expectedDatabase: "nihongo_test",
     }).decision).toBe("ALLOW");
+  });
+
+  it("allows only an explicitly named read-only production inspection and still refuses writes", async () => {
+    const url = "postgresql://postgres:secret@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres";
+    const named = {
+      connectionString: url,
+      declaredClass: "PRODUCTION",
+      expectedDatabase: "postgres",
+      expectedHost: "aws-0-ap-northeast-1.pooler.supabase.com",
+      readOnlyConfirmation: READONLY_INSPECTION_CONFIRMATION,
+    };
+    const inspected = classifyReadOnlyProductionInspection(named);
+    expect(inspected.decision).toBe("ALLOW_READONLY");
+    expect(inspected.classification).toBe("PRODUCTION");
+    expect(inspected.decision).not.toBe("ALLOW");
+    expect(classifyReadOnlyProductionInspection({ ...named, readOnlyConfirmation: "PRODUCTION" }).decision).toBe("REJECT");
+    expect(classifyReadOnlyProductionInspection({ ...named, expectedHost: "db.example.com" }).decision).toBe("REJECT");
+    expect(classifyReadOnlyProductionInspection({ ...named, expectedDatabase: "other" }).decision).toBe("REJECT");
+    expect(classifyDatabaseTarget({
+      connectionString: url,
+      declaredClass: "PRODUCTION",
+      expectedDatabase: "postgres",
+      expectedHost: "aws-0-ap-northeast-1.pooler.supabase.com",
+      authorizeProduction: true,
+    }).decision).toBe("REJECT");
+    await expect(validateEnvironmentSafety(url, { declaredClass: "production", authorizeProduction: true }))
+      .rejects.toThrow(/FORBIDDEN|PRODUCTION CONTACT REFUSED/);
+    await expect(inspectReadOnlyProduction({ ...named, readOnlyConfirmation: "PRODUCTION" }))
+      .rejects.toThrow(/READONLY\] STOP/);
+    expect(state.client).not.toHaveBeenCalled();
   });
 });

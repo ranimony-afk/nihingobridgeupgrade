@@ -30,6 +30,8 @@ export {
 } from "./jmdictContract";
 export {
   classifyDatabaseTarget,
+  classifyReadOnlyProductionInspection,
+  READONLY_INSPECTION_CONFIRMATION,
   deriveTargetIdentityHash,
   isExactLoopbackHost,
   isDomainOrSubdomain,

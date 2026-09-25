@@ -49,6 +49,7 @@ import {
 } from "@/etl/dictionary/jmdictContract";
 import {
   classifyDatabaseTarget,
+  classifyReadOnlyProductionInspection,
   deriveTargetIdentityHash,
   type TargetIdentity,
 } from "@/etl/dictionary/targetClassification";
@@ -468,6 +469,96 @@ export async function validateEnvironmentSafety(
         user: currentUser,
       }),
       serverAddress,
+    };
+  } finally {
+    await probeClient.end();
+  }
+}
+
+/**
+ * Read-only production inspection. Not used by executeIngestion.
+ * ALLOW_READONLY is required before a client is constructed. The session is
+ * set read-only. This function does not insert, update, delete, or authorize
+ * full ingestion.
+ */
+export async function inspectReadOnlyProduction(options: {
+  connectionString: string;
+  declaredClass?: string;
+  expectedDatabase?: string;
+  expectedHost?: string;
+  readOnlyConfirmation?: string;
+}): Promise<{
+  classification: "PRODUCTION";
+  host: string;
+  port: string;
+  database: string;
+  role: string;
+  identityHash: string;
+  serverAddress: string | null;
+  postgresVersion: string;
+  dictionaryTablePresent: boolean;
+  knowledgeTablePresent: boolean;
+  dictionaryColumns: string[];
+  knowledgeColumns: string[];
+  dictionaryEntries: number | null;
+  knowledgeSources: number | null;
+  sourceRefs: Array<{ sourceRef: string; count: number }>;
+  readOnly: true;
+}> {
+  const classified = classifyReadOnlyProductionInspection(options);
+  if (classified.decision !== "ALLOW_READONLY" || classified.classification !== "PRODUCTION") {
+    throw new Error(`[READONLY] STOP — ${classified.reason}`);
+  }
+  const probeClient = new Client({ connectionString: options.connectionString });
+  await probeClient.connect();
+  try {
+    await probeClient.query("SET default_transaction_read_only = on");
+    const version = await probeClient.query("SELECT version()");
+    const who = await probeClient.query("SELECT current_user, current_database(), inet_server_addr()::text AS server_addr");
+    const databaseName = String(who.rows[0].current_database);
+    const role = String(who.rows[0].current_user);
+    if (databaseName !== classified.database || (classified.user && classified.user !== role)) {
+      throw new Error("[READONLY] STOP — connected identity does not match the classified target.");
+    }
+    const columns = async (table: string) => {
+      const result = await probeClient.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position",
+        [table],
+      );
+      return result.rows.map((row) => String(row.column_name));
+    };
+    const dictionaryColumns = await columns("dictionary_entries");
+    const knowledgeColumns = await columns("knowledge_sources");
+    const dictionaryTablePresent = dictionaryColumns.length > 0;
+    const knowledgeTablePresent = knowledgeColumns.length > 0;
+    const dictionaryEntries = dictionaryTablePresent
+      ? Number((await probeClient.query("SELECT count(*)::int AS count FROM dictionary_entries")).rows[0].count)
+      : null;
+    const knowledgeSources = knowledgeTablePresent
+      ? Number((await probeClient.query("SELECT count(*)::int AS count FROM knowledge_sources")).rows[0].count)
+      : null;
+    const sourceRefs = dictionaryTablePresent
+      ? (await probeClient.query(
+        "SELECT source_ref, count(*)::int AS count FROM dictionary_entries GROUP BY source_ref ORDER BY source_ref",
+      )).rows.map((row) => ({ sourceRef: String(row.source_ref), count: Number(row.count) }))
+      : [];
+    return {
+      classification: "PRODUCTION",
+      host: classified.host,
+      port: classified.port,
+      database: databaseName,
+      role,
+      identityHash: deriveTargetIdentityHash({ host: classified.host, port: classified.port, database: databaseName, user: role }),
+      serverAddress: who.rows[0].server_addr ?? null,
+      postgresVersion: String(version.rows[0].version),
+      dictionaryTablePresent,
+      knowledgeTablePresent,
+      dictionaryColumns,
+      knowledgeColumns,
+      dictionaryEntries,
+      knowledgeSources,
+      sourceRefs,
+      readOnly: true,
     };
   } finally {
     await probeClient.end();

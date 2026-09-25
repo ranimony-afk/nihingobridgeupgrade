@@ -4,9 +4,12 @@
  * Loopback is necessary for a disposable test target and is never sufficient.
  * A write-capable operation may proceed only when the operator has explicitly
  * classified the target as disposable AND named the expected database.
- * Production targets are recognized and refused by this phase even if a
- * separate authorization flag is present. This module does not open a socket
- * and never returns a password or connection string.
+ * Production targets are recognized and refused for every write path even if a
+ * separate authorization flag is present. A read-only inspection is a different
+ * decision and requires the operator to name the host, name the database, and
+ * present the read-only confirmation token. A hostname or the word PRODUCTION
+ * is not enough. This module does not open a socket and never returns a
+ * password or connection string.
  */
 
 import { createHash } from "crypto";
@@ -36,7 +39,7 @@ export interface TargetIdentity {
 
 export interface TargetClassification {
   classification: "DISPOSABLE" | "PRODUCTION" | "UNKNOWN" | "FORBIDDEN" | "AMBIGUOUS";
-  decision: "ALLOW" | "REJECT";
+  decision: "ALLOW" | "ALLOW_READONLY" | "REJECT";
   host: string;
   port: string;
   database: string;
@@ -49,8 +52,18 @@ export interface ClassificationInput {
   connectionString: string;
   declaredClass?: string;
   expectedDatabase?: string;
+  expectedHost?: string;
   authorizeProduction?: boolean;
+  /**
+   * Set only by the read-only authorization inspection. The ingestion path
+   * must not set this. A production class string is not enough.
+   */
+  readOnlyInspection?: boolean;
+  readOnlyConfirmation?: string;
 }
+
+/** Operator token required in addition to a production class declaration. */
+export const READONLY_INSPECTION_CONFIRMATION = "readonly-inspection";
 
 export function deriveTargetIdentityHash(parts: {
   host: string;
@@ -112,7 +125,25 @@ export function classifyDatabaseTarget(input: ClassificationInput): TargetClassi
   const user = decodeURIComponent(url.username || "");
   const identityHash = deriveTargetIdentityHash({ host, port, database, user });
   const base = { host, port, database, user, identityHash };
-  const declared = (input.declaredClass ?? "").trim();
+  const declared = (input.declaredClass ?? "").trim().toLowerCase();
+  const hostNamed = Boolean(input.expectedHost) && input.expectedHost!.toLowerCase() === host.toLowerCase();
+  const databaseNamed = Boolean(input.expectedDatabase) && input.expectedDatabase === database;
+  const readOnlyProduction = input.readOnlyInspection === true
+    && input.readOnlyConfirmation === READONLY_INSPECTION_CONFIRMATION
+    && declared === PRODUCTION_CLASS
+    && hostNamed
+    && databaseNamed;
+
+  // Read-only inspection is a separate decision. It is not write authorization,
+  // and a Supabase hostname or the word PRODUCTION is not enough by itself.
+  if (readOnlyProduction) {
+    return {
+      ...base,
+      classification: "PRODUCTION",
+      decision: "ALLOW_READONLY",
+      reason: "Explicit read-only production inspection. The operator named the host and database. This decision does not authorize ingestion.",
+    };
+  }
 
   const forbidden = forbiddenProductionDomain(host);
   if (forbidden) {
@@ -177,4 +208,26 @@ export function classifyDatabaseTarget(input: ClassificationInput): TargetClassi
     decision: "ALLOW",
     reason: "Explicit disposable target. Loopback was required and was not treated as sufficient.",
   };
+}
+
+/**
+ * Build the read-only inspection input from operator-supplied fields.
+ * Does not read a hostname out of a Supabase project and does not connect.
+ * The confirmation token must be the exact read-only value, not "PRODUCTION".
+ */
+export function classifyReadOnlyProductionInspection(input: {
+  connectionString: string;
+  declaredClass?: string;
+  expectedDatabase?: string;
+  expectedHost?: string;
+  readOnlyConfirmation?: string;
+}): TargetClassification {
+  return classifyDatabaseTarget({
+    connectionString: input.connectionString,
+    declaredClass: input.declaredClass,
+    expectedDatabase: input.expectedDatabase,
+    expectedHost: input.expectedHost,
+    readOnlyInspection: true,
+    readOnlyConfirmation: input.readOnlyConfirmation,
+  });
 }
