@@ -34,11 +34,26 @@ import type { QualityFinding } from "./checks";
 /**
  * Eligible JLPT levels. Uppercase `N`-prefixed.
  *
- * Note the asymmetry with the broader codebase: `src/etl/grammar/types.ts`
- * exports `VALID_JLPT_LEVELS` as `["N5","N4","N3","N2","N1"]`, while
- * `src/etl/dictionary/types.ts` holds a `Set` of the same values under the same
- * name. Both agree; this constant exists so quality checks do not depend on
- * which module a caller happened to import.
+ * **Correction (Gate 14 audit, 2026-09-24).** This docstring previously claimed the
+ * three same-named constants "Both agree". They do not, and the divergence is
+ * meaningful rather than cosmetic:
+ *
+ * | Location | Value | Includes the sentinel? |
+ * | :--- | :--- | :--- |
+ * | `src/etl/grammar/types.ts:3` | `["N5","N4","N3","N2","N1"]` | no |
+ * | `src/services/dataquality/jlptChecks.ts` (here) | `["N5","N4","N3","N2","N1"]` | no |
+ * | `src/etl/dictionary/types.ts:285` | `Set([...,"NONE"])` | **yes** |
+ *
+ * The consequence is that `normalizeJlpt` (dictionary) treats `"NONE"` as a valid
+ * level and returns it verbatim, while `isValidJlptLevel` (here) and
+ * `isValidJLPTLevel` (grammar) reject it. Neither behaviour is wrong on its own
+ * terms — a *normalizer* must be able to emit its sentinel, and a *validator*
+ * should not accept it — but the shared constant name makes the difference easy to
+ * miss.
+ *
+ * This constant deliberately keeps the **strict** five-value domain, because a
+ * quality check that accepted `"NONE"` as a level could not detect the sentinel.
+ * The sentinel is recognised separately by {@link classifyJlptLevel}.
  */
 export const VALID_JLPT_LEVELS = ["N5", "N4", "N3", "N2", "N1"] as const;
 export type ValidJlptLevel = (typeof VALID_JLPT_LEVELS)[number];
@@ -117,23 +132,39 @@ export function checkJlptLevels(
 }
 
 /**
- * Detects the `normalizeJlpt` digit-scavenging hazard.
+ * Detects a JLPT level that was derived from text which is not a level designator.
  *
- * `normalizeJlpt` falls back to `upper.match(/N?[1-5]/)` — an unanchored search
- * for any digit 1–5 anywhere in the string. A version string or date therefore
- * yields a plausible-looking level:
+ * ## History — the hazard is closed at the producer (Gate A1)
+ *
+ * `normalizeJlpt` used to fall back to an unanchored `upper.match(/N?[1-5]/)`, an
+ * unanchored search for any digit 1–5 anywhere in the string. A version string or
+ * date therefore yielded a plausible-looking level:
  *
  * ```
- * normalizeJlpt("2024-07")    -> "N2"
- * normalizeJlpt("v1.5")       -> "N1"
- * normalizeJlpt("2023-08-20") -> "N2"
- * normalizeJlpt("test-4")     -> "N4"
+ * normalizeJlpt("2024-07")    -> "N2"     [before Gate A1]
+ * normalizeJlpt("v1.5")       -> "N1"     [before Gate A1]
+ * normalizeJlpt("test-4")     -> "N4"     [before Gate A1]
  * ```
  *
- * Because `jlpt_level` is `NOT NULL`, such a value is stored and is
- * indistinguishable from a real classification afterwards. This check flags
- * levels whose *claimed* source text is not itself a level, so the hazard is
- * detectable rather than latent.
+ * **Gate A1 anchored that pattern**, so `normalizeJlpt` now accepts only a whole-
+ * string level token and each of the inputs above yields `"NONE"`. New ingestion
+ * can therefore no longer manufacture a level this way.
+ *
+ * ## Why this check is retained
+ *
+ * It is no longer a latent-hazard detector; it is a **legacy-data auditor**. Every
+ * row written before Gate A1 is still in the database, still `NOT NULL`, and still
+ * indistinguishable from a real classification purely by inspection. This check is
+ * the only way to find those rows, and it remains the pre-condition for any future
+ * decision about them.
+ *
+ * Its `strict` pattern is deliberately the *same* anchored form Gate A1 adopted —
+ * `^(?:N)?[1-5]$`, accepting both the explicit and the bare-digit shorthand — which
+ * is independent corroboration that the anchored contract was the intended one all
+ * along: the data-quality framework had already encoded it while the producer had
+ * not.
+ *
+ * The check reports `ERROR`, never repairs, and never rewrites a stored value.
  *
  * @param records pairs of stored level and the raw text it was derived from
  */
