@@ -18,6 +18,7 @@ GO means the current working-tree implementation of Phase 14.3D was independentl
 | :--- | :--- |
 | Branch | `arena/01a0d755-nihingobridgeupgrade` |
 | HEAD before this reconciliation | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
+| Reconciliation commit | `9dc8e3f9aa932709144708af80279918c7fb96f5` |
 | Remote `main` | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
 | Claimed verification commit `04f34a579e7708791bd2ac79014d56926f86de6f` | Not a commit. Absent locally (`git cat-file` fails) and absent on GitHub (HTTP 422). |
 | Working tree | Dirty safety-closure files were present and were not discarded. |
