@@ -13,8 +13,8 @@ A13 decision report, `docs/api/MOBILE-DICTIONARY-SEARCH-PRODUCTION-STATUS.md` (p
 
 | Decision | Verdict | Basis |
 | :--- | :--- | :--- |
-| **Open a PR for review** | **YES** | The candidate is complete, self-consistent, and verified locally: 73/73 mobile tests, typecheck clean, lint 0 errors, production build green, 26/26 release smoke checks. |
-| **Merge the PR** | **NO — under the stated acceptance gate** | One mandatory item is **not satisfied**: *"CI passes on PR branch"*. CI is red **on `main` itself** for pre-existing reasons (§6). Merging would require either accepted-risk sign-off for a red suite or a CI policy change — neither is mine to take. |
+| **Open a PR for review** | **YES — DONE** | PR **#11** — https://github.com/ranimony-afk/nihingobridgeupgrade/pull/11 (open, head `arena/01a0d21c-nihingobridgeupgrade` @ `2bdd8ea`, base `main`). The candidate is complete, self-consistent, and verified locally: 73/73 mobile tests, typecheck clean, lint 0 errors, production build green, 26/26 release smoke checks. |
+| **Merge the PR** | **NO — under the stated acceptance gate** | One mandatory item is **not satisfied**: *"CI passes on PR branch"*. CI is red **on `main` itself** and, on the PR, produces **exactly the same failure annotations as main** — 0 new failure signatures (§6). Merging would require either accepted-risk sign-off for a red suite or a CI policy change — neither is mine to take. |
 | **Public production exposure** | **NO** | D-13 abuse protection remains unapproved; the endpoint's worst measured case is 17.1 s of database work per request. See the production guard. |
 
 These are three independent decisions. A red suite caused by missing corpus bytes is not a defect in
@@ -172,6 +172,37 @@ repository.
 **CI cannot be made green by this slice.** It requires either supplying the missing corpus bytes to CI
 (ingestion is not authorized for this gate) or relaxing those tests (never permitted).
 
+### §6.1 CI on the PR itself (run `36087451278`, head `2bdd8ea`)
+
+| Fact | Value |
+| :--- | :--- |
+| Run | `36087451278` — `pull_request`, branch `arena/01a0d21c-nihingobridgeupgrade`, 58 s |
+| Result | **failure** |
+| Failing step | `Test (P3/P4 — real Vitest run against PostgreSQL)` — identical to main |
+| Steps never reached | Typecheck, Lint, Production build (same as main; they pass locally) |
+| Vercel preview | **pass** — the PR branch builds and deploys as a preview |
+| Supabase preview | skipped |
+
+**Failure-annotation comparison — the criterion that actually matters for review.** The PR run and the
+main run `35964546020` produce **byte-identical annotation sets**:
+
+| Annotation | main run | PR run |
+| :--- | --: | --: |
+| `scripts/ingest-full-jmdict.ts:215` (`SOURCE FILE MISSING: data/JMdict.xml`) | 3 | 3 |
+| `tests/full-jmdict-ingestion.test.ts:71 / :79 / :340 / :370` | 1 each | 1 each |
+| `tests/dictionary-architecture.test.ts:48` (`expected +0 to be 206717`) | 1 | 1 |
+| `tests/dry-run-jmdict.test.ts:11` | 1 | 1 |
+| `tests/kanji-expansion.test.ts:74` (`expected 11 to be 12`) | 1 | 1 |
+
+**New CI failure signatures introduced by this PR: 0.** The suite fails earlier on `main` for reasons
+that have nothing to do with the mobile dictionary surface, and the slice neither adds nor removes a
+single failure annotation.
+
+**Branch protection:** not verifiable with the available token —
+`GET /repos/…/branches/main/protection` returns **403 `Resource not accessible by integration`**. Whether
+`main` requires green checks before merge is therefore **NOT VERIFIED** from this session, and is
+recorded as such rather than assumed.
+
 ## §7 Merge decision and what would change it
 
 **Merge: NO today.** Not because the slice is defective, but because the stated gate requires a green
@@ -179,13 +210,26 @@ CI on the PR branch and CI is red on `main`. Two acceptable routes, both needing
 mine:
 
 1. **Policy route** — accept a documented exception: "CI red for pre-existing corpus reasons; this PR
-   adds 73 passing tests and 0 new failures after attribution". Requires a named approver.
+   adds 73 passing tests and 0 new CI failure annotations versus main". Requires a named approver.
 2. **Repair route** — a separate, authorized gate fixes the CI corpus/test conditions on `main` first,
    then this PR re-runs green.
 
 **Public production exposure: NO**, independent of the merge decision — D-13. The endpoint remains
 `safe to merge, safe to run in non-production, not approved for public exposure`, exactly as the
 production guard states.
+
+## §7.1 Remote state after this patch
+
+| Item | Value |
+| :--- | :--- |
+| Branch | `arena/01a0d21c-nihingobridgeupgrade` @ `2bdd8ea` (parent `12e2d84`; fast-forward push, no force) |
+| Pull request | **#11** open — https://github.com/ranimony-afk/nihingobridgeupgrade/pull/11 |
+| Diff vs `main` | 23 files, +8 617 / −43 (22 candidate paths + the branch's pre-existing `12e2d84` Tatoeba report, which is documentation only; see the PR body note) |
+| CI | run `36087451278` **failure** — same failure set as main, 0 new signatures |
+| Vercel | preview check **pass** (a preview deployment; it was **not** probed, and no Vercel setting was changed) |
+| Supabase preview | skipped |
+| Branch protection | **NOT VERIFIED** — API returns 403 for the available token |
+| Production | not contacted |
 
 ## §8 Evidence identity (`LOCAL INFORMATIONAL HASH — NOT DURABLE UNLESS VERIFIED`)
 
