@@ -17,7 +17,8 @@ No database connection was opened. The full corpus was not ingested. `--authoriz
 | Branch | `arena/01a0d755-nihingobridgeupgrade` |
 | Local HEAD at inspection | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
 | Remote `main` | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
-| Remote branch | `37ebe42d90c111614c71b2cfc6b78a5fbb8899dd` |
+| Remote branch before this gate | `37ebe42d90c111614c71b2cfc6b78a5fbb8899dd` |
+| This gate report commit | `cb08690193bd70ac3273aa3c6083645c9d115185` |
 | Verified implementation commit | `9dc8e3f9aa932709144708af80279918c7fb96f5` |
 | Claimed commit `04f34a579e7708791bd2ac79014d56926f86de6f` | Absent on GitHub. Not treated as present. |
 | Working tree | Dirty relative to local HEAD, and not discarded. Every file that differs from `94a247f` through `37ebe42` matches that remote commit byte for byte. |
