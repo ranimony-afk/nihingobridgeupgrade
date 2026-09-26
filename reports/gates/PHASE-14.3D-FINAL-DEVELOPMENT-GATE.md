@@ -178,6 +178,17 @@ Not run, and not claimed: the full Vitest suite, `tests/full-jmdict-ingestion.te
 
 No production database was contacted. No production credential was requested, printed, or committed. Production ingestion was not run. A later production gate still requires an injected `DATABASE_URL`, exact host and database verification, read-only inspection, inventory, zero-conflict preflight, backup evidence, and explicit operator authorization.
 
+## Commit
+
+| Field | Value |
+| :--- | :--- |
+| Implementation commit | `5b20ce580686248c7d0be979ce93ed8a23313738` |
+| Parent | `94a247fce5af2a15396f2d0cebb3116e8ebced6e` |
+| Branch | `arena/01a0d755-nihingobridgeupgrade` |
+| Corpus or credentials in the commit | None |
+
+This SHA was verified after the implementation commit. It is the commit that contains the safety implementation, the short-batch checkpoint fix, and this gate report before this SHA line was added.
+
 ## Verdict
 
 ```text
