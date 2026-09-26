@@ -117,8 +117,18 @@ jobs:
         # out-of-scope limitation in Gate Zero §15 — deliberately NOT fixed here.
         run: npx drizzle-kit push --dialect postgresql --schema ./src/db/schema.ts --url "$DATABASE_URL" --force
 
+      - name: Provision exact immutable JMdict release
+        # The provisioner has no fallback URL or token. It verifies the pinned
+        # commit/path/blob, archive, Brotli payload, XML, release, and count
+        # before creating the gitignored data/JMdict.xml test input.
+        run: npx tsx scripts/provision-jmdict-ci.ts
+
       - name: Test (P3/P4 — real Vitest run against PostgreSQL)
         run: npm test
+
+      - name: Remove temporary JMdict XML
+        if: always()
+        run: rm -f data/JMdict.xml data/JMdict.xml.tmp-*
 
       - name: Typecheck
         run: npm run typecheck

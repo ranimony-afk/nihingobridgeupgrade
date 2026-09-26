@@ -37,7 +37,7 @@ describe("Phase 14.3C: Controlled JMdict PostgreSQL Database Pilot", () => {
     it("registers upstream:jmdict:2023-08 provenance in knowledge_sources", () => {
       expect(results.provenance.registeredId).toBe("upstream:jmdict:2023-08");
       expect(results.provenance.version).toBe("2023-08");
-      expect(results.provenance.license).toBe("CC-BY-SA-3.0");
+      expect(results.provenance.license).toBe("CC-BY-SA-4.0");
     });
   });
 

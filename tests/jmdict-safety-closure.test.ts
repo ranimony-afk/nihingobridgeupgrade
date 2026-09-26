@@ -121,7 +121,7 @@ function sourceMeta(hash = EXPECTED_JMDICT_SHA256): SourceMetadata {
   return {
     sourceId: JMDICT_SOURCE_ID,
     releaseVersion: "2023-08-20",
-    license: "CC-BY-SA-3.0",
+    license: "CC-BY-SA-4.0",
     attribution: "EDRDG",
     xmlPath: join(directory, "absent.xml"),
     xmlSizeBytes: 1,

@@ -83,7 +83,7 @@ Established in `src/services/knowledge/provenance/registry.ts`:
 
 | Source ID | Type | Version | License | Domain | Target Tables | Status |
 |---|:---:|:---:|:---:|:---:|---|:---:|
-| `upstream:jmdict:2024-07` | Upstream | 2024-07 | CC-BY-SA-3.0 | dictionary | `dictionary_entries` | **active** |
+| `upstream:jmdict:2024-07` | Upstream | 2024-07 | CC-BY-SA-4.0 | dictionary | `dictionary_entries` | **active** |
 | `upstream:kanjidic2:2024-07` | Upstream | 2024-07 | CC-BY-SA-3.0 | kanji | `kanji_entries`, `kanji_radicals` | **active** |
 | `upstream:kanjivg:2024-04` | Upstream | 2024-04 | CC-BY-SA-3.0 | kanji | `kanji_composition`, `kanji_radicals` | **active** |
 | `upstream:tatoeba:2024-07` | Upstream | 2024-07 | CC-BY-2.0-FR | sentence | `example_sentences` | **active** |

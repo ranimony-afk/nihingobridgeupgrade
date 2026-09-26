@@ -4,6 +4,11 @@
  */
 
 import type { ETLDryRunManifest } from "@/services/knowledge/provenance";
+import {
+  JMDICT_EDRDG_ATTRIBUTION,
+  JMDICT_LICENSE,
+  JMDICT_LICENSE_QUALIFICATION,
+} from "./jmdictContract";
 
 export const JMDICT_SOURCE_REF = "upstream:jmdict:2024-07";
 export const LEGACY_JMDICT_SOURCE_REF = "jmdict:edrdg:2024-07";
@@ -12,10 +17,10 @@ export const JMDICT_KNOWLEDGE_SOURCE = {
   id: JMDICT_SOURCE_REF,
   name: "JMdict Japanese-Multilingual Dictionary",
   version: "2024-07",
-  license: "CC-BY-SA-3.0",
+  license: JMDICT_LICENSE,
   url: "https://www.edrdg.org/jmdict/j_jmdict.html",
   description:
-    "Comprehensive Japanese-English dictionary with part-of-speech, readings, frequency markings, and glosses from the Electronic Dictionary Research and Development Group (EDRDG).",
+    `Comprehensive Japanese-English dictionary with part-of-speech, readings, frequency markings, and glosses from the ${JMDICT_EDRDG_ATTRIBUTION}. ${JMDICT_LICENSE_QUALIFICATION}`,
   domain: "dictionary" as const,
 };
 

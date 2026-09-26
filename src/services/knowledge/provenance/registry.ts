@@ -27,11 +27,11 @@ export const AUTHORITATIVE_SOURCE_REGISTRY: Record<string, ProvenanceContract> =
     version: "2024-07",
     releaseDate: "2024-07-01",
     uri: "https://www.edrdg.org/jmdict/j_jmdict.html",
-    license: "CC-BY-SA-3.0",
+    license: "CC-BY-SA-4.0",
     attribution:
       "Electronic Dictionary Research and Development Group (EDRDG)",
     description:
-      "Comprehensive Japanese-English dictionary with part-of-speech, readings, frequency markings, and glosses.",
+      "Comprehensive Japanese-English dictionary with part-of-speech, readings, frequency markings, and glosses from EDRDG. Many translations of Japanese words into languages other than English are separately copyrighted by their authors and are not covered by this license.",
     domain: "dictionary",
     status: "active",
     targetTables: ["dictionary_entries"],
@@ -44,11 +44,11 @@ export const AUTHORITATIVE_SOURCE_REGISTRY: Record<string, ProvenanceContract> =
     version: "2023-08",
     releaseDate: "2023-08-20",
     uri: "https://www.edrdg.org/jmdict/j_jmdict.html",
-    license: "CC-BY-SA-3.0",
+    license: "CC-BY-SA-4.0",
     attribution:
       "Electronic Dictionary Research and Development Group (EDRDG)",
     description:
-      "Comprehensive Japanese multilingual dictionary with part-of-speech, readings, frequency markings, and glosses.",
+      "Comprehensive Japanese multilingual dictionary with part-of-speech, readings, frequency markings, and glosses from EDRDG. Many translations of Japanese words into languages other than English are separately copyrighted by their authors and are not covered by this license.",
     domain: "dictionary",
     status: "active",
     contentHash: "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162",

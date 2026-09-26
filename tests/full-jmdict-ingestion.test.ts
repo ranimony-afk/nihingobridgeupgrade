@@ -53,7 +53,7 @@ describe("Phase 14.3D: Controlled Full JMdict Production Ingestion", () => {
   const dummySourceMeta: SourceMetadata = {
     sourceId: JMDICT_SOURCE_ID,
     releaseVersion: EXPECTED_JMDICT_RELEASE,
-    license: "CC-BY-SA-3.0",
+    license: "CC-BY-SA-4.0",
     attribution: "EDRDG",
     xmlPath: resolve(process.cwd(), "data/JMdict.xml"),
     xmlSizeBytes: 115331197,
@@ -340,7 +340,7 @@ describe("Phase 14.3D: Controlled Full JMdict Production Ingestion", () => {
 
     expect(sourceRow).toBeDefined();
     expect(sourceRow?.id).toBe(JMDICT_SOURCE_ID);
-    expect(sourceRow?.license).toBe("CC-BY-SA-3.0");
+    expect(sourceRow?.license).toBe("CC-BY-SA-4.0");
     expect(sourceRow?.name).toContain("JMdict");
   });
 

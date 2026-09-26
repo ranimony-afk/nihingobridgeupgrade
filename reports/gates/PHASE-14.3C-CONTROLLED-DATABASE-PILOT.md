@@ -170,7 +170,7 @@ Drift: 0 rows | Identical Identity: 100%
 ### Application Read-Back via `DictionaryService`
 Read-back was tested using the official platform service layer:
 * **Direct ID Lookup (`DictionaryService.getEntryDetail`):** Succeeded for `de-jmdict-1000660` (`如何にも`), returning full structured entry.
-* **Provenance Linkage:** `detail.source` resolved cleanly to `upstream:jmdict:2023-08` with license `CC-BY-SA-3.0`.
+* **Provenance Linkage:** `detail.source` resolved cleanly to `upstream:jmdict:2023-08` with license `CC-BY-SA-4.0`.
 * **Japanese Headword Search:** `searchEntries({ query: "如何にも" })` matched `de-jmdict-1000660`.
 * **Kana Reading Search:** `searchEntries({ query: "いかにも" })` matched `de-jmdict-1000660`.
 * **Romaji Search:** `searchEntries({ query: "ikanimo" })` matched `de-jmdict-1000660`.

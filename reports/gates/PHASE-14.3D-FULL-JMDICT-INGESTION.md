@@ -28,7 +28,7 @@ All 17 safety invariants and procedural requirements were strictly maintained:
 
 * **Corpus Identifier**: `upstream:jmdict:2023-08`
 * **Release Date**: `2023-08-20`
-* **License**: `CC-BY-SA-3.0`
+* **License**: `CC-BY-SA-4.0`
 * **Attribution**: `Electronic Dictionary Research and Development Group (EDRDG)`
 * **Source XML File**: `data/JMdict.xml`
 * **File Size**: 115,331,197 bytes
@@ -75,7 +75,7 @@ Executed via `npx tsx scripts/ingest-full-jmdict.ts --preflight`:
   "source": {
     "sourceId": "upstream:jmdict:2023-08",
     "releaseVersion": "2023-08-20",
-    "license": "CC-BY-SA-3.0",
+    "license": "CC-BY-SA-4.0",
     "xmlSha256": "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162",
     "expectedEntries": 206717
   },
