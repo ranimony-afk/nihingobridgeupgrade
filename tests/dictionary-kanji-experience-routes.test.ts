@@ -57,6 +57,9 @@ import {
   parseOffset,
   parseBooleanFlag,
   MAX_PAGE_LIMIT,
+  MAX_SEARCH_QUERY_LENGTH,
+  isKanjiRouteCharacter,
+  isValidRouteIdentifier,
 } from "@/lib/api/routeParams";
 
 const mockSearchEntries = vi.mocked(DictionaryService.searchEntries);
@@ -123,8 +126,37 @@ describe("14.4F-R route parameter hardening", () => {
     expect(parseBooleanFlag(null)).toBeUndefined();
   });
 
+  it("requires a complete integer token and handles all bounds", () => {
+    expect(parseBoundedInt("1", { fallback: 9, min: 1, max: 10 })).toBe(1);
+    expect(parseBoundedInt("10", { fallback: 9, min: 1, max: 10 })).toBe(10);
+    expect(parseBoundedInt("0", { fallback: 9, min: 1, max: 10 })).toBe(9);
+    expect(parseBoundedInt("11", { fallback: 9, min: 1, max: 10 })).toBe(10);
+    for (const raw of ["1.5", "10junk", "abc", "", " ", "--1"]) {
+      expect(parseBoundedInt(raw, { fallback: 9, min: 1, max: 10 })).toBe(9);
+    }
+    expect(parseOffset("100001")).toBe(100_000);
+    expect(parseOffset("-1")).toBe(0);
+  });
+
+  it("validates one Unicode unified ideograph without excluding compatibility or supplementary forms", () => {
+    expect(isKanjiRouteCharacter("水")).toBe(true);
+    expect(isKanjiRouteCharacter("﨑")).toBe(true);
+    expect(isKanjiRouteCharacter("𠮷")).toBe(true);
+    for (const raw of ["", "水日", "かな", "A", "🙂", "\uD800"]) {
+      expect(isKanjiRouteCharacter(raw)).toBe(false);
+    }
+  });
+
+  it("bounds and validates already-decoded entry identifiers", () => {
+    expect(isValidRouteIdentifier("de-jmdict-1000000")).toBe(true);
+    expect(isValidRouteIdentifier("水曜日")).toBe(true);
+    expect(isValidRouteIdentifier(" ")).toBe(false);
+    expect(isValidRouteIdentifier("bad\u0000id")).toBe(false);
+    expect(isValidRouteIdentifier("x".repeat(257))).toBe(false);
+  });
+
   it("never returns NaN or Infinity", () => {
-    for (const raw of ["", "abc", "Infinity", "-Infinity", "1e999"]) {
+    for (const raw of ["", "abc", "Infinity", "-Infinity", "1e999", "999999999999999999999999999"]) {
       const parsed = parseLimit(raw);
       expect(Number.isFinite(parsed)).toBe(true);
       expect(Number.isNaN(parsed)).toBe(false);
@@ -211,6 +243,12 @@ describe("GET /api/dictionary/search", () => {
     expect(arg?.isCommon).toBe(true);
   });
 
+  it("falls back to the jlpt alias when level is empty", async () => {
+    mockSearchEntries.mockResolvedValue({ entries: [], total: 0, limit: 50, offset: 0 } as never);
+    await dictionarySearchGET(getRequest("/api/dictionary/search?q=water&level=&jlpt=N3"));
+    expect(mockSearchEntries.mock.calls[0]?.[0]?.jlptLevel).toBe("N3");
+  });
+
   it("reports the service-applied pagination rather than the requested values", async () => {
     // The service clamps limit and echoes what it actually applied. The route
     // must not restate the request, or clients would believe 200 was honoured.
@@ -222,15 +260,54 @@ describe("GET /api/dictionary/search", () => {
     } as never);
 
     const res = await dictionarySearchGET(
-      getRequest("/api/dictionary/search?q=water&limit=200")
+      getRequest("/api/dictionary/search?q=water&limit=999999&offset=999999")
     );
     const body = await res.json();
 
     expect(body.data.limit).toBe(100);
+    expect(mockSearchEntries.mock.calls[0]?.[0]?.limit).toBe(MAX_PAGE_LIMIT);
+    expect(mockSearchEntries.mock.calls[0]?.[0]?.offset).toBe(100_000);
   });
 
-  it("returns a 500 INTERNAL_ERROR envelope when the service throws", async () => {
-    mockSearchEntries.mockRejectedValue(new Error("boom"));
+  it("rejects overlong queries before calling the service", async () => {
+    const q = "水".repeat(MAX_SEARCH_QUERY_LENGTH + 1);
+    const res = await dictionarySearchGET(getRequest(`/api/dictionary/search?q=${encodeURIComponent(q)}`));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("QUERY_TOO_LONG");
+    expect(mockSearchEntries).not.toHaveBeenCalled();
+  });
+
+  it("accepts a query exactly at the documented maximum", async () => {
+    mockSearchEntries.mockResolvedValue({ entries: [], total: 0, limit: 50, offset: 0 } as never);
+    const q = "水".repeat(MAX_SEARCH_QUERY_LENGTH);
+    const res = await dictionarySearchGET(getRequest(`/api/dictionary/search?q=${encodeURIComponent(q)}`));
+    expect(res.status).toBe(200);
+    expect(mockSearchEntries).toHaveBeenCalledOnce();
+  });
+
+  it.each(["10junk", "1.5", "abc", "-1"]) ("rejects invalid limit %s before service", async (limit) => {
+    const res = await dictionarySearchGET(getRequest(`/api/dictionary/search?q=water&limit=${encodeURIComponent(limit)}`));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_PAGINATION");
+    expect(mockSearchEntries).not.toHaveBeenCalled();
+  });
+
+  it.each(["-1", "2.5", "3x"]) ("rejects invalid offset %s before service", async (offset) => {
+    const res = await dictionarySearchGET(getRequest(`/api/dictionary/search?q=water&offset=${encodeURIComponent(offset)}`));
+    expect(res.status).toBe(400);
+    expect(mockSearchEntries).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid boolean and JLPT filters", async () => {
+    for (const suffix of ["common=TRUE", "level=not-a-level"]) {
+      const res = await dictionarySearchGET(getRequest(`/api/dictionary/search?q=water&${suffix}`));
+      expect(res.status).toBe(400);
+    }
+    expect(mockSearchEntries).not.toHaveBeenCalled();
+  });
+
+  it("returns a 500 INTERNAL_ERROR envelope without exposing service details", async () => {
+    mockSearchEntries.mockRejectedValue(new Error("postgres://secret/db"));
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     const res = await dictionarySearchGET(getRequest("/api/dictionary/search?q=water"));
@@ -238,6 +315,7 @@ describe("GET /api/dictionary/search", () => {
     const body = await res.json();
     expect(body.success).toBe(false);
     expect(body.error.code).toBe("INTERNAL_ERROR");
+    expect(JSON.stringify(body)).not.toContain("secret");
   });
 });
 
@@ -288,14 +366,14 @@ describe("GET /api/dictionary/entry/[id]", () => {
     expect(body.data.headwordKanji).toEqual(["水", "曜", "日"]);
   });
 
-  it("decodes a percent-encoded headword identifier", async () => {
+  it("uses the already-decoded framework route identifier without decoding twice", async () => {
     mockGetEntryDetail.mockResolvedValue(ENTRY_DETAIL as never);
     mockGetVocabularyKanji.mockResolvedValue([] as never);
     mockGetKeigoRelations.mockResolvedValue([] as never);
 
     await dictionaryEntryGET(
       getRequest("/api/dictionary/entry/%E6%B0%B4"),
-      asyncParams({ id: "%E6%B0%B4" })
+      asyncParams({ id: "水" })
     );
 
     expect(mockGetEntryDetail).toHaveBeenCalledWith("水");
@@ -320,14 +398,31 @@ describe("GET /api/dictionary/entry/[id]", () => {
     expect(body.data.keigo).toEqual([]);
   });
 
-  it("returns 400 when the identifier segment is empty", async () => {
-    const res = await dictionaryEntryGET(
-      getRequest("/api/dictionary/entry/"),
-      asyncParams({ id: "" })
-    );
+  it("rejects empty, whitespace, control, and oversized identifiers", async () => {
+    for (const id of ["", " ", "bad\u0000id", "x".repeat(257)]) {
+      const res = await dictionaryEntryGET(getRequest("/api/dictionary/entry/x"), asyncParams({ id }));
+      expect(res.status).toBe(400);
+    }
+    expect(mockGetEntryDetail).not.toHaveBeenCalled();
+  });
+
+  it("maps rejected route decoding to a 400 response", async () => {
+    const res = await dictionaryEntryGET(getRequest("/api/dictionary/entry/x"), {
+      params: Promise.reject(new URIError("malformed path")),
+    });
     expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_ID");
+    expect(mockGetEntryDetail).not.toHaveBeenCalled();
+  });
+
+  it("returns a generic 500 when the canonical service rejects", async () => {
+    mockGetEntryDetail.mockRejectedValue(new Error("SQL password detail"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await dictionaryEntryGET(getRequest("/api/dictionary/entry/x"), asyncParams({ id: "x" }));
+    expect(res.status).toBe(500);
     const body = await res.json();
-    expect(body.error.code).toBe("MISSING_ID");
+    expect(body.error.code).toBe("INTERNAL_ERROR");
+    expect(JSON.stringify(body)).not.toContain("password");
   });
 });
 
@@ -342,7 +437,7 @@ describe("GET /api/kanji/[character]/vocabulary", () => {
     ] as never);
 
     const res = await kanjiVocabularyGET(getRequest("/api/kanji/%E6%B0%B4/vocabulary"), {
-      params: Promise.resolve({ character: "%E6%B0%B4" }),
+      params: Promise.resolve({ character: "水" }),
     });
 
     expect(res.status).toBe(200);
@@ -358,7 +453,7 @@ describe("GET /api/kanji/[character]/vocabulary", () => {
 
     await kanjiVocabularyGET(
       getRequest("/api/kanji/%E6%B0%B4/vocabulary?limit=10&commonOnly=true"),
-      { params: Promise.resolve({ character: "%E6%B0%B4" }) }
+      { params: Promise.resolve({ character: "水" }) }
     );
 
     expect(mockGetKanjiVocabulary).toHaveBeenCalledWith("水", {
@@ -372,13 +467,35 @@ describe("GET /api/kanji/[character]/vocabulary", () => {
 
     await kanjiVocabularyGET(
       getRequest("/api/kanji/%E6%B0%B4/vocabulary?limit=99999999"),
-      { params: Promise.resolve({ character: "%E6%B0%B4" }) }
+      { params: Promise.resolve({ character: "水" }) }
     );
 
     expect(mockGetKanjiVocabulary).toHaveBeenCalledWith("水", {
       limit: MAX_PAGE_LIMIT,
       isCommonOnly: undefined,
     });
+  });
+
+  it.each(["水日", "かな", "🙂", "\uD800", ""]) ("rejects invalid Kanji path %s before querying", async (character) => {
+    const res = await kanjiVocabularyGET(getRequest("/api/kanji/x/vocabulary"), asyncParams({ character }));
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_KANJI");
+    expect(mockGetKanjiVocabulary).not.toHaveBeenCalled();
+  });
+
+  it("returns an empty collection for a valid character with no matches", async () => {
+    mockGetKanjiVocabulary.mockResolvedValue([] as never);
+    const res = await kanjiVocabularyGET(getRequest("/api/kanji/%E6%B0%B4/vocabulary"), asyncParams({ character: "水" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).vocabulary).toEqual([]);
+  });
+
+  it("returns a generic 500 when the graph service fails", async () => {
+    mockGetKanjiVocabulary.mockRejectedValue(new Error("database details"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await kanjiVocabularyGET(getRequest("/api/kanji/%E6%B0%B4/vocabulary"), asyncParams({ character: "水" }));
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain("database details");
   });
 });
 
@@ -396,7 +513,7 @@ describe("GET /api/kanji/[character]/readings", () => {
     mockGetKanjiReadings.mockResolvedValue(READINGS as never);
 
     const res = await kanjiReadingsGET(getRequest("/api/kanji/%E6%B0%B4/readings"), {
-      params: Promise.resolve({ character: "%E6%B0%B4" }),
+      params: Promise.resolve({ character: "水" }),
     });
 
     const body = await res.json();
@@ -409,7 +526,7 @@ describe("GET /api/kanji/[character]/readings", () => {
 
     const res = await kanjiReadingsGET(
       getRequest("/api/kanji/%E6%B0%B4/readings?type=on"),
-      { params: Promise.resolve({ character: "%E6%B0%B4" }) }
+      { params: Promise.resolve({ character: "水" }) }
     );
 
     const body = await res.json();
@@ -423,7 +540,7 @@ describe("GET /api/kanji/[character]/readings", () => {
 
     const res = await kanjiReadingsGET(
       getRequest("/api/kanji/%E6%B0%B4/readings?type=kun"),
-      { params: Promise.resolve({ character: "%E6%B0%B4" }) }
+      { params: Promise.resolve({ character: "水" }) }
     );
 
     const body = await res.json();
@@ -431,17 +548,48 @@ describe("GET /api/kanji/[character]/readings", () => {
     expect(body.readings[0].type).toBe("KUN");
   });
 
-  it("treats an unrecognised filter as no filter rather than erroring", async () => {
-    mockGetKanjiReadings.mockResolvedValue(READINGS as never);
-
+  it("rejects an unrecognized filter with a stable 400 envelope", async () => {
     const res = await kanjiReadingsGET(
       getRequest("/api/kanji/%E6%B0%B4/readings?type=nonsense"),
-      { params: Promise.resolve({ character: "%E6%B0%B4" }) }
+      { params: Promise.resolve({ character: "水" }) }
     );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_READING_TYPE");
+    expect(mockGetKanjiReadings).not.toHaveBeenCalled();
+  });
 
+  it("returns an empty readings collection without inferring special readings", async () => {
+    mockGetKanjiReadings.mockResolvedValue([] as never);
+    const res = await kanjiReadingsGET(getRequest("/api/kanji/%E6%B0%B4/readings"), asyncParams({ character: "水" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).readings).toEqual([]);
+  });
+
+  it("bounds returned readings", async () => {
+    mockGetKanjiReadings.mockResolvedValue(Array.from({ length: 250 }, (_, i) => ({ reading: `よみ${i}`, type: "ON" })) as never);
+    const res = await kanjiReadingsGET(getRequest("/api/kanji/%E6%B0%B4/readings"), asyncParams({ character: "水" }));
     const body = await res.json();
-    expect(body.appliedTypeFilter).toBe("all");
-    expect(body.total).toBe(2);
+    expect(body.total).toBe(250);
+    expect(body.readings).toHaveLength(200);
+  });
+
+  it("maps rejected route decoding to a 400 response", async () => {
+    const res = await kanjiReadingsGET(getRequest("/api/kanji/x/readings"), {
+      params: Promise.reject(new URIError("malformed path")),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("INVALID_KANJI");
+    expect(mockGetKanjiReadings).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a multi-character route value and 500 for service failure", async () => {
+    const invalid = await kanjiReadingsGET(getRequest("/api/kanji/x/readings"), asyncParams({ character: "水日" }));
+    expect(invalid.status).toBe(400);
+    mockGetKanjiReadings.mockRejectedValue(new Error("private DB details"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const failed = await kanjiReadingsGET(getRequest("/api/kanji/%E6%B0%B4/readings"), asyncParams({ character: "水" }));
+    expect(failed.status).toBe(500);
+    expect(JSON.stringify(await failed.json())).not.toContain("private DB details");
   });
 });
 
@@ -457,7 +605,7 @@ describe("GET /api/kanji/[character]/components", () => {
     mockGetKanjiRadicals.mockResolvedValue({ radicals: [] } as never);
 
     const res = await kanjiComponentsGET(getRequest("/api/kanji/%E6%A0%97/components"), {
-      params: Promise.resolve({ character: "%E6%A0%97" }),
+      params: Promise.resolve({ character: "栗" }),
     });
 
     expect(res.status).toBe(200);
@@ -475,12 +623,30 @@ describe("GET /api/kanji/[character]/components", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
 
     const res = await kanjiComponentsGET(getRequest("/api/kanji/%E6%A0%97/components"), {
-      params: Promise.resolve({ character: "%E6%A0%97" }),
+      params: Promise.resolve({ character: "栗" }),
     });
-
     expect(res.status).toBe(500);
+    expect((await res.json()).error.code).toBe("INTERNAL_ERROR");
+  });
+
+  it("returns empty relationships for valid characters and rejects invalid paths", async () => {
+    mockGetKanjiComponents.mockResolvedValue([] as never);
+    mockGetKanjiRadicals.mockResolvedValue(null as never);
+    const empty = await kanjiComponentsGET(getRequest("/api/kanji/%E6%B0%B4/components"), asyncParams({ character: "水" }));
+    expect(empty.status).toBe(200);
+    expect((await empty.json()).components).toEqual([]);
+    const invalid = await kanjiComponentsGET(getRequest("/api/kanji/x/components"), asyncParams({ character: "水木" }));
+    expect(invalid.status).toBe(400);
+    expect(mockGetKanjiComponents).toHaveBeenCalledOnce();
+  });
+
+  it("bounds component arrays", async () => {
+    mockGetKanjiComponents.mockResolvedValue(Array.from({ length: 250 }, (_, i) => ({ id: `c${i}`, character: "木", role: "structural" })) as never);
+    mockGetKanjiRadicals.mockResolvedValue(null as never);
+    const res = await kanjiComponentsGET(getRequest("/api/kanji/%E6%B0%B4/components"), asyncParams({ character: "水" }));
     const body = await res.json();
-    expect(body.error.code).toBe("INTERNAL_ERROR");
+    expect(body.componentCount).toBe(250);
+    expect(body.components).toHaveLength(200);
   });
 });
 
