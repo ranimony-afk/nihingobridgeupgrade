@@ -104,12 +104,25 @@ describe("JMdict source-contract scan", () => {
     const path = join(tmpdir(), `jmdict-short-${process.pid}.xml`);
     kept.push(path);
     fs.writeFileSync(path, lateReleaseFile("2023-08-20"));
-    expect(() => assertOfficialByteSize(fs.statSync(path).size)).toThrow(/SOURCE SIZE MISMATCH/);
-    expect(() => verifySourceContract(path)).toThrow(/SOURCE SIZE MISMATCH/);
-    expect(() => verifySourceContract(path, "0".repeat(64))).toThrow(/SOURCE HASH MISMATCH/);
-    expect(() => verifySourceContract(path, sha(fs.readFileSync(path)), "1999-01-01")).toThrow(/SOURCE RELEASE MISMATCH/);
-    expect(fs.readFileSync(checkpoint)).toEqual(before);
-    expect(process.env.DATABASE_URL ?? "").toBe("");
+    // CI sets a disposable DATABASE_URL. Emptiness is not the safety property.
+    // A forbidden URL must not change source rejection or be consulted.
+    const forbidden =
+      "postgresql://postgres:not-a-credential@aws-0-ap-northeast-1.pooler.supabase.com:6543/postgres";
+    const previous = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = forbidden;
+    try {
+      expect(() => assertOfficialByteSize(fs.statSync(path).size)).toThrow(/SOURCE SIZE MISMATCH/);
+      expect(() => verifySourceContract(path)).toThrow(/SOURCE SIZE MISMATCH/);
+      expect(() => verifySourceContract(path, "0".repeat(64))).toThrow(/SOURCE HASH MISMATCH/);
+      expect(() => verifySourceContract(path, sha(fs.readFileSync(path)), "1999-01-01")).toThrow(
+        /SOURCE RELEASE MISMATCH/
+      );
+      expect(fs.readFileSync(checkpoint)).toEqual(before);
+      expect(process.env.DATABASE_URL).toBe(forbidden);
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
   });
 
   it.skipIf(!fs.existsSync(join(process.cwd(), "data/JMdict.xml")))(
