@@ -23,6 +23,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import { tmpdir } from "os";
 import { resolve } from "path";
 import { db } from "@/db";
 import { dictionaryEntries, knowledgeSources } from "@/db/schema";
@@ -224,7 +225,7 @@ describe("Phase 14.3D: Controlled Full JMdict Production Ingestion", () => {
       ...original,
       senses: [{ glosses: ["collision", "conflict", "clash"] }],
     };
-    const updateRes = await adapter.upsertBatch([modified]);
+    const updateRes = await adapter.upsertBatch([modified], { conflictPolicy: "update" });
     expect(updateRes.updated).toBe(1);
     expect(updateRes.inserted).toBe(0);
     expect(updateRes.skipped).toBe(0);
@@ -239,7 +240,7 @@ describe("Phase 14.3D: Controlled Full JMdict Production Ingestion", () => {
 
   // 11. checkpoint
   it("11. serializes and deserializes ingestion checkpoints", () => {
-    const tempCpPath = resolve(process.cwd(), "data/test-checkpoint.json");
+    const tempCpPath = resolve(tmpdir(), `jmdict-checkpoint-test-${process.pid}.json`);
     const cp: IngestionCheckpoint = {
       sourceId: JMDICT_SOURCE_ID,
       sourceHash: EXPECTED_JMDICT_SHA256,

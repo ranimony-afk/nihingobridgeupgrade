@@ -365,11 +365,12 @@ describe("Phase 14.2: Dictionary ETL Foundation", () => {
         ],
       };
 
-      // Second run with modification
+      // Explicit update policy. The default ingestion policy is abort.
       const report = await DictionaryPipeline.run({
         sourceRecords: [modifiedRecord],
         adapter,
         dryRun: false,
+        conflictPolicy: "update",
       });
 
       expect(report.inserted).toBe(0);

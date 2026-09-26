@@ -9,25 +9,20 @@ import {
   entityTranslations,
 } from "@/db/schema";
 import { sql } from "drizzle-orm";
-import { Client } from "pg";
+import { validateEnvironmentSafety } from "./ingest-full-jmdict";
 
 async function check() {
-  const connStr = process.env.DATABASE_URL;
-  if (!connStr) throw new Error("DATABASE_URL missing");
-  const url = new URL(connStr);
+  const env = await validateEnvironmentSafety();
   console.log("SAFETY METADATA:");
-  console.log("host classification:", url.hostname === "127.0.0.1" || url.hostname === "localhost" ? "LOOPBACK_DISPOSABLE" : "REMOTE");
-  console.log("database name:", url.pathname.replace(/^\//, ""));
-  console.log("port:", url.port || "5432");
-  console.log("schema:", "public");
-  console.log("SSL mode:", url.searchParams.get("sslmode") || "none (loopback)");
-  console.log("target classification:", url.hostname === "127.0.0.1" ? "AUTHORIZED_LOCAL" : "UNAUTHORIZED");
-
-  const client = new Client({ connectionString: connStr });
-  await client.connect();
-  const v = await client.query("SELECT version();");
-  console.log("PostgreSQL version:", v.rows[0].version);
-  await client.end();
+  console.log("target classification:", env.classification);
+  console.log("host:", env.host);
+  console.log("port:", env.port);
+  console.log("database name:", env.databaseName);
+  console.log("role:", env.currentUser);
+  console.log("schema:", env.currentSchema);
+  console.log("identity hash:", env.identityHash);
+  console.log("server address observed:", env.serverAddress ?? "unavailable");
+  console.log("PostgreSQL version:", env.postgresVersion);
 
   const [dictCount] = await db.select({ count: sql`cast(count(*) as int)` }).from(dictionaryEntries);
   const [sourcesCount] = await db.select({ count: sql`cast(count(*) as int)` }).from(knowledgeSources);
