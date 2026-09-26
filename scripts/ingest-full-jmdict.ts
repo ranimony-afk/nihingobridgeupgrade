@@ -4,6 +4,10 @@
  * Implements full-corpus streaming ingestion of the verified 206,717-entry JMdict corpus
  * with strict safety invariants, CLI flags, checkpoint/resume, staged pilot,
  * observability tags, two-run idempotency, and deterministic random sample reconciliation.
+ *
+ * Dry-run does not load the database module. A write still imports `@/db`, which
+ * is marked `server-only`. Run writes with Node's server export condition
+ * (`--conditions=react-server`). Do not remove that marker or shim it away.
  */
 
 import "dotenv/config";
@@ -13,48 +17,74 @@ import { tmpdir } from "os";
 import { Readable } from "stream";
 import { createHash } from "crypto";
 import { Client } from "pg";
-import { db } from "@/db";
 import {
   dictionaryEntries,
   knowledgeSources,
-  cmsContentItems,
-  cmsContentVersions,
-  cmsAuditLog,
-  entityTranslations,
-  kanjiEntries,
-  grammarPatterns,
-  exampleSentences,
-  srsCards,
-  srsDecks,
-  srsReviews,
-  xpEvents,
-  users,
-  questions,
 } from "@/db/schema";
 import { eq, sql, inArray } from "drizzle-orm";
 import { streamJMdictEntries } from "@/etl/dictionary/xmlParser";
 import { transformJMdictEntry } from "@/etl/dictionary/transformer";
 import {
+  assertOfficialByteSize,
+  assertOfficialEntryCount,
+  assertOfficialJmdictHeader,
+  assertOfficialSourceScan,
+  assertPinnedJmdictSource,
+  JmdictByteScan,
+  EXPECTED_JMDICT_BYTES,
+  EXPECTED_JMDICT_ENTRIES,
+  EXPECTED_JMDICT_RELEASE,
+  EXPECTED_JMDICT_SHA256,
+  JMDICT_SOURCE_ID,
+} from "@/etl/dictionary/jmdictContract";
+import {
+  classifyDatabaseTarget,
+  classifyReadOnlyProductionInspection,
+  deriveTargetIdentityHash,
+  type TargetIdentity,
+} from "@/etl/dictionary/targetClassification";
+import {
+  areArraysEqual,
+  areSensesEqual,
+  planPersistence,
+  resolveConflictPolicy,
+  summarizePlan,
+  type ConflictPolicy,
+} from "@/etl/dictionary/persistencePlan";
+import {
   createETLProvenanceContext,
   getRegisteredSource,
 } from "@/services/knowledge/provenance";
-import {
-  DrizzleDictionaryPersistenceAdapter,
-  areSensesEqual,
-  areArraysEqual,
-} from "@/etl/dictionary/persistenceAdapter";
-import { DictionaryService } from "@/services/dictionary/dictionaryService";
 import type {
   CanonicalDictionaryEntry,
   PersistenceCandidate,
   DictionaryPersistenceAdapter,
 } from "@/etl/dictionary/types";
 
-export const EXPECTED_JMDICT_SHA256 = "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162";
-export const EXPECTED_JMDICT_RELEASE = "2023-08-20";
-export const EXPECTED_JMDICT_ENTRIES = 206717;
-export const JMDICT_SOURCE_ID = "upstream:jmdict:2023-08";
+/**
+ * `@/db` is marked `server-only`. Import it only when a real database
+ * operation is required. CLI parsing and dry-run must not evaluate it.
+ */
+async function loadAppDatabase() {
+  const { db } = await import("@/db");
+  return db;
+}
+
+async function loadDrizzleAdapter(): Promise<Pick<DictionaryPersistenceAdapter, "upsertBatch">> {
+  const { DrizzleDictionaryPersistenceAdapter } = await import("@/etl/dictionary/persistenceAdapter");
+  return new DrizzleDictionaryPersistenceAdapter();
+}
+
+export {
+  EXPECTED_JMDICT_SHA256,
+  EXPECTED_JMDICT_RELEASE,
+  EXPECTED_JMDICT_ENTRIES,
+  EXPECTED_JMDICT_BYTES,
+  JMDICT_SOURCE_ID,
+};
+export const CHECKPOINT_VERSION = 2;
 export const DEFAULT_CHECKPOINT_PATH = resolve(process.cwd(), "data/jmdict-checkpoint.json");
+export const PILOT_BOUNDS = { A: 10, B: 100, C: 1000, D: 10000 } as const;
 
 export interface SourceMetadata {
   sourceId: string;
@@ -72,16 +102,21 @@ export interface SourceMetadata {
 
 export interface EnvironmentSafetyResult {
   isLoopback: boolean;
-  classification: "AUTHORIZED_LOCAL" | "FORBIDDEN" | "AMBIGUOUS";
+  classification: "DISPOSABLE" | "PRODUCTION" | "UNKNOWN" | "FORBIDDEN" | "AMBIGUOUS";
   host: string;
   port: string;
   databaseName: string;
   currentUser: string;
   currentSchema: string;
   postgresVersion: string;
+  identityHash: string;
+  serverAddress: string | null;
 }
 
 export interface IngestionCheckpoint {
+  checkpointVersion?: number;
+  origin?: "ingestion";
+  targetIdentity?: TargetIdentity;
   sourceId: string;
   sourceHash: string;
   releaseVersion: string;
@@ -187,6 +222,46 @@ export function validateIngestionOptions(input: unknown): IngestionExecutionOpti
   return options as IngestionExecutionOptions;
 }
 
+const SUPPORTED_CLI_FLAGS = new Set([
+  "--dry-run",
+  "--preflight",
+  "--pilot",
+  "--batch",
+  "--resume",
+  "--verify",
+  "--rollback",
+  "--authorize-full-ingestion",
+  "--conflict-policy",
+  "--checkpoint",
+]);
+
+/**
+ * Write-capable work requires an explicit mode. Pilot stage E is not a bound
+ * and is not full-ingestion authorization. No filesystem or database work happens here.
+ */
+export function assertIngestionAuthorization(options: IngestionExecutionOptions): void {
+  const stage = options.pilot ? (options.pilotStage ?? "B") : undefined;
+  if (stage === "E" && !options.authorizeFullIngestion) {
+    throw new Error(
+      "[GATE] STOP: Pilot stage E is not full-ingestion authorization. Refusing before any source, database, or checkpoint side effect.",
+    );
+  }
+  const readOnly = Boolean(options.dryRun || options.preflightOnly || options.verifyOnly);
+  const boundedPilot = Boolean(options.pilot && stage && stage !== "E");
+  const rollback = Boolean(options.rollbackTest);
+  if (!readOnly && !rollback && !boundedPilot && !options.authorizeFullIngestion) {
+    throw new Error(
+      "[GATE] STOP: Full production ingestion requires explicit --authorize-full-ingestion authorization flag.",
+    );
+  }
+}
+
+export function prepareCli(args: string[]): IngestionExecutionOptions {
+  const options = parseCliArgs(args);
+  assertIngestionAuthorization(options);
+  return options;
+}
+
 const SOURCE_CHUNK_BYTES = 64 * 1024;
 const sourcePins = new WeakMap<SourceMetadata, { fd: number; streams: Set<Readable> }>();
 const candidateSources = new WeakMap<PersistenceCandidate, SourceMetadata>();
@@ -276,18 +351,23 @@ export async function commitSourceBatch(
   batch: SourceBatch,
   adapter: Pick<DictionaryPersistenceAdapter, "upsertBatch">,
   dryRun = false,
-  checkpoint?: { path: string; progress: CheckpointProgress },
+  checkpoint?: { path: string; progress: CheckpointProgress; targetIdentity?: TargetIdentity },
+  conflictPolicy: ConflictPolicy = "abort",
 ) {
   if (!sourcePins.has(source) || batchSources.get(batch) !== source) {
     throw new Error("Unaccepted batch or wrong source");
   }
   // Capture checkpoint inputs before handing control to asynchronous persistence.
-  const path = checkpoint?.path;
-  const progress = checkpoint ? Object.freeze({ ...checkpoint.progress }) : undefined;
-  const result = await adapter.upsertBatch(batch.candidates, { dryRun });
-  if (path !== undefined && progress) {
+  const path = dryRun ? undefined : checkpoint?.path;
+  const progress = checkpoint && !dryRun ? Object.freeze({ ...checkpoint.progress }) : undefined;
+  const targetIdentity = checkpoint?.targetIdentity;
+  const result = await adapter.upsertBatch(batch.candidates, { dryRun, conflictPolicy });
+  if (!dryRun && path !== undefined && progress) {
     const value: IngestionCheckpoint = {
       ...progress,
+      checkpointVersion: CHECKPOINT_VERSION,
+      origin: "ingestion",
+      targetIdentity,
       sourceId: source.sourceId, sourceHash: source.xmlSha256,
       releaseVersion: source.releaseVersion, transformationVersion: source.transformationVersion,
       schemaContract: source.schemaContract, deterministicIdStrategy: source.deterministicIdStrategy,
@@ -306,67 +386,188 @@ export async function commitSourceBatch(
 // ----------------------------------------------------
 // 1. Database Safety & Target Classification
 // ----------------------------------------------------
+export interface EnvironmentProbeOptions {
+  declaredClass?: string;
+  expectedDatabase?: string;
+  authorizeProduction?: boolean;
+}
+
+export function targetIdentityFromEnvironment(env: EnvironmentSafetyResult): TargetIdentity {
+  if (env.classification !== "DISPOSABLE") {
+    throw new Error("[PRECHECK] STOP — refusing to bind a checkpoint to a non-disposable target.");
+  }
+  return {
+    classification: "DISPOSABLE",
+    host: env.host,
+    port: env.port,
+    database: env.databaseName,
+    user: env.currentUser,
+    identityHash: deriveTargetIdentityHash({
+      host: env.host,
+      port: env.port,
+      database: env.databaseName,
+      user: env.currentUser,
+    }),
+  };
+}
+
 export async function validateEnvironmentSafety(
-  explicitConnStr?: string
+  explicitConnStr?: string,
+  probeOptions: EnvironmentProbeOptions = {},
 ): Promise<EnvironmentSafetyResult> {
   if (explicitConnStr !== undefined) nonemptyString(explicitConnStr, "connStr");
   const connStr = explicitConnStr === undefined ? process.env.DATABASE_URL : explicitConnStr;
   if (!connStr) {
     throw new Error("[PRECHECK] FATAL: DATABASE_URL is missing. Safety stop!");
   }
-
   nonemptyString(connStr, "connStr");
-  let url: URL;
-  try {
-    url = new URL(connStr);
-  } catch {
-    throw new Error("[PRECHECK] FATAL: Invalid connection URL format.");
+
+  const classified = classifyDatabaseTarget({
+    connectionString: connStr,
+    declaredClass: probeOptions.declaredClass ?? process.env.NIHONGO_DB_TARGET_CLASS,
+    expectedDatabase: probeOptions.expectedDatabase ?? process.env.NIHONGO_DB_EXPECTED_DATABASE,
+    authorizeProduction: probeOptions.authorizeProduction === true,
+  });
+  if (classified.decision !== "ALLOW" || classified.classification !== "DISPOSABLE") {
+    throw new Error(`[PRECHECK] STOP — ${classified.reason}`);
   }
 
-  const host = url.hostname;
-  const port = url.port || "5432";
-  const databaseName = url.pathname.replace(/^\//, "");
-  const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
-
-  // Production forbidden host checks
-  const isForbiddenHost =
-    host.includes("pooler.supabase.com") ||
-    host.includes("aws-0-ap-northeast-1") ||
-    host.includes("supabase.co") ||
-    host.includes("neon.tech") ||
-    host.includes("vercel-storage.com");
-
-  if (isForbiddenHost) {
-    throw new Error(
-      `[PRECHECK] STOP — TARGET DATABASE FORBIDDEN: Host "${host}" matches forbidden production host.`
-    );
-  }
-
-  if (!isLoopback) {
-    throw new Error(
-      `[PRECHECK] STOP — TARGET DATABASE AMBIGUOUS: Host "${host}" is not verified local loopback.`
-    );
-  }
-
-  // Safe client query for engine metadata
   const probeClient = new Client({ connectionString: connStr });
   await probeClient.connect();
-  const vRes = await probeClient.query("SELECT version();");
-  const uRes = await probeClient.query(
-    "SELECT current_user, current_database(), current_schema();"
-  );
-  await probeClient.end();
+  try {
+    const vRes = await probeClient.query("SELECT version();");
+    const uRes = await probeClient.query(
+      "SELECT current_user, current_database(), current_schema();",
+    );
+    let serverAddress: string | null = null;
+    try {
+      const addr = await probeClient.query("SELECT inet_server_addr()::text AS server_addr;");
+      serverAddress = addr.rows[0]?.server_addr ?? null;
+    } catch {
+      serverAddress = null;
+    }
+    const databaseName = String(uRes.rows[0].current_database);
+    const currentUser = String(uRes.rows[0].current_user);
+    if (databaseName !== classified.database) {
+      throw new Error(
+        "[PRECHECK] STOP — TARGET DATABASE AMBIGUOUS: connected database does not match the classified target.",
+      );
+    }
+    if (classified.user && classified.user !== currentUser) {
+      throw new Error(
+        "[PRECHECK] STOP — TARGET DATABASE AMBIGUOUS: connected role does not match the classified target.",
+      );
+    }
+    return {
+      isLoopback: true,
+      classification: "DISPOSABLE",
+      host: classified.host,
+      port: classified.port,
+      databaseName,
+      currentUser,
+      currentSchema: String(uRes.rows[0].current_schema),
+      postgresVersion: String(vRes.rows[0].version),
+      identityHash: deriveTargetIdentityHash({
+        host: classified.host,
+        port: classified.port,
+        database: databaseName,
+        user: currentUser,
+      }),
+      serverAddress,
+    };
+  } finally {
+    await probeClient.end();
+  }
+}
 
-  return {
-    isLoopback: true,
-    classification: "AUTHORIZED_LOCAL",
-    host,
-    port,
-    databaseName: uRes.rows[0].current_database,
-    currentUser: uRes.rows[0].current_user,
-    currentSchema: uRes.rows[0].current_schema,
-    postgresVersion: vRes.rows[0].version,
-  };
+/**
+ * Read-only production inspection. Not used by executeIngestion.
+ * ALLOW_READONLY is required before a client is constructed. The session is
+ * set read-only. This function does not insert, update, delete, or authorize
+ * full ingestion.
+ */
+export async function inspectReadOnlyProduction(options: {
+  connectionString: string;
+  declaredClass?: string;
+  expectedDatabase?: string;
+  expectedHost?: string;
+  readOnlyConfirmation?: string;
+}): Promise<{
+  classification: "PRODUCTION";
+  host: string;
+  port: string;
+  database: string;
+  role: string;
+  identityHash: string;
+  serverAddress: string | null;
+  postgresVersion: string;
+  dictionaryTablePresent: boolean;
+  knowledgeTablePresent: boolean;
+  dictionaryColumns: string[];
+  knowledgeColumns: string[];
+  dictionaryEntries: number | null;
+  knowledgeSources: number | null;
+  sourceRefs: Array<{ sourceRef: string; count: number }>;
+  readOnly: true;
+}> {
+  const classified = classifyReadOnlyProductionInspection(options);
+  if (classified.decision !== "ALLOW_READONLY" || classified.classification !== "PRODUCTION") {
+    throw new Error(`[READONLY] STOP — ${classified.reason}`);
+  }
+  const probeClient = new Client({ connectionString: options.connectionString });
+  await probeClient.connect();
+  try {
+    await probeClient.query("SET default_transaction_read_only = on");
+    const version = await probeClient.query("SELECT version()");
+    const who = await probeClient.query("SELECT current_user, current_database(), inet_server_addr()::text AS server_addr");
+    const databaseName = String(who.rows[0].current_database);
+    const role = String(who.rows[0].current_user);
+    if (databaseName !== classified.database || (classified.user && classified.user !== role)) {
+      throw new Error("[READONLY] STOP — connected identity does not match the classified target.");
+    }
+    const columns = async (table: string) => {
+      const result = await probeClient.query(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position",
+        [table],
+      );
+      return result.rows.map((row) => String(row.column_name));
+    };
+    const dictionaryColumns = await columns("dictionary_entries");
+    const knowledgeColumns = await columns("knowledge_sources");
+    const dictionaryTablePresent = dictionaryColumns.length > 0;
+    const knowledgeTablePresent = knowledgeColumns.length > 0;
+    const dictionaryEntries = dictionaryTablePresent
+      ? Number((await probeClient.query("SELECT count(*)::int AS count FROM dictionary_entries")).rows[0].count)
+      : null;
+    const knowledgeSources = knowledgeTablePresent
+      ? Number((await probeClient.query("SELECT count(*)::int AS count FROM knowledge_sources")).rows[0].count)
+      : null;
+    const sourceRefs = dictionaryTablePresent
+      ? (await probeClient.query(
+        "SELECT source_ref, count(*)::int AS count FROM dictionary_entries GROUP BY source_ref ORDER BY source_ref",
+      )).rows.map((row) => ({ sourceRef: String(row.source_ref), count: Number(row.count) }))
+      : [];
+    return {
+      classification: "PRODUCTION",
+      host: classified.host,
+      port: classified.port,
+      database: databaseName,
+      role,
+      identityHash: deriveTargetIdentityHash({ host: classified.host, port: classified.port, database: databaseName, user: role }),
+      serverAddress: who.rows[0].server_addr ?? null,
+      postgresVersion: String(version.rows[0].version),
+      dictionaryTablePresent,
+      knowledgeTablePresent,
+      dictionaryColumns,
+      knowledgeColumns,
+      dictionaryEntries,
+      knowledgeSources,
+      sourceRefs,
+      readOnly: true,
+    };
+  } finally {
+    await probeClient.end();
+  }
 }
 
 // ----------------------------------------------------
@@ -399,27 +600,40 @@ export function verifySourceContract(
   let directory: string | undefined;
   try {
     input = fs.openSync(xmlPath, "r");
-    if (!fs.fstatSync(input).isFile()) throw new Error("Source must be a regular file");
+    const stat = fs.fstatSync(input);
+    if (!stat.isFile()) throw new Error("Source must be a regular file");
+    const officialPin = expectedHash === EXPECTED_JMDICT_SHA256 && expectedRelease === EXPECTED_JMDICT_RELEASE;
+    if (officialPin) assertOfficialByteSize(stat.size);
     directory = fs.mkdtempSync(join(tmpdir(), "jmdict-verified-"));
     const snapshotPath = join(directory, "source.xml");
     writer = fs.openSync(snapshotPath, "wx", 0o600);
     const hash = createHash("sha256");
     const buffer = Buffer.allocUnsafe(SOURCE_CHUNK_BYTES);
+    const byteScan = officialPin ? new JmdictByteScan() : null;
     let size = 0;
     for (;;) {
       const count = fs.readSync(input, buffer, 0, buffer.length, null);
       if (!count) break;
+      const chunk = buffer.subarray(0, count);
       let written = 0;
       while (written < count) {
         const n = fs.writeSync(writer, buffer, written, count - written);
         if (n <= 0) throw new Error("Snapshot write made no progress");
         written += n;
       }
-      hash.update(buffer.subarray(0, count));
+      hash.update(chunk);
+      byteScan?.feed(chunk);
       size += count;
     }
     const xmlSha256 = hash.digest("hex");
     if (xmlSha256 !== expectedHash) throw new Error(`SOURCE HASH MISMATCH: expected ${expectedHash}, got ${xmlSha256}`);
+    if (officialPin) {
+      if (provDef.contentHash !== EXPECTED_JMDICT_SHA256) {
+        throw new Error("[SOURCE_VERIFIED] STOP — provenance contentHash is not bound to the pinned XML SHA-256.");
+      }
+      if (!byteScan) throw new Error("[SOURCE_VERIFIED] STOP — MALFORMED SOURCE: scan was not started");
+      assertOfficialSourceScan(byteScan);
+    }
     fs.closeSync(input); input = undefined;
     fs.closeSync(writer); writer = undefined;
     reader = fs.openSync(snapshotPath, "r");
@@ -454,42 +668,104 @@ export function verifySourceContract(
 export async function runPreflight(options: {
   xmlPath?: string;
   connStr?: string;
+  conflictPolicy?: ConflictPolicy;
 } = {}): Promise<PreflightReport> {
-  const checked = optionRecord(options, ["xmlPath", "connStr"]);
+  const checked = optionRecord(options, ["xmlPath", "connStr", "conflictPolicy"]);
   if (Object.hasOwn(checked, "xmlPath")) nonemptyString(checked.xmlPath, "xmlPath");
   if (Object.hasOwn(checked, "connStr")) nonemptyString(checked.connStr, "connStr");
+  if (Object.hasOwn(checked, "conflictPolicy") && checked.conflictPolicy !== "abort" && checked.conflictPolicy !== "update") {
+    throw new Error("Invalid conflictPolicy");
+  }
   options = checked as typeof options;
+  const policy = resolveConflictPolicy(options.conflictPolicy);
   const env = await validateEnvironmentSafety(options.connStr);
   const source = verifySourceContract(options.xmlPath);
   try {
+    const report = await buildPreflightReport(env, source, policy);
+    return report;
+  } finally { releaseVerifiedSource(source); }
+}
 
+async function loadPayloadsById(ids: string[]) {
+  const db = await loadAppDatabase();
+  if (ids.length === 0) return new Map<string, {
+    id: string; headword: string; reading: string; romaji: string; jlptLevel: string;
+    isCommon: boolean; frequencyRank: number | null; partsOfSpeech: string[];
+    senses: Array<{ glosses: string[]; note?: string | null }>; kanjiCharacters: string[];
+    tags: string[]; sourceRef: string;
+  }>();
+  const rows = await db.select({
+    id: dictionaryEntries.id,
+    headword: dictionaryEntries.headword,
+    reading: dictionaryEntries.reading,
+    romaji: dictionaryEntries.romaji,
+    jlptLevel: dictionaryEntries.jlptLevel,
+    isCommon: dictionaryEntries.isCommon,
+    frequencyRank: dictionaryEntries.frequencyRank,
+    partsOfSpeech: dictionaryEntries.partsOfSpeech,
+    senses: dictionaryEntries.senses,
+    kanjiCharacters: dictionaryEntries.kanjiCharacters,
+    tags: dictionaryEntries.tags,
+    sourceRef: dictionaryEntries.sourceRef,
+  }).from(dictionaryEntries).where(inArray(dictionaryEntries.id, ids));
+  return new Map(rows.map((row) => [row.id, {
+    ...row,
+    partsOfSpeech: (row.partsOfSpeech as string[]) ?? [],
+    senses: (row.senses as Array<{ glosses: string[]; note?: string | null }>) ?? [],
+    kanjiCharacters: (row.kanjiCharacters as string[]) ?? [],
+    tags: (row.tags as string[]) ?? [],
+  }]));
+}
+
+export async function buildPreflightReport(
+  env: EnvironmentSafetyResult,
+  source: SourceMetadata,
+  policy: ConflictPolicy = "abort",
+): Promise<PreflightReport> {
+  const db = await loadAppDatabase();
   const [dictCountRow] = await db
     .select({ count: sql`cast(count(*) as int)` })
     .from(dictionaryEntries);
-  const [jmdictCountRow] = await db
-    .select({ count: sql`cast(count(*) as int)` })
+  let expectedInserts = 0;
+  let expectedSkips = 0;
+  let conflictingIdCount = 0;
+  let matchingIdCount = 0;
+  const seenIds = new Set<string>();
+  let batch: PersistenceCandidate[] = [];
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const existing = await loadPayloadsById(batch.map((row) => row.id));
+    const plan = planPersistence(batch, existing);
+    const summary = summarizePlan(plan, policy);
+    expectedInserts += summary.expectedInserts;
+    expectedSkips += summary.expectedSkips;
+    conflictingIdCount += summary.conflictingIdCount;
+    matchingIdCount += plan.identical.length + plan.conflicts.length;
+    for (const row of batch) seenIds.add(row.id);
+    batch = [];
+  };
+  for await (const item of readVerifiedRecords(source, true)) {
+    if (item.isValid && item.record) batch.push(item.record);
+    if (batch.length >= 500) await flush();
+  }
+  await flush();
+  const pinnedRows = await db.select({ id: dictionaryEntries.id })
     .from(dictionaryEntries)
-    .where(eq(dictionaryEntries.sourceRef, JMDICT_SOURCE_ID));
-
-  const existingRowCount = Number(dictCountRow.count);
-  const matchingIdCount = Number(jmdictCountRow.count);
-  const expectedInserts = Math.max(0, source.expectedEntries - matchingIdCount);
-  const expectedSkips = matchingIdCount;
-
+    .where(eq(dictionaryEntries.sourceRef, source.sourceId));
+  const unexpectedIdCount = pinnedRows.filter((row) => !seenIds.has(row.id)).length;
   return {
     environment: env,
     source,
     targetTable: "dictionary_entries",
-    existingRowCount,
+    existingRowCount: Number(dictCountRow.count),
     matchingIdCount,
-    conflictingIdCount: 0,
+    conflictingIdCount,
     expectedInserts,
     expectedSkips,
-    expectedUpdates: 0,
-    unexpectedIdCount: 0,
+    expectedUpdates: policy === "update" ? conflictingIdCount : 0,
+    unexpectedIdCount,
     isReadOnly: true,
   };
-  } finally { releaseVerifiedSource(source); }
 }
 
 // ----------------------------------------------------
@@ -502,12 +778,17 @@ export class CheckpointManager {
 
   static loadCheckpoint(path: string): IngestionCheckpoint | null {
     if (!fs.existsSync(path)) return null;
+    const raw = fs.readFileSync(path, "utf-8");
+    let parsed: unknown;
     try {
-      const raw = fs.readFileSync(path, "utf-8");
-      return JSON.parse(raw) as IngestionCheckpoint;
+      parsed = JSON.parse(raw);
     } catch {
-      return null;
+      throw new Error("[CHECKPOINT] Corrupt checkpoint: invalid JSON. Refusing to start from zero.");
     }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("[CHECKPOINT] Corrupt checkpoint: invalid shape. Refusing to start from zero.");
+    }
+    return parsed as IngestionCheckpoint;
   }
 
   static verifyResumeSafety(
@@ -534,6 +815,59 @@ export class CheckpointManager {
     }
     return { safe: true };
   }
+
+  /**
+   * Resume identity used by executeIngestion. A missing, corrupt, dry-run, or
+   * cross-target checkpoint fails closed. Database identity is the SHA-256 of
+   * host, port, database name, and role — never the password or connection string.
+   */
+  static verifyResumeIdentity(
+    checkpoint: IngestionCheckpoint,
+    source: SourceMetadata,
+    target: TargetIdentity,
+  ): { safe: boolean; reason?: string } {
+    const base = this.verifyResumeSafety(checkpoint, source);
+    if (!base.safe) return base;
+    if (checkpoint.checkpointVersion !== CHECKPOINT_VERSION) {
+      return { safe: false, reason: "checkpointVersion incompatible" };
+    }
+    if (checkpoint.origin !== "ingestion") {
+      return { safe: false, reason: "checkpoint origin is not a committed ingestion" };
+    }
+    const bound = checkpoint.targetIdentity;
+    if (!bound || !target) {
+      return { safe: false, reason: "target identity missing" };
+    }
+    if (bound.identityHash !== target.identityHash ||
+        bound.host !== target.host ||
+        bound.port !== target.port ||
+        bound.database !== target.database ||
+        bound.user !== target.user ||
+        bound.classification !== "DISPOSABLE" ||
+        target.classification !== "DISPOSABLE") {
+      return { safe: false, reason: "target identity mismatch" };
+    }
+    return { safe: true };
+  }
+}
+
+export function loadResumeCheckpoint(
+  path: string,
+  source: SourceMetadata,
+  target: TargetIdentity,
+): IngestionCheckpoint {
+  if (!fs.existsSync(path)) {
+    throw new Error(`[CHECKPOINT] Resume refused: checkpoint file is missing at "${path}". Refusing to start from zero.`);
+  }
+  const cp = CheckpointManager.loadCheckpoint(path);
+  if (!cp) {
+    throw new Error("[CHECKPOINT] Resume refused: checkpoint could not be loaded. Refusing to start from zero.");
+  }
+  const safety = CheckpointManager.verifyResumeIdentity(cp, source, target);
+  if (!safety.safe) {
+    throw new Error(`[CHECKPOINT] Resume safety violation: ${safety.reason}`);
+  }
+  return cp;
 }
 
 // ----------------------------------------------------
@@ -544,6 +878,7 @@ export async function testRollbackTransaction(): Promise<{
   preCount: number;
   postCount: number;
 }> {
+  const db = await loadAppDatabase();
   const [preRow] = await db
     .select({ count: sql`cast(count(*) as int)` })
     .from(dictionaryEntries);
@@ -623,6 +958,7 @@ async function reconcileVerifiedSample(sampleSize: number, source: SourceMetadat
   }
 
   const candidateIds = sampleCandidates.map((c) => c.id);
+  const db = await loadAppDatabase();
   const dbRows = await db
     .select()
     .from(dictionaryEntries)
@@ -696,6 +1032,9 @@ export async function executeIngestion(
   report: Record<string, unknown>;
 }> {
   options = validateIngestionOptions(options);
+  assertPinnedJmdictSource(JMDICT_SOURCE_ID);
+  assertIngestionAuthorization(options);
+  const conflictPolicy = resolveConflictPolicy(options.conflictPolicy);
   console.log("================================================================================");
   console.log("PHASE 14.3D — CONTROLLED FULL JMdict POSTGRESQL INGESTION ENGINE");
   console.log("================================================================================");
@@ -705,13 +1044,15 @@ export async function executeIngestion(
     console.log(`[${tag}]`, ...args);
   };
 
-  // STEP 1: Precheck Safety
-  log("PRECHECK", "Auditing environment safety & target classification...");
-  const env = await validateEnvironmentSafety();
-  log("PRECHECK", `Host: ${env.host}:${env.port} | Database: ${env.databaseName} | User: ${env.currentUser}`);
-  log("PRECHECK", `Classification: ${env.classification}`);
+  const needsDatabase = !options.dryRun;
+  let env: EnvironmentSafetyResult | null = null;
+  if (needsDatabase) {
+    log("PRECHECK", "Auditing environment safety & target classification...");
+    env = await validateEnvironmentSafety();
+    log("PRECHECK", `Host: ${env.host}:${env.port} | Database: ${env.databaseName} | Classification: ${env.classification}`);
+  }
 
-  // STEP 2: Source Verification
+  // Source verification hashes retained bytes. Dry-run may open the source; it must not write.
   log("SOURCE_VERIFIED", "Auditing source release hash and provenance registry...");
   const source = verifySourceContract();
   try {
@@ -748,29 +1089,28 @@ export async function executeIngestion(
     return { status: "VERIFY_COMPLETE", report: { randomReconciliation: randRecon } };
   }
 
-  // Pilot staging configuration
+  // Pilot stages A–D are bounded. Stage E does not grant a bound; only the explicit flag does.
   let maxEntriesToIngest = source.expectedEntries;
   if (options.pilot) {
     const stage = options.pilotStage ?? "B";
-    if (stage === "A") maxEntriesToIngest = 10;
-    else if (stage === "B") maxEntriesToIngest = 100;
-    else if (stage === "C") maxEntriesToIngest = 1000;
-    else if (stage === "D") maxEntriesToIngest = 10000;
-    log("PRECHECK", `Running in PILOT mode: Stage ${stage} (${maxEntriesToIngest} entries)`);
-  } else if (!options.dryRun && !options.authorizeFullIngestion) {
-    // Safety lock: full ingestion requires explicit authorization
-    log(
-      "GATE",
-      "FULL INGESTION NOT AUTHORIZED. Must specify --authorize-full-ingestion to run across all 206,717 records."
-    );
-    throw new Error(
-      "[GATE] STOP: Full production ingestion requires explicit --authorize-full-ingestion authorization flag."
-    );
+    if (stage === "A" || stage === "B" || stage === "C" || stage === "D") {
+      maxEntriesToIngest = PILOT_BOUNDS[stage];
+      log("PRECHECK", `Running in PILOT mode: Stage ${stage} (${maxEntriesToIngest} entries)`);
+    } else if (options.authorizeFullIngestion) {
+      log("PRECHECK", "Full ingestion authorized by --authorize-full-ingestion. Pilot stage E is not a bound.");
+    }
+  }
+  if (!options.dryRun) {
+    let counted = 0;
+    for await (const _raw of streamJMdictEntries(openVerifiedSourceStream(source))) counted++;
+    assertOfficialEntryCount(counted, source.expectedEntries);
+    log("SOURCE_VERIFIED", `Entry count ${counted} matches the pinned contract.`);
   }
 
   // Ensure knowledge_sources contains the provenance record
   const provDef = getRegisteredSource(JMDICT_SOURCE_ID);
   if (provDef && !options.dryRun) {
+    const db = await loadAppDatabase();
     const [existingSource] = await db
       .select()
       .from(knowledgeSources)
@@ -796,29 +1136,34 @@ export async function executeIngestion(
   const checkpointPath = options.checkpointPath ?? DEFAULT_CHECKPOINT_PATH;
   let resumeFromEntSeq: string | null = null;
 
-  // Handle Resume
+  // Handle Resume. Missing or invalid checkpoints fail closed; they do not restart at zero.
+  const targetIdentity = env ? targetIdentityFromEnvironment(env) : undefined;
   if (options.resume) {
-    const cp = CheckpointManager.loadCheckpoint(checkpointPath);
-    if (!cp) {
-      log("PRECHECK", `No checkpoint file found at "${checkpointPath}". Starting fresh.`);
-    } else {
-      const safety = CheckpointManager.verifyResumeSafety(cp, source);
-      if (!safety.safe) {
-        log("VALIDATION_ERROR", `Checkpoint resume aborted: ${safety.reason}`);
-        throw new Error(`[CHECKPOINT] Resume safety violation: ${safety.reason}`);
-      }
-      resumeFromEntSeq = cp.lastProcessedEntSeq;
-      log("CHECKPOINT", `Resuming safely from ent_seq ${resumeFromEntSeq} (previously processed ${cp.recordsProcessed})`);
+    if (!targetIdentity) {
+      throw new Error("[CHECKPOINT] Resume refused: dry-run cannot resume and cannot create resume state.");
     }
+    const cp = loadResumeCheckpoint(checkpointPath, source, targetIdentity);
+    resumeFromEntSeq = cp.lastProcessedEntSeq;
+    log("CHECKPOINT", `Resuming safely from ent_seq ${resumeFromEntSeq} (previously processed ${cp.recordsProcessed})`);
   }
 
-  // Pre-Inventory
-  const [dictBeforeRow] = await db
-    .select({ count: sql`cast(count(*) as int)` })
-    .from(dictionaryEntries);
-  const totalBefore = Number(dictBeforeRow.count);
+  // Pre-Inventory. Dry-run does not open the database.
+  const totalBefore = options.dryRun ? 0 : await (async () => {
+    const db = await loadAppDatabase();
+    const [dictBeforeRow] = await db
+      .select({ count: sql`cast(count(*) as int)` })
+      .from(dictionaryEntries);
+    return Number(dictBeforeRow.count);
+  })();
 
-  const adapter = new DrizzleDictionaryPersistenceAdapter();
+  // Dry-run must not evaluate the adapter module: it imports the server-only database client.
+  const adapter: Pick<DictionaryPersistenceAdapter, "upsertBatch"> = options.dryRun
+    ? {
+        async upsertBatch(candidates) {
+          return { batchSize: candidates.length, inserted: candidates.length, updated: 0, skipped: 0 };
+        },
+      }
+    : await loadDrizzleAdapter();
 
   let processedCount = 0;
   let insertedCount = 0;
@@ -834,6 +1179,42 @@ export async function executeIngestion(
 
   const startTime = Date.now();
   let batchIndex = 0;
+
+  // One binding for full batches and the final short batch. The checkpoint is
+  // written inside commitSourceBatch only after upsertBatch returns.
+  const commitIngestionBatch = async (candidates: PersistenceCandidate[]) => {
+    const batch = acceptSourceBatch(source, candidates);
+    const lastSeq = batch.lastProcessedEntSeq;
+    const batchRes = await commitSourceBatch(
+      source,
+      batch,
+      adapter,
+      Boolean(options.dryRun),
+      options.dryRun ? undefined : {
+        path: checkpointPath,
+        targetIdentity,
+        progress: {
+          recordsProcessed: processedCount,
+          recordsInserted: insertedCount,
+          recordsSkipped: skippedCount,
+          recordsUpdated: updatedCount,
+          recordsConflicted: 0,
+          recordsRejected: rejectedCount,
+          warningCount,
+          errorCount,
+        },
+      },
+      conflictPolicy,
+    );
+    insertedCount += batchRes.inserted;
+    updatedCount += batchRes.updated;
+    skippedCount += batchRes.skipped;
+    if (!options.dryRun) {
+      log("BATCH_COMMIT", `Batch #${batchIndex} committed: Ins=${batchRes.inserted}, Upd=${batchRes.updated}, Skip=${batchRes.skipped}`);
+      log("CHECKPOINT", `Checkpoint saved at ent_seq=${lastSeq} (${processedCount} processed)`);
+    }
+    return batchRes;
+  };
 
   for await (const { raw, record: candidate, isValid, diagnostics } of readVerifiedRecords(source, Boolean(options.dryRun))) {
     if (!isPastResumePoint) {
@@ -870,40 +1251,16 @@ export async function executeIngestion(
     if (currentBatch.length >= batchSize) {
       batchIndex++;
       log("BATCH_START", `Batch #${batchIndex} (size: ${currentBatch.length})...`);
-      const batch = acceptSourceBatch(source, currentBatch);
-      const lastSeq = batch.lastProcessedEntSeq;
-      const batchRes = await commitSourceBatch(source, batch, adapter, Boolean(options.dryRun), {
-        path: checkpointPath,
-        progress: {
-          recordsProcessed: processedCount, recordsInserted: insertedCount,
-          recordsSkipped: skippedCount, recordsUpdated: updatedCount, recordsConflicted: 0,
-          recordsRejected: rejectedCount, warningCount, errorCount,
-        },
-      });
-      insertedCount += batchRes.inserted;
-      updatedCount += batchRes.updated;
-      skippedCount += batchRes.skipped;
-      if (!options.dryRun) {
-        log("BATCH_COMMIT", `Batch #${batchIndex} committed: Ins=${batchRes.inserted}, Upd=${batchRes.updated}, Skip=${batchRes.skipped}`);
-      }
+      await commitIngestionBatch(currentBatch);
       currentBatch = [];
-      log("CHECKPOINT", `Checkpoint saved at ent_seq=${lastSeq} (${processedCount} processed)`);
     }
   }
 
-  // Flush remaining partial batch
+  // Flush remaining partial batch through the same post-commit checkpoint binding.
   if (currentBatch.length > 0) {
     batchIndex++;
     log("BATCH_START", `Final partial Batch #${batchIndex} (size: ${currentBatch.length})...`);
-    if (!options.dryRun) {
-      const batchRes = await commitSourceBatch(source, acceptSourceBatch(source, currentBatch), adapter);
-      insertedCount += batchRes.inserted;
-      updatedCount += batchRes.updated;
-      skippedCount += batchRes.skipped;
-      log("BATCH_COMMIT", `Final batch committed: Ins=${batchRes.inserted}, Upd=${batchRes.updated}, Skip=${batchRes.skipped}`);
-    } else {
-      insertedCount += currentBatch.length;
-    }
+    await commitIngestionBatch(currentBatch);
     currentBatch = [];
   }
 
@@ -913,7 +1270,30 @@ export async function executeIngestion(
   log("FINAL_RECONCILIATION", `Ingestion phase complete in ${(durationMs / 1000).toFixed(2)}s (${throughput} rec/sec)`);
   log("FINAL_RECONCILIATION", `Stats: Processed=${processedCount}, Ins=${insertedCount}, Upd=${updatedCount}, Skip=${skippedCount}, Rej=${rejectedCount}`);
 
-  // Post-Reconciliation
+  if (options.dryRun) {
+    log("GATE", "DRY_RUN_COMPLETE — no database writes and no checkpoint mutation");
+    return {
+      status: "DRY_RUN_COMPLETE",
+      report: {
+        environment: null,
+        source,
+        processedCount,
+        insertedCount,
+        updatedCount,
+        skippedCount,
+        rejectedCount,
+        warningCount,
+        durationMs,
+        throughput,
+        totalBefore,
+        checkpointMutated: false,
+        verdict: "DRY_RUN_COMPLETE",
+      },
+    };
+  }
+
+  // Post-Reconciliation. Dry-run already returned and never reaches this load.
+  const db = await loadAppDatabase();
   const [dictAfterRow] = await db
     .select({ count: sql`cast(count(*) as int)` })
     .from(dictionaryEntries);
@@ -947,12 +1327,14 @@ export async function executeIngestion(
     let run2Skipped = 0;
     let run2Batch: PersistenceCandidate[] = [];
 
+    // Run 2 re-reads from the start. Writing its cursor would rewind a resume
+    // checkpoint that the primary loop, including its final short batch, already saved.
     for await (const { record: candidate, isValid } of readVerifiedRecords(source)) {
       if (!isValid || !candidate) continue;
       run2Batch.push(candidate);
 
       if (run2Batch.length >= batchSize) {
-        const res = await commitSourceBatch(source, acceptSourceBatch(source, run2Batch), adapter);
+        const res = await commitSourceBatch(source, acceptSourceBatch(source, run2Batch), adapter, false, undefined, conflictPolicy);
         run2Inserted += res.inserted;
         run2Updated += res.updated;
         run2Skipped += res.skipped;
@@ -960,7 +1342,7 @@ export async function executeIngestion(
       }
     }
     if (run2Batch.length > 0) {
-      const res = await commitSourceBatch(source, acceptSourceBatch(source, run2Batch), adapter);
+      const res = await commitSourceBatch(source, acceptSourceBatch(source, run2Batch), adapter, false, undefined, conflictPolicy);
       run2Inserted += res.inserted;
       run2Updated += res.updated;
       run2Skipped += res.skipped;
@@ -983,7 +1365,7 @@ export async function executeIngestion(
     log("FINAL_RECONCILIATION", `Run 2 Idempotency: Ins=${run2Inserted}, Upd=${run2Updated}, Skip=${run2Skipped}, Drift=${totalRun2 - totalAfter}`);
   }
 
-  log("GATE", "GO — PHASE 14.3D COMPLETE");
+  log("GATE", "INGESTION_COMPLETE — not production authorization");
 
   return {
     status: options.dryRun ? "DRY_RUN_COMPLETE" : "SUCCESS",
@@ -1003,7 +1385,7 @@ export async function executeIngestion(
       jmdictAfter,
       randomReconciliation: randomRecon,
       idempotencyRun2: idempotencyRun2Result,
-      verdict: "GO — PHASE 14.3D COMPLETE",
+      verdict: "INGESTION_COMPLETE — not production authorization",
     },
   };
   } finally { releaseVerifiedSource(source); }
@@ -1013,6 +1395,11 @@ export async function executeIngestion(
 // CLI Interface
 // ----------------------------------------------------
 export function parseCliArgs(args: string[]): IngestionExecutionOptions {
+  for (const arg of args) {
+    if (arg.startsWith("-") && !SUPPORTED_CLI_FLAGS.has(arg)) {
+      throw new Error(`Unknown flag: ${arg}`);
+    }
+  }
   const options: IngestionExecutionOptions = {};
 
   for (let i = 0; i < args.length; i++) {
@@ -1024,15 +1411,15 @@ export function parseCliArgs(args: string[]): IngestionExecutionOptions {
     } else if (arg === "--pilot") {
       options.pilot = true;
       const nextArg = args[i + 1];
-      if (nextArg !== undefined && !nextArg.startsWith("--")) {
-        options.pilotStage = nextArg.toUpperCase() as any;
+      if (nextArg !== undefined && !nextArg.startsWith("-")) {
+        options.pilotStage = nextArg.toUpperCase() as IngestionExecutionOptions["pilotStage"];
         i++;
       } else {
         options.pilotStage = "B";
       }
     } else if (arg === "--batch") {
       const nextArg = args[i + 1];
-      if (nextArg === undefined || nextArg.startsWith("--")) throw new Error("Invalid batchSize");
+      if (nextArg === undefined || nextArg.startsWith("-")) throw new Error("Invalid batchSize");
       options.batchSize = Number(nextArg);
       i++;
     } else if (arg === "--resume") {
@@ -1041,8 +1428,18 @@ export function parseCliArgs(args: string[]): IngestionExecutionOptions {
       options.verifyOnly = true;
     } else if (arg === "--rollback") {
       options.rollbackTest = true;
-    } else if (arg === "--authorize-full-ingestion" || arg === "--authorized") {
+    } else if (arg === "--authorize-full-ingestion") {
       options.authorizeFullIngestion = true;
+    } else if (arg === "--conflict-policy") {
+      const nextArg = args[i + 1];
+      if (nextArg !== "abort" && nextArg !== "update") throw new Error("Invalid conflictPolicy");
+      options.conflictPolicy = nextArg;
+      i++;
+    } else if (arg === "--checkpoint") {
+      const nextArg = args[i + 1];
+      if (nextArg === undefined || nextArg.startsWith("-")) throw new Error("Invalid checkpointPath");
+      options.checkpointPath = nextArg;
+      i++;
     }
   }
 
@@ -1050,7 +1447,7 @@ export function parseCliArgs(args: string[]): IngestionExecutionOptions {
 }
 
 if (process.argv[1] && process.argv[1].endsWith("ingest-full-jmdict.ts")) {
-  const cliOptions = parseCliArgs(process.argv.slice(2));
+  const cliOptions = prepareCli(process.argv.slice(2));
   executeIngestion(cliOptions)
     .then((result) => {
       console.log("\n================================================================================");

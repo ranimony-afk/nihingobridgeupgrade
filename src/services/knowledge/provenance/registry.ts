@@ -51,6 +51,9 @@ export const AUTHORITATIVE_SOURCE_REGISTRY: Record<string, ProvenanceContract> =
       "Comprehensive Japanese multilingual dictionary with part-of-speech, readings, frequency markings, and glosses.",
     domain: "dictionary",
     status: "active",
+    contentHash: "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162",
+    artifactBytes: 115331197,
+    archiveSha256: "608800cfaff7806ad6642d68bf4aba3abb25d872030021a47faf8731f902eb16",
     targetTables: ["dictionary_entries"],
   },
 

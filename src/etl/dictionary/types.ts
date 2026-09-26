@@ -319,6 +319,8 @@ export interface DictionaryPipelineOptions {
   limit?: number;
   batchSize?: number;
   dryRun?: boolean;
+  /** Default abort. Update is applied only when the caller sets "update". */
+  conflictPolicy?: "abort" | "update";
 }
 
 export interface DictionaryETLReport {
@@ -360,7 +362,7 @@ export type BatchLoadResult = PersistenceBatchResult;
 export interface DictionaryPersistenceAdapter {
   upsertBatch(
     candidates: PersistenceCandidate[],
-    options?: { dryRun?: boolean }
+    options?: { dryRun?: boolean; conflictPolicy?: "abort" | "update"; injectFailureAfterWrites?: boolean }
   ): Promise<PersistenceBatchResult>;
   getExistingByIds(ids: string[]): Promise<Map<string, PersistenceCandidate>>;
   count(): Promise<number>;

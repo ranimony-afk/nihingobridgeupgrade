@@ -1,10 +1,9 @@
 /**
- * Dictionary Persistence Adapter — Phase 14.2.
+ * Dictionary Persistence Adapter — Phase 14.2, safety contract tightened in 14.3D-R.
  *
- * Provides a clean storage abstraction separating ETL transformation
- * from database persistence. Supports:
- * 1. InMemoryDictionaryPersistenceAdapter: in-memory storage for offline testing and dry-runs.
- * 2. DrizzleDictionaryPersistenceAdapter: production database adapter (used in Phase 14.3).
+ * Default conflict policy is abort. Identical rows are skipped. Absent rows are
+ * inserted. Differing rows are updated only when conflictPolicy is explicitly
+ * "update". Drizzle writes for one batch run inside a single transaction.
  */
 
 import { db } from "@/db";
@@ -15,36 +14,25 @@ import type {
   PersistenceBatchResult,
   PersistenceCandidate,
 } from "./types";
+import {
+  areArraysEqual,
+  areSensesEqual,
+  planPersistence,
+  resolveConflictPolicy,
+  type ConflictPolicy,
+} from "./persistencePlan";
 
-/**
- * Checks semantic equality between two senses arrays.
- */
-export function areSensesEqual(
-  a: Array<{ glosses: string[]; note?: string | null }>,
-  b: Array<{ glosses: string[]; note?: string | null }>
-): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const sA = a[i];
-    const sB = b[i];
-    if ((sA.note || null) !== (sB.note || null)) return false;
-    if (sA.glosses.length !== sB.glosses.length) return false;
-    for (let j = 0; j < sA.glosses.length; j++) {
-      if (sA.glosses[j] !== sB.glosses[j]) return false;
-    }
-  }
-  return true;
+export { areArraysEqual, areSensesEqual };
+
+export interface PersistenceWriteOptions {
+  dryRun?: boolean;
+  conflictPolicy?: ConflictPolicy;
+  /** Test-only fault injection. The CLI cannot set this. */
+  injectFailureAfterWrites?: boolean;
 }
 
-/**
- * Checks equality between two string arrays.
- */
-export function areArraysEqual(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
+function conflictAbortError(ids: string[]): Error {
+  return new Error(`[CONFLICT] ABORT: ${ids.join(",")} differs from the persisted canonical payload`);
 }
 
 /**
@@ -58,55 +46,44 @@ export class InMemoryDictionaryPersistenceAdapter
 
   async upsertBatch(
     candidates: PersistenceCandidate[],
-    options: { dryRun?: boolean } = {}
+    options: PersistenceWriteOptions = {},
   ): Promise<PersistenceBatchResult> {
     if (candidates.length === 0) {
       return { batchSize: 0, inserted: 0, updated: 0, skipped: 0 };
     }
 
     if (options.dryRun) {
-      throw new Error(
-        "Database safety violation: DrizzleDictionaryPersistenceAdapter must never be invoked with dryRun=true."
-      );
+      return {
+        batchSize: candidates.length,
+        inserted: candidates.length,
+        updated: 0,
+        skipped: 0,
+      };
     }
 
-    let inserted = 0;
-    let updated = 0;
-    let skipped = 0;
+    const policy = resolveConflictPolicy(options.conflictPolicy);
+    const plan = planPersistence(candidates, this.store);
+    if (policy === "abort" && plan.conflicts.length > 0) {
+      throw conflictAbortError(plan.conflicts.map((row) => row.id));
+    }
+    if (options.injectFailureAfterWrites) {
+      throw new Error("injected persistence failure");
+    }
 
-    for (const candidate of candidates) {
-      const existing = this.store.get(candidate.id);
-      if (!existing) {
+    for (const candidate of plan.inserts) {
+      this.store.set(candidate.id, { ...candidate });
+    }
+    if (policy === "update") {
+      for (const candidate of plan.conflicts) {
         this.store.set(candidate.id, { ...candidate });
-        inserted++;
-      } else {
-        const isIdentical =
-          existing.headword === candidate.headword &&
-          existing.reading === candidate.reading &&
-          existing.romaji === candidate.romaji &&
-          existing.jlptLevel === candidate.jlptLevel &&
-          existing.isCommon === candidate.isCommon &&
-          existing.frequencyRank === candidate.frequencyRank &&
-          existing.sourceRef === candidate.sourceRef &&
-          areArraysEqual(existing.partsOfSpeech, candidate.partsOfSpeech) &&
-          areArraysEqual(existing.kanjiCharacters, candidate.kanjiCharacters) &&
-          areArraysEqual(existing.tags, candidate.tags) &&
-          areSensesEqual(existing.senses, candidate.senses);
-
-        if (isIdentical) {
-          skipped++;
-        } else {
-          this.store.set(candidate.id, { ...candidate });
-          updated++;
-        }
       }
     }
 
     return {
       batchSize: candidates.length,
-      inserted,
-      updated,
-      skipped,
+      inserted: plan.inserts.length,
+      updated: policy === "update" ? plan.conflicts.length : 0,
+      skipped: plan.identical.length,
     };
   }
 
@@ -134,14 +111,14 @@ export class InMemoryDictionaryPersistenceAdapter
 
 /**
  * Production Drizzle PostgreSQL persistence adapter.
- * Used during real ingestion in Phase 14.3.
+ * One upsertBatch call is one transaction. A thrown error rolls the batch back.
  */
 export class DrizzleDictionaryPersistenceAdapter
   implements DictionaryPersistenceAdapter
 {
   async upsertBatch(
     candidates: PersistenceCandidate[],
-    options: { dryRun?: boolean } = {}
+    options: PersistenceWriteOptions = {},
   ): Promise<PersistenceBatchResult> {
     if (candidates.length === 0) {
       return { batchSize: 0, inserted: 0, updated: 0, skipped: 0 };
@@ -156,56 +133,46 @@ export class DrizzleDictionaryPersistenceAdapter
       };
     }
 
-    const ids = candidates.map((c) => c.id);
-    const existingRows = await db
-      .select({
-        id: dictionaryTable.id,
-        headword: dictionaryTable.headword,
-        reading: dictionaryTable.reading,
-        romaji: dictionaryTable.romaji,
-        jlptLevel: dictionaryTable.jlptLevel,
-        isCommon: dictionaryTable.isCommon,
-        frequencyRank: dictionaryTable.frequencyRank,
-        partsOfSpeech: dictionaryTable.partsOfSpeech,
-        senses: dictionaryTable.senses,
-        kanjiCharacters: dictionaryTable.kanjiCharacters,
-        tags: dictionaryTable.tags,
-        sourceRef: dictionaryTable.sourceRef,
-      })
-      .from(dictionaryTable)
-      .where(inArray(dictionaryTable.id, ids));
+    const policy = resolveConflictPolicy(options.conflictPolicy);
 
-    const existingMap = new Map(existingRows.map((r) => [r.id, r]));
+    return db.transaction(async (tx) => {
+      const ids = candidates.map((candidate) => candidate.id);
+      const existingRows = await tx
+        .select({
+          id: dictionaryTable.id,
+          headword: dictionaryTable.headword,
+          reading: dictionaryTable.reading,
+          romaji: dictionaryTable.romaji,
+          jlptLevel: dictionaryTable.jlptLevel,
+          isCommon: dictionaryTable.isCommon,
+          frequencyRank: dictionaryTable.frequencyRank,
+          partsOfSpeech: dictionaryTable.partsOfSpeech,
+          senses: dictionaryTable.senses,
+          kanjiCharacters: dictionaryTable.kanjiCharacters,
+          tags: dictionaryTable.tags,
+          sourceRef: dictionaryTable.sourceRef,
+        })
+        .from(dictionaryTable)
+        .where(inArray(dictionaryTable.id, ids));
 
-    let inserted = 0;
-    let updated = 0;
-    let skipped = 0;
+      const existingMap = new Map(existingRows.map((row) => [row.id, {
+        ...row,
+        partsOfSpeech: (row.partsOfSpeech as string[]) ?? [],
+        senses: (row.senses as CanonicalSense[]) ?? [],
+        kanjiCharacters: (row.kanjiCharacters as string[]) ?? [],
+        tags: (row.tags as string[]) ?? [],
+      }]));
+      const plan = planPersistence(candidates, existingMap);
+      if (policy === "abort" && plan.conflicts.length > 0) {
+        throw conflictAbortError(plan.conflicts.map((row) => row.id));
+      }
 
-    const toInsert: PersistenceCandidate[] = [];
-
-    for (const candidate of candidates) {
-      const existing = existingMap.get(candidate.id);
-
-      if (!existing) {
-        toInsert.push(candidate);
-      } else {
-        const isIdentical =
-          existing.headword === candidate.headword &&
-          existing.reading === candidate.reading &&
-          existing.romaji === candidate.romaji &&
-          existing.jlptLevel === candidate.jlptLevel &&
-          existing.isCommon === candidate.isCommon &&
-          existing.frequencyRank === candidate.frequencyRank &&
-          existing.sourceRef === candidate.sourceRef &&
-          areArraysEqual(existing.partsOfSpeech, candidate.partsOfSpeech) &&
-          areArraysEqual(existing.kanjiCharacters, candidate.kanjiCharacters) &&
-          areArraysEqual(existing.tags, candidate.tags) &&
-          areSensesEqual(existing.senses, candidate.senses);
-
-        if (isIdentical) {
-          skipped++;
-        } else {
-          await db
+      for (const candidate of plan.inserts) {
+        await tx.insert(dictionaryTable).values(candidate);
+      }
+      if (policy === "update") {
+        for (const candidate of plan.conflicts) {
+          await tx
             .update(dictionaryTable)
             .set({
               headword: candidate.headword,
@@ -221,22 +188,19 @@ export class DrizzleDictionaryPersistenceAdapter
               sourceRef: candidate.sourceRef,
             })
             .where(eq(dictionaryTable.id, candidate.id));
-          updated++;
         }
       }
-    }
+      if (options.injectFailureAfterWrites) {
+        throw new Error("injected persistence failure");
+      }
 
-    if (toInsert.length > 0) {
-      await db.insert(dictionaryTable).values(toInsert);
-      inserted = toInsert.length;
-    }
-
-    return {
-      batchSize: candidates.length,
-      inserted,
-      updated,
-      skipped,
-    };
+      return {
+        batchSize: candidates.length,
+        inserted: plan.inserts.length,
+        updated: policy === "update" ? plan.conflicts.length : 0,
+        skipped: plan.identical.length,
+      };
+    });
   }
 
   async getExistingByIds(
@@ -257,3 +221,5 @@ export class DrizzleDictionaryPersistenceAdapter
     return row?.count ?? 0;
   }
 }
+
+type CanonicalSense = { glosses: string[]; note?: string | null };

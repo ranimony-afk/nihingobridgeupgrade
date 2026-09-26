@@ -5,7 +5,6 @@
  * HARD GATE: ZERO DATABASE WRITES.
  */
 
-import { createReadStream } from "fs";
 import { resolve } from "path";
 import {
   streamJMdictEntries,
@@ -14,7 +13,9 @@ import {
   type ETLDiagnostic,
   areSensesEqual,
 } from "../src/etl/dictionary";
+import { assertPinnedJmdictSource } from "../src/etl/dictionary/jmdictContract";
 import { createETLProvenanceContext } from "../src/services/knowledge/provenance";
+import { openVerifiedSourceStream, releaseVerifiedSource, verifySourceContract } from "./ingest-full-jmdict";
 
 export interface DryRunStatistics {
   source: {
@@ -26,8 +27,10 @@ export interface DryRunStatistics {
     attribution: string;
     archiveSha256: string;
     archiveSizeBytes: number;
+    archiveVerified: boolean;
     xmlSha256: string;
     xmlSizeBytes: number;
+    xmlHashVerified: boolean;
   };
   timing: {
     startTime: string;
@@ -101,9 +104,11 @@ export async function executeJMdictFullDryRun(
 ): Promise<DryRunStatistics> {
   const startTime = Date.now();
   const startDate = new Date().toISOString();
+  assertPinnedJmdictSource(sourceId);
 
-  // 1. Establish Verified Provenance Context
-  const provenanceContext = createETLProvenanceContext(sourceId, {
+  // Hash retained snapshot bytes before any transform. Do not stamp the pin without reading the file.
+  const verifiedSource = verifySourceContract(xmlPath);
+  const provenanceContext = createETLProvenanceContext(verifiedSource.sourceId, {
     dryRun: true,
   });
 
@@ -159,12 +164,10 @@ export async function executeJMdictFullDryRun(
     100, 500, 1000, 5000, 10000, 25000, 50000, 100000, 150000, 200000,
   ]);
 
-  // Stream entries one by one
-  const fileStream = createReadStream(xmlPath, {
-    encoding: "utf-8",
-    highWaterMark: 64 * 1024,
-  });
+  // Stream the retained snapshot. Never reopen the original pathname.
+  const fileStream = openVerifiedSourceStream(verifiedSource);
 
+  try {
   for await (const raw of streamJMdictEntries(fileStream)) {
     totalXmlEntries++;
     parsed++;
@@ -300,12 +303,12 @@ export async function executeJMdictFullDryRun(
       releaseDate: provenanceContext.source.releaseDate ?? null,
       license: provenanceContext.source.license,
       attribution: provenanceContext.source.attribution,
-      archiveSha256:
-        "608800cfaff7806ad6642d68bf4aba3abb25d872030021a47faf8731f902eb16",
+      archiveSha256: "608800cfaff7806ad6642d68bf4aba3abb25d872030021a47faf8731f902eb16",
       archiveSizeBytes: 13383352,
-      xmlSha256:
-        "a9be8a98c0d5597c32bea755214901d195aa7612e4ed27787463c9e084130162",
-      xmlSizeBytes: 115331197,
+      archiveVerified: false,
+      xmlSha256: verifiedSource.xmlSha256,
+      xmlSizeBytes: verifiedSource.xmlSizeBytes,
+      xmlHashVerified: true,
     },
     timing: {
       startTime: startDate,
@@ -376,6 +379,9 @@ export async function executeJMdictFullDryRun(
       nonEnglishGlossSample,
     },
   };
+  } finally {
+    releaseVerifiedSource(verifiedSource);
+  }
 }
 
 async function main() {

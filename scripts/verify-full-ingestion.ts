@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { db } from "@/db";
+import { validateEnvironmentSafety } from "./ingest-full-jmdict";
 import {
   dictionaryEntries,
   knowledgeSources,
@@ -17,7 +18,9 @@ import { eq, sql, inArray } from "drizzle-orm";
 import { DictionaryService } from "@/services/dictionary/dictionaryService";
 
 async function main() {
+  const env = await validateEnvironmentSafety();
   console.log("=== VERIFYING POST-INGESTION DATABASE STATE ===");
+  console.log(`Classified disposable target ${env.host}:${env.port}/${env.databaseName} identity ${env.identityHash}`);
 
   const PROV_KEY = "upstream:jmdict:2023-08";
 
