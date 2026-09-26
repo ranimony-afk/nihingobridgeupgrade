@@ -1,54 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kanjiLexicalGraphService } from "@/services/knowledge/kanjiLexicalGraphService";
 import {
-  parseLimit,
-  parseBooleanFlag,
   errorBody,
+  isBooleanFlagInputValid,
+  isKanjiRouteCharacter,
+  parseBooleanFlag,
+  parseLimit,
 } from "@/lib/api/routeParams";
 
 export const dynamic = "force-dynamic";
 
-/**
- * GET /api/kanji/[character]/vocabulary
- *
- * Phase 14.4F-R. Vocabulary entries containing the given kanji, derived from
- * the verified 14.4E lexical graph. Each edge carries the 0-based character
- * position of the kanji within the headword, so callers can highlight it
- * without re-deriving position.
- *
- * Query:
- *   limit       1..200 (default 50)
- *   commonOnly  "true" | "false"
- *
- * Read-only. No canonical mutation.
- */
+/** GET /api/kanji/[character]/vocabulary — bounded vocabulary collection. */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ character: string }> }
 ) {
+  let character: string;
   try {
-    const { character } = await params;
-    const decoded = decodeURIComponent(character);
-
-    const sp = request.nextUrl.searchParams;
-    const limit = parseLimit(sp.get("limit"));
-    const isCommonOnly = parseBooleanFlag(sp.get("commonOnly"));
-
-    const edges = await kanjiLexicalGraphService.getKanjiVocabulary(decoded, {
-      limit,
-      isCommonOnly,
+    character = (await params).character;
+  } catch {
+    return NextResponse.json(errorBody("INVALID_KANJI", "Expected one Unicode Kanji character"), {
+      status: 400,
     });
+  }
+  if (!isKanjiRouteCharacter(character)) {
+    return NextResponse.json(errorBody("INVALID_KANJI", "Expected one Unicode Kanji character"), {
+      status: 400,
+    });
+  }
 
+  const search = request.nextUrl.searchParams;
+  const rawLimit = search.get("limit");
+  const rawCommon = search.get("commonOnly");
+  if (rawLimit !== null && !/^-?\d+$/.test(rawLimit)) {
+    return NextResponse.json(errorBody("INVALID_PAGINATION", "limit must be an integer"), {
+      status: 400,
+    });
+  }
+  if (rawLimit !== null && Number(rawLimit) < 1) {
+    return NextResponse.json(errorBody("INVALID_PAGINATION", "limit must be positive"), {
+      status: 400,
+    });
+  }
+  if (!isBooleanFlagInputValid(rawCommon)) {
+    return NextResponse.json(
+      errorBody("INVALID_BOOLEAN", "commonOnly must be 'true' or 'false'"),
+      { status: 400 }
+    );
+  }
+
+  try {
+    const vocabulary = await kanjiLexicalGraphService.getKanjiVocabulary(character, {
+      limit: parseLimit(rawLimit),
+      isCommonOnly: parseBooleanFlag(rawCommon),
+    });
     return NextResponse.json({
       success: true,
-      character: decoded,
-      total: edges.length,
-      vocabulary: edges,
+      character,
+      total: vocabulary.length,
+      vocabulary,
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load kanji vocabulary";
-    console.error("GET /api/kanji/[character]/vocabulary error:", error);
-    return NextResponse.json(errorBody("INTERNAL_ERROR", message), { status: 500 });
+  } catch {
+    console.error("GET /api/kanji/[character]/vocabulary failed");
+    return NextResponse.json(errorBody("INTERNAL_ERROR", "Failed to load kanji vocabulary"), {
+      status: 500,
+    });
   }
 }

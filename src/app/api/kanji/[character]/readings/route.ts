@@ -1,58 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import { kanjiLexicalGraphService } from "@/services/knowledge/kanjiLexicalGraphService";
-import { errorBody } from "@/lib/api/routeParams";
+import { errorBody, isKanjiRouteCharacter } from "@/lib/api/routeParams";
 
 export const dynamic = "force-dynamic";
+const MAX_READING_RESULTS = 200;
 
-/**
- * GET /api/kanji/[character]/readings
- *
- * Phase 14.4F-R. On'yomi and Kun'yomi readings for the kanji, classified into
- * structured categories by the verified 14.4E reading model (okurigana stem /
- * suffix separated, primary reading flagged).
- *
- * These are *possible* readings for the character — they are NOT a claim about
- * the reading used in any particular word or sentence. Sentence-level reading
- * attribution requires canonical vocabulary linkage and is out of scope here.
- *
- * Query:
- *   type  optional filter: "on" | "kun" | "all" (default "all")
- *
- * Read-only. No canonical mutation.
- */
+/** GET /api/kanji/[character]/readings — available on/kun readings only. */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ character: string }> }
 ) {
+  let character: string;
   try {
-    const { character } = await params;
-    const decoded = decodeURIComponent(character);
+    character = (await params).character;
+  } catch {
+    return NextResponse.json(errorBody("INVALID_KANJI", "Expected one Unicode Kanji character"), {
+      status: 400,
+    });
+  }
+  if (!isKanjiRouteCharacter(character)) {
+    return NextResponse.json(errorBody("INVALID_KANJI", "Expected one Unicode Kanji character"), {
+      status: 400,
+    });
+  }
 
-    const rawType = (request.nextUrl.searchParams.get("type") || "all")
-      .trim()
-      .toLowerCase();
+  const rawType = request.nextUrl.searchParams.get("type");
+  const normalizedType = (rawType ?? "all").trim().toLowerCase();
+  if (!new Set(["all", "on", "kun"]).has(normalizedType)) {
+    return NextResponse.json(errorBody("INVALID_READING_TYPE", "type must be on, kun, or all"), {
+      status: 400,
+    });
+  }
+  const typeFilter = normalizedType === "on" ? "ON" : normalizedType === "kun" ? "KUN" : "all";
 
-    // Map the friendly query value onto the controlled ReadingClassificationType
-    // values ("ON" | "KUN" | ...). Anything unrecognised means "no filter".
-    const typeFilter: "all" | "ON" | "KUN" =
-      rawType === "on" ? "ON" : rawType === "kun" ? "KUN" : "all";
-
-    const readings = await kanjiLexicalGraphService.getKanjiReadings(decoded);
-
-    const filtered =
-      typeFilter === "all" ? readings : readings.filter((r) => r.type === typeFilter);
-
+  try {
+    const readings = await kanjiLexicalGraphService.getKanjiReadings(character);
+    const filtered = typeFilter === "all" ? readings : readings.filter((r) => r.type === typeFilter);
+    const bounded = filtered.slice(0, MAX_READING_RESULTS);
     return NextResponse.json({
       success: true,
-      character: decoded,
+      character,
       appliedTypeFilter: typeFilter,
       total: filtered.length,
-      readings: filtered,
+      readings: bounded,
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load kanji readings";
-    console.error("GET /api/kanji/[character]/readings error:", error);
-    return NextResponse.json(errorBody("INTERNAL_ERROR", message), { status: 500 });
+  } catch {
+    console.error("GET /api/kanji/[character]/readings failed");
+    return NextResponse.json(errorBody("INTERNAL_ERROR", "Failed to load kanji readings"), {
+      status: 500,
+    });
   }
 }
