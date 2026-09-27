@@ -13,10 +13,12 @@
  * 9. Register/context taxonomy is strictly controlled.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/db";
 import { dictionaryEntries } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
+import { ensureFullJmdictDatabaseState } from "./helpers/jmdictIntegrationSetup";
 import {
   canAIOutputBeCanonical,
   isControlledContext,
@@ -36,6 +38,16 @@ import { transformJMdictEntry } from "@/etl/dictionary/transformer";
 import type { RawJMdictSourceRecord } from "@/etl/dictionary/types";
 
 describe("Phase 14.4A: Takoboto-Class Dictionary Architecture", () => {
+  // Establish this suite's database-state contract explicitly (never via
+  // another test file or a stale developer database):
+  //   1. the application's own first-party bootstrap corpus (de-mizu …),
+  //      seeded before JMdict exactly as production bootstrap ordering does;
+  //   2. the full canonical JMdict corpus through the real ingestion path.
+  beforeAll(async () => {
+    await KnowledgeCorpusService.ensureSeeded();
+    await ensureFullJmdictDatabaseState();
+  }, 600_000);
+
   // ---------------------------------------------------------------------------
   // 1. Canonical JMdict Records Invariant
   // ---------------------------------------------------------------------------

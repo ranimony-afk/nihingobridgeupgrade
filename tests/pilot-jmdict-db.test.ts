@@ -27,9 +27,36 @@ describe("Phase 14.3C: Controlled JMdict PostgreSQL Database Pilot", () => {
     });
 
     it("verifies disposable database metadata", () => {
-      expect(results.safetyProbe.currentUser).toBe("postgres");
+      // Meaningful invariants instead of a hardcoded username: the probe must
+      // hold a live connection, the connected role must be exactly the role
+      // the connection was opened with (the configured role of the disposable
+      // environment — e.g. "nihongo" in CI, whatever the DSN declares), and
+      // the connected database must match the classified disposable target.
+      // This deliberately passes for any correctly configured role and never
+      // requires the literal name "postgres".
+      const connectionString = process.env.DATABASE_URL;
+      expect(connectionString).toBeTruthy();
+      const configured = new URL(connectionString as string);
+      const configuredRole = decodeURIComponent(configured.username);
+      const configuredDatabase = decodeURIComponent(
+        configured.pathname.replace(/^\//, ""),
+      );
+      expect(configuredRole).not.toBe("");
+
+      expect(results.safetyProbe.currentUser).toBe(configuredRole);
+      expect(results.safetyProbe.databaseName).toBe(configuredDatabase);
       expect(results.safetyProbe.currentSchema).toBe("public");
       expect(results.safetyProbe.postgresVersion).toContain("PostgreSQL");
+
+      // Consistency with the configured disposable database environment.
+      if (process.env.NIHONGO_DB_TARGET_CLASS === "disposable") {
+        expect(results.safetyProbe.classification).toBe("disposable-local-loopback");
+        if (process.env.NIHONGO_DB_EXPECTED_DATABASE) {
+          expect(results.safetyProbe.databaseName).toBe(
+            process.env.NIHONGO_DB_EXPECTED_DATABASE,
+          );
+        }
+      }
     });
   });
 
