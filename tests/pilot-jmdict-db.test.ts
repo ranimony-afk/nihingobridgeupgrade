@@ -9,11 +9,20 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { runControlledPilot, type PilotVerificationResults } from "../scripts/pilot-jmdict-db";
+import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
 
 describe("Phase 14.3C: Controlled JMdict PostgreSQL Database Pilot", () => {
   let results: PilotVerificationResults;
 
   beforeAll(async () => {
+    // Establish the application's first-party bootstrap through the real path
+    // BEFORE the pilot's 100-record insertion. The app's `ensureSeeded()` is
+    // bootstrap-only (skips once any row exists), so pilot rows inserted first
+    // would permanently block first-party seeding and break any later suite
+    // that legitimately expects `de-mizu` to be present. This call runs the
+    // exact application seed (no manufactured rows): on an empty database it
+    // loads the first-party corpus; on an already-seeded database it is a no-op.
+    await KnowledgeCorpusService.ensureSeeded();
     results = await runControlledPilot();
   }, 120_000);
 
