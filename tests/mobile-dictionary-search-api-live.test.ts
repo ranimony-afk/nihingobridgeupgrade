@@ -5,8 +5,16 @@
  * `@/services/dictionary` to pin the transport/projection contract DB-free, so it can never
  * exercise the real service. This file imports **nothing mocked** — it runs the real route, the
  * real `DictionaryService`, the real `sanitizeSearchQuery`/`detectSearchScript` and the real
- * `classifyJlptLevel` against a disposable database, over the first-party seed corpus
- * (`src/data/lexicon.ts`, seeded idempotently by `KnowledgeCorpusService.ensureSeeded`).
+ * `classifyJlptLevel` against a disposable database.
+ *
+ * Gate 1.5 corpus contract: the dictionary table is CUMULATIVE (the first-party seed corpus
+ * from `src/data/lexicon.ts`, seeded idempotently by `KnowledgeCorpusService.ensureSeeded`,
+ * coexists with JMdict and future tiers). Assertions of this suite's own contract are scoped
+ * to the first-party subset via the existing `sourceRef` discriminator
+ * (`first-party:dictionary-core:v1`) rather than assuming `dictionary_entries` holds nothing
+ * else; assertions owned by the route/service pipeline itself (order preservation, projection,
+ * pagination arithmetic) run over the cumulative result set and are derived from the
+ * response's own values.
  *
  * No corpus bytes are involved: the JMdict/KANJIDIC2/KanjiVG tiers stay untouched, no row is
  * fabricated, and when no database is reachable the whole file skips with an explicit reason
@@ -15,9 +23,13 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 import type { NextRequest } from "next/server";
+import { eq, sql } from "drizzle-orm";
 
 import { GET as mobileSearchGET } from "@/app/api/v1/mobile/dictionary/search/route";
 import { DictionaryService } from "@/services/dictionary";
+import { db } from "@/db";
+import { dictionaryEntries } from "@/db/schema";
+import { DICTIONARY_SOURCE_REF } from "@/data/lexicon";
 
 const FROZEN_ITEM_KEYS = [
   "headword",
@@ -100,17 +112,28 @@ describe("A11 §19/§13 — live route over the seeded first-party corpus", () =
   it("paginates real rows with an exact hasMore and no page overlap", async (ctx) => {
     if (unavailable) ctx.skip(unavailable);
 
-    // `q=n` matches the whole seeded corpus (measured: 30 rows via scripts/probe). The
+    // Gate 1.5 corpus scoping: `q=n` matches the whole FIRST-PARTY corpus — exactly 30
+    // dictionary entries when scoped by the existing `sourceRef` discriminator — while the
+    // route additionally serves every other dictionary tier (cumulative corpus model).
+    const [fpScope] = await db
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(dictionaryEntries)
+      .where(eq(dictionaryEntries.sourceRef, DICTIONARY_SOURCE_REF));
+    expect(fpScope.count).toBe(30);
+
+    // The walk paginates the first-party slice through the real route: `level=N5` confines the
+    // measured subject to first-party rows (JMdict rows carry jlptLevel "NONE"), and the tier
+    // assertion at the end fails loudly if a later tier ever contributes rows here. The
     // expectations below are derived from the response's own `total`, so the test measures the
     // pipeline rather than hard-coding a corpus size.
     const probe = await mobileSearchGET(
-      getRequest("/api/v1/mobile/dictionary/search?q=n&limit=1")
+      getRequest("/api/v1/mobile/dictionary/search?q=n&level=N5&limit=1")
     );
     const total = (await probe.json()).data.total;
     expect(total).toBeGreaterThan(6);
 
     const first = await mobileSearchGET(
-      getRequest("/api/v1/mobile/dictionary/search?q=n&limit=5&offset=0")
+      getRequest("/api/v1/mobile/dictionary/search?q=n&level=N5&limit=5&offset=0")
     );
     const firstBody = await first.json();
     const firstIds = firstBody.data.entries.map((entry: { id: string }) => entry.id);
@@ -122,7 +145,7 @@ describe("A11 §19/§13 — live route over the seeded first-party corpus", () =
     expect(firstBody.data.hasMore).toBe(0 + firstIds.length < total);
 
     const second = await mobileSearchGET(
-      getRequest("/api/v1/mobile/dictionary/search?q=n&limit=5&offset=5")
+      getRequest("/api/v1/mobile/dictionary/search?q=n&level=N5&limit=5&offset=5")
     );
     const secondBody = await second.json();
     const secondIds = secondBody.data.entries.map((entry: { id: string }) => entry.id);
@@ -134,7 +157,7 @@ describe("A11 §19/§13 — live route over the seeded first-party corpus", () =
     // Final page: offset + returned === total → hasMore must be exactly false.
     const lastOffset = total - 5;
     const last = await mobileSearchGET(
-      getRequest(`/api/v1/mobile/dictionary/search?q=n&limit=5&offset=${lastOffset}`)
+      getRequest(`/api/v1/mobile/dictionary/search?q=n&level=N5&limit=5&offset=${lastOffset}`)
     );
     const lastBody = await last.json();
 
@@ -144,10 +167,22 @@ describe("A11 §19/§13 — live route over the seeded first-party corpus", () =
 
     // One row beyond the end: empty page, still 200.
     const beyond = await mobileSearchGET(
-      getRequest(`/api/v1/mobile/dictionary/search?q=n&limit=5&offset=${total + 5}`)
+      getRequest(`/api/v1/mobile/dictionary/search?q=n&level=N5&limit=5&offset=${total + 5}`)
     );
     expect(beyond.status).toBe(200);
     expect((await beyond.json()).data.entries).toEqual([]);
+
+    // Tier isolation of the measured subject, asserted through the existing discriminator on
+    // real service rows for the same query — never assumed from tier naming alone.
+    const tierProbe = await DictionaryService.searchEntries({
+      query: "n",
+      jlptLevel: "N5",
+      limit: 100,
+      offset: 0,
+    });
+    for (const entry of tierProbe.entries) {
+      expect(entry.sourceRef).toBe(DICTIONARY_SOURCE_REF);
+    }
   });
 
   it("applies the service ceiling to a boundary-clamped limit and echoes the applied value", async (ctx) => {
@@ -215,49 +250,64 @@ describe("A11 §19/§13 — live route over the seeded first-party corpus", () =
   it("promotes an exact match above a better-ranked row on real data", async (ctx) => {
     if (unavailable) ctx.skip(unavailable);
 
-    // Measured on the seeded corpus: `hon` matches exactly one headword/reading/romaji
-    // (`de-hon`, romaji `hon`, frequency_rank 150) plus one substring match (`de-nihon`, romaji
-    // `nihon`, frequency_rank 90). Frequency order alone would put `de-nihon` first, so this is the
-    // case that distinguishes the exact-match rank from the frequency tie-break.
+    // Measured on the first-party corpus (scoped by the existing `sourceRef` discriminator):
+    // `hon` matches exactly one headword/reading/romaji (`de-hon`, romaji `hon`, frequency_rank
+    // 150) plus one substring match (`de-nihon`, romaji `nihon`, frequency_rank 90). Frequency
+    // order alone would put `de-nihon` first, so this is the case that distinguishes the
+    // exact-match rank from the frequency tie-break. Other tiers legitimately match `hon` too
+    // (the cumulative corpus model); they are outside this suite's contract and are excluded
+    // from the ranked expectation rather than assumed absent.
     const viaService = await DictionaryService.searchEntries({ query: "hon", limit: 10, offset: 0 });
-    const ranked = viaService.entries.map((entry) => entry.id);
+    const fpEntries = viaService.entries.filter((entry) => entry.sourceRef === DICTIONARY_SOURCE_REF);
+    const ranked = fpEntries.map((entry) => entry.id);
 
     expect(ranked).toEqual(["de-hon", "de-nihon"]);
-    expect(viaService.total).toBe(2);
+    expect(fpEntries).toHaveLength(2);
     // The premise, asserted rather than asserted-in-a-comment: the winner is the worse-ranked row.
-    expect(viaService.entries[0].frequencyRank).toBeGreaterThan(viaService.entries[1].frequencyRank as number);
+    expect(fpEntries[0].frequencyRank).toBeGreaterThan(fpEntries[1].frequencyRank as number);
 
     const res = await mobileSearchGET(
       getRequest("/api/v1/mobile/dictionary/search?q=hon&limit=10&offset=0")
     );
     const { data } = await res.json();
 
-    // The route must preserve the service order, not re-rank the projected page.
-    expect(data.entries.map((entry: { id: string }) => entry.id)).toEqual(ranked);
-    expect(data.total).toBe(2);
+    // The route must preserve the service order of the same window, not re-rank the projected
+    // page — over the cumulative result set, of which the first-party rows above are the subset
+    // this suite owns.
+    expect(data.entries.map((entry: { id: string }) => entry.id)).toEqual(
+      viaService.entries.map((entry) => entry.id)
+    );
+    // The route echoes the service's cumulative total exactly (never a partial restatement).
+    expect(data.total).toBe(viaService.total);
   });
 
   it("orders a full real page by the frozen tie-break and keeps every page a slice of it", async (ctx) => {
     if (unavailable) ctx.skip(unavailable);
 
-    // `q=a` is a pure substring class on the seeded corpus: no row's headword, reading or romaji
-    // equals "a", so the page is ordered by the tie-break alone — frequency ascending with NULLs
-    // last, then common-first, then id — which is what makes it a test of order rather than of rank.
+    // `q=a` is a pure substring class on the FIRST-PARTY corpus (scoped by the existing
+    // `sourceRef` discriminator): no first-party row's headword, reading or romaji equals "a",
+    // so the first-party subset is ordered by the tie-break alone — frequency ascending with
+    // NULLs last, then common-first, then id — which is what makes it a test of order rather
+    // than of rank. Other tiers may legitimately carry exact matches (JMdict rows with romaji
+    // "a" rank above the substring class); the slice property below covers the full cumulative
+    // page while the tie-break contract is asserted on the first-party subset.
     const full = await DictionaryService.searchEntries({ query: "a", limit: 100, offset: 0 });
-    const ordered = full.entries.map((entry) => entry.id);
+    const serviceOrder = full.entries.map((entry) => entry.id);
+    const fpPage = full.entries.filter((entry) => entry.sourceRef === DICTIONARY_SOURCE_REF);
+    const ordered = fpPage.map((entry) => entry.id);
     expect(ordered.length).toBeGreaterThan(1);
 
-    const observed = full.entries.map((entry) => ({
+    const observed = fpPage.map((entry) => ({
       frequency: entry.frequencyRank,
       isCommon: entry.isCommon,
       id: entry.id,
     }));
 
-    // Assert the premise instead of assuming it: if a row ever became an exact match for "a", the
-    // exact-match rank would legitimately move it and the tie-break assertion below would misreport
-    // that as an ordering defect.
+    // Assert the premise instead of assuming it: if a first-party row ever became an exact match
+    // for "a", the exact-match rank would legitimately move it and the tie-break assertion below
+    // would misreport that as an ordering defect.
     expect(
-      full.entries.some(
+      fpPage.some(
         (entry) =>
           entry.headword === "a" ||
           entry.reading === "a" ||
@@ -276,20 +326,22 @@ describe("A11 §19/§13 — live route over the seeded first-party corpus", () =
     });
     expect(observed).toEqual(sorted);
 
-    // Every window must be the corresponding slice of that order — the property that makes offset
-    // pagination safe to resume, and the reason D-12 found no dedup pass to preserve.
+    // Every window must be the corresponding slice of the service's full-page order — the
+    // property that makes offset pagination safe to resume, and the reason D-12 found no dedup
+    // pass to preserve. Derived from the response's own totals, so it holds for the cumulative
+    // result set as well.
     const total = (await (await mobileSearchGET(
       getRequest("/api/v1/mobile/dictionary/search?q=a&limit=1&offset=0")
     )).json()).data.total;
 
-    for (let offset = 0; offset < Math.min(ordered.length, 12); offset += 5) {
+    for (let offset = 0; offset < Math.min(serviceOrder.length, 12); offset += 5) {
       const page = await mobileSearchGET(
         getRequest(`/api/v1/mobile/dictionary/search?q=a&limit=5&offset=${offset}`)
       );
       const pageBody = await page.json();
 
       expect(pageBody.data.entries.map((entry: { id: string }) => entry.id)).toEqual(
-        ordered.slice(offset, offset + 5)
+        serviceOrder.slice(offset, offset + 5)
       );
       expect(pageBody.data.total).toBe(total);
       expect(pageBody.data.hasMore).toBe(offset + pageBody.data.entries.length < total);
