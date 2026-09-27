@@ -131,12 +131,15 @@ jobs:
         run: rm -f data/JMdict.xml data/JMdict.xml.tmp-*
 
       - name: Typecheck
+        if: always()
         run: npm run typecheck
 
       - name: Lint
+        if: always()
         run: npm run lint
 
       - name: Production build
+        if: always()
         run: npm run build
 
       - name: Assert build/runtime contract — no database dependency at boot
