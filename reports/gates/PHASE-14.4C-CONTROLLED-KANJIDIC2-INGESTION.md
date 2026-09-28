@@ -101,7 +101,7 @@ Ingestion was executed in two successive passes:
 | **Run 1 (Initial)** | 13,063 | 0 | 0 | 0 | 13,108 | Ingestion Complete |
 | **Run 2 (Repeat)** | 0 | 0 | 0 | 0 | 13,108 | **STRICT IDEMPOTENT** |
 
-- **Batch Execution:** Executed in multi-row parameterized chunks of 200 records inside atomic transactions.
+- **Batch Execution:** Executed in multi-row parameterized chunks of 200 records. *(Correction 2026-09-28: the original wording "inside atomic transactions" overstated the transactionality of the 2026-09-23 run — each multi-row INSERT was a single atomic statement, but the run as a whole was not wrapped in one transaction. Run-level single-transaction/rollback semantics were added in the 14.4C Gate 0 remediation (`scripts/ingest-kanjidic2.ts`: BEGIN/COMMIT around the entire canonical write, ROLLBACK to zero canonical rows on failure).)*
 - **Cryptographic Stream Digest:** Identical across runs (`226d6d79f32c3d7f61fd9e75972751701dfaf11b733ef21cc37a8576ba9edac0`).
 
 ---
