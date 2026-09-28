@@ -113,6 +113,45 @@ This closure report is committed subsequently as a docs-only commit (its own SHA
 
 **Report lineage note:** `PHASE-14.4B-KANJIDIC2-ACQUISITION-FOUNDATION.md` (committed inside the implementation commit under the prior authorization's filename) remains in history as the first closure record; this document is the authoritative closure report per the current authorization's filename and fields.
 
-## 14. Phase Boundary
+## 15. Gate 0 Required Record — Source / Artifact / Verification / Safety / Phase boundary
+
+*Re-verified 2026-09-28 under the Phase 14.4B Gate 0 implementation authorization (full ordered re-execution: preflight → pin → provision → foundation → provisioning → dry-run → statics).*
+
+### Source
+- **sourceRef:** `upstream:kanjidic2:2023-08`
+- **repository:** `Jitendex/edrdg-dictionary-archive`
+- **commit:** `9cb709b87f43c7bceb494eefbe7f8b8f42744502`
+- **path:** `kanjidic2_xml/kanjidic2.xml.br`
+- **Git blob SHA:** `e6e448946b29480a765f167e9ee1cc3fc9314c6b`
+
+### Artifact
+- **archive identity:** 895,754 bytes · SHA-256 `175d4fe7b846fb0ab140d5f341bc07c66c8eb9dc4f970c2fa97b1e9d7d6497eb` · Git blob SHA-1 `e6e448946b29480a765f167e9ee1cc3fc9314c6b` (recomputed & matched)
+- **XML size:** 15,643,593 bytes
+- **XML SHA-256:** `260e6119fcc78cde438de7d7f8227d1c13260469d10ae36a01d866c61f7cc781`
+- **entry count:** 13,108
+- **release date:** 2023-08-20 · **databaseVersion:** 2023-232 · **fileVersion:** 4
+- **license:** CC-BY-SA-3.0 · **attribution:** Electronic Dictionary Research and Development Group (EDRDG)
+
+### Verification
+- **provisioning tests:** 6/6 PASS (positive identity chain; fail-closed negatives: incorrect commit/blob/source/path/archive/XML checksum/XML size/entry count)
+- **foundation tests:** 25/25 PASS — the four artifact-dependent tests (XML size/SHA, 13,108 dry-run, two-pass digest, bounded memory) green **without modifying their assertions**
+- **dry-run:** `scripts/dry-run-kanjidic2.ts` two-pass machinery — 13,108/13,108 processed both passes, Idempotency PASS (IDENTICAL), Database Unmutated PASS (0 WRITES), Peak Heap 26.3 MB / RSS 113 MB
+- **digest:** `63d0e901fb3b3cbacfddbe329ff1393011390382c3bbb8c152db2947d41ddc75` (exact match to the locked expected digest)
+- **typecheck:** PASS (`tsc --noEmit`, exit 0)
+- **lint:** PASS — 0 errors, 4 known pre-existing warnings (unchanged)
+
+### Safety
+Explicit statements:
+- **No PostgreSQL writes.**
+- **No schema changes.**
+- **No production DB.**
+- **No canonical ingestion.**
+- **No fallback source.**
+- **Transient artifact only.**
+- **Fail-closed source verification.**
+
+### Phase boundary
+**14.4C canonical ingestion NOT performed.**
 
 14.4C–E (canonical PostgreSQL ingestion, reconciliation, first-party merge rules, dictionary immutability verification, KanjiVG, lexical graph) are **not** started. No CI dispatch, no merge. Awaiting authorization for the next gate.
+
