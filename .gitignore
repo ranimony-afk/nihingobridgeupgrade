@@ -54,3 +54,7 @@ Thumbs.db
 /data/kanji-jmdict-graph/
 /data/kanji-jmdict-graph.staging/
 /data/kanji-jmdict-graph.prev/
+# Phase 14.4F — derived kanji decomposition state (never commit)
+/data/kanji-decomposition/
+/data/kanji-decomposition.staging/
+/data/kanji-decomposition.prev/
