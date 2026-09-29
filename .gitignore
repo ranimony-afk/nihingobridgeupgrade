@@ -46,3 +46,7 @@ Thumbs.db
 /data/kanjivg/
 /data/kanjivg-index.json
 /data/jmdict-checkpoint.json
+# Phase 14.4D — derived KanjiVG attachment state (never commit)
+/data/kanjivg-attachment/
+/data/kanjivg-attachment.staging/
+/data/kanjivg-attachment.prev/

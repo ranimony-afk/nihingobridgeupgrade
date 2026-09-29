@@ -143,13 +143,13 @@ export async function runKanjiVgReconciliation(): Promise<{
 
 | Metric | Count | Percentage | Classification / Notes |
 | :--- | :--- | :--- | :--- |
-| **Total Canonical Kanji (Database)** | 13,108 | 100.0% | Complete canonical kanji inventory |
+| **Total Canonical Kanji (Database)** | ${dbRows.length} | 100.0% | Complete canonical kanji inventory |
 | **First-Party Baseline Kanji** | 45 | 100.0% | Curated baseline logographs |
-| **First-Party Matched in KanjiVG** | 45 | **100.0%** | All 45 first-party kanji have full KanjiVG vector assets |
-| **KANJIDIC2 Ingested Matched in KanjiVG** | 6,371 | 48.8% | Covers 100% Jouyou (2,136), Jinmeiyo, JIS Lv1 & Lv2 |
-| **Total Matched (\`KANJIVG_MATCH\`)** | 6,416 | 48.9% | Verified vector stroke assets available |
-| **Missing Artwork (\`KANJIVG_MISSING\`)** | 6,692 | 51.1% | Rare/archaic JIS X 0212/0213 kanji lacking upstream artwork |
-| **Extra Elements (\`KANJIVG_EXTRA\`)** | 286 | — | Punctuation, digits 0-9, kana, standalone Kangxi radicals |
+| **First-Party Matched in KanjiVG** | ${fpMatchCount} | ${((fpMatchCount / 45) * 100).toFixed(1)}% | First-party kanji with full KanjiVG vector assets |
+| **KANJIDIC2 Ingested Matched in KanjiVG** | ${kanjivgMatchCount - fpMatchCount} | ${(((kanjivgMatchCount - fpMatchCount) / dbRows.length) * 100).toFixed(1)}% | Covers 100% Jouyou (2,136), Jinmeiyo, JIS Lv1 & Lv2 |
+| **Total Matched (\`KANJIVG_MATCH\`)** | ${kanjivgMatchCount} | ${((kanjivgMatchCount / dbRows.length) * 100).toFixed(1)}% | Verified vector stroke assets available |
+| **Missing Artwork (\`KANJIVG_MISSING\`)** | ${kanjivgMissingCount} | ${((kanjivgMissingCount / dbRows.length) * 100).toFixed(1)}% | Rare/archaic JIS X 0212/0213 kanji lacking upstream artwork |
+| **Extra Elements (\`KANJIVG_EXTRA\`)** | ${kanjivgExtraCount} | — | Punctuation, digits 0-9, kana, standalone Kangxi radicals |
 | **Invalid Characters (\`INVALID_CHARACTER\`)** | 0 | 0.0% | Zero malformed Unicode logographs |
 | **Duplicate Entries (\`DUPLICATE\`)** | 0 | 0.0% | Zero duplicate character keys |
 
@@ -165,10 +165,10 @@ export async function runKanjiVgReconciliation(): Promise<{
 All 45 first-party canonical kanji (including \`明\`, \`休\`, \`林\`, \`森\`, \`好\`, \`男\`, \`花\`, \`茶\`, \`語\`, \`聞\`, \`道\`, \`新\`, \`話\`, \`水\`, \`火\`, \`心\`, \`紙\`, \`晴\`, \`結\`, \`念\`, \`観\`, \`鑑\`, \`箸\`) have 100% visual asset coverage.
 
 ### Missing Artwork Assessment (\`KANJIVG_MISSING\`)
-The 6,692 kanji missing from KanjiVG are obscure, archaic, or classical variant characters (e.g. specialized Kangxi variants, JIS level 3/4) that the KanjiVG project has not yet vectorized. In accordance with Phase 14.4D rules, this legitimate absence is audited and preserved without synthesizing or fabricating fake stroke vectors.
+The ${kanjivgMissingCount} kanji missing from KanjiVG are obscure, archaic, or classical variant characters (e.g. specialized Kangxi variants, JIS level 3/4) that the KanjiVG project has not yet vectorized. In accordance with Phase 14.4D rules, this legitimate absence is audited and preserved without synthesizing or fabricating fake stroke vectors.
 
 ### Extra Non-Kanji Elements (\`KANJIVG_EXTRA\`)
-KanjiVG indexes 286 non-kanji elements:
+KanjiVG indexes ${kanjivgExtraCount} non-kanji elements:
 - Digits: \`0\` through \`9\`
 - Punctuation: \`!\`, \`,\`, \`.\`, \`:\`, \`;\`, \`?\`
 - Katakana & Hiragana elements
