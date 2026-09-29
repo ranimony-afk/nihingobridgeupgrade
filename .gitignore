@@ -50,3 +50,7 @@ Thumbs.db
 /data/kanjivg-attachment/
 /data/kanjivg-attachment.staging/
 /data/kanjivg-attachment.prev/
+# Phase 14.4E — derived Kanji ↔ JMdict graph state (never commit)
+/data/kanji-jmdict-graph/
+/data/kanji-jmdict-graph.staging/
+/data/kanji-jmdict-graph.prev/
