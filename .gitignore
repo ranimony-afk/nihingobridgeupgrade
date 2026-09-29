@@ -42,3 +42,7 @@ Thumbs.db
 !/data/
 !/data/tatoeba/
 !/data/tatoeba/*.tar.bz2
+# Phase 14.4D — KanjiVG provisioned corpus + index (never commit)
+/data/kanjivg/
+/data/kanjivg-index.json
+/data/jmdict-checkpoint.json

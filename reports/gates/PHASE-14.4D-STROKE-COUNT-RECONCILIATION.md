@@ -1,8 +1,8 @@
 # Phase 14.4D: Stroke Count Reconciliation Report
 
-**Generated Date:** 2026-09-23T11:16:44.840Z  
+**Generated Date:** 2026-09-29T05:45:20.340Z  
 **Corpus:** KanjiVG (`r20240807`) vs Canonical KANJIDIC2 / Database Baseline (`kanji_entries`)  
-**Total Matched Characters Analyzed:** 6416
+**Total Matched Characters Analyzed:** 6413
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Category | Count | Percentage | Policy & Handling |
 | :--- | :--- | :--- | :--- |
-| **Stroke Count Match (`STROKE_COUNT_MATCH`)** | 6329 | 98.6% | Identical stroke counts in KANJIDIC2 and KanjiVG |
+| **Stroke Count Match (`STROKE_COUNT_MATCH`)** | 6329 | 98.7% | Identical stroke counts in KANJIDIC2 and KanjiVG |
 | **Stroke Count Discrepancy (`STROKE_COUNT_DISCREPANCY`)** | 84 | 1.3% | Documented divergence; both provenance records preserved |
 
 ---
