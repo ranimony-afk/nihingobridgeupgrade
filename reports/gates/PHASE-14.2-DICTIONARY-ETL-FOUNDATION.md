@@ -142,7 +142,7 @@ $$\text{ID} = \texttt{"de-jmdict-" } + \text{ent\_seq}$$
 Integration with the Phase 14.1 Provenance Framework is verified end-to-end:
 
 1. **Authoritative Registration Validation:**  
-   The pipeline queries `createETLProvenanceContext("upstream:jmdict:2024-07")`. The source release contract is verified active with CC-BY-SA-3.0 licensing.
+   The pipeline queries `createETLProvenanceContext("upstream:jmdict:2024-07")`. The source release contract is verified active with CC-BY-SA-4.0 licensing and retains the EDRDG qualification for separately copyrighted non-English translation material.
 2. **Fail-Closed on Unregistered Sources:**  
    Passing `nonexistent:source:v99` throws:  
    `"Dry-run aborted: source \"nonexistent:source:v99\" is not registered in the authoritative provenance registry."`

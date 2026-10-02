@@ -219,7 +219,7 @@ The first ten source entries are repetition marks and symbols, so the pilot did 
 
 ## Provenance
 
-The registry `contentHash` equals the independently computed XML SHA-256. The verifier rejects the file if those differ. The disposable `knowledge_sources` row records id `upstream:jmdict:2023-08`, version `2023-08`, license `CC-BY-SA-3.0`, and record count `206717`. That table has no content-hash column. The hash was not copied into a new column. Adding one would be a schema change and was not done.
+The registry `contentHash` equals the independently computed XML SHA-256. The verifier rejects the file if those differ. The disposable `knowledge_sources` row records id `upstream:jmdict:2023-08`, version `2023-08`, license `CC-BY-SA-4.0`, and record count `206717`. That table has no content-hash column. The hash was not copied into a new column. Adding one would be a schema change and was not done.
 
 ## Remaining risks
 

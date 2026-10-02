@@ -22,7 +22,7 @@ describe("Phase 14.1: Source & Provenance Framework", () => {
         version: "2024-07",
         releaseDate: "2024-07-01",
         uri: "https://www.edrdg.org/jmdict/j_jmdict.html",
-        license: "CC-BY-SA-3.0",
+        license: "CC-BY-SA-4.0",
         attribution: "Electronic Dictionary Research and Development Group (EDRDG)",
         description: "Standard dictionary file from EDRDG.",
         domain: "dictionary",
@@ -41,7 +41,9 @@ describe("Phase 14.1: Source & Provenance Framework", () => {
       expect(jmdict?.name).toContain("JMdict");
       expect(jmdict?.type).toBe("upstream");
       expect(jmdict?.status).toBe("active");
-      expect(jmdict?.license).toBe("CC-BY-SA-3.0");
+      expect(jmdict?.license).toBe("CC-BY-SA-4.0");
+      expect(jmdict?.attribution).toContain("Electronic Dictionary Research and Development Group (EDRDG)");
+      expect(jmdict?.description).toContain("separately copyrighted");
 
       const kanjidic = getRegisteredSource("upstream:kanjidic2:2024-07");
       expect(kanjidic).not.toBeNull();
@@ -197,7 +199,7 @@ describe("Phase 14.1: Source & Provenance Framework", () => {
       const resolution = ProvenanceService.resolveProvenance("upstream:jmdict:2024-07");
       expect(resolution).not.toBeNull();
       expect(resolution?.name).toBe("JMdict Japanese-Multilingual Dictionary");
-      expect(resolution?.license).toBe("CC-BY-SA-3.0");
+      expect(resolution?.license).toBe("CC-BY-SA-4.0");
       expect(resolution?.type).toBe("upstream");
       expect(resolution?.isLegalForIngestion).toBe(true);
     });

@@ -22,7 +22,7 @@
  * 18. random sample reconciliation
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { tmpdir } from "os";
 import { resolve } from "path";
 import { db } from "@/db";
@@ -48,12 +48,20 @@ import {
 } from "@/etl/dictionary/persistenceAdapter";
 import { transformJMdictEntry } from "@/etl/dictionary/transformer";
 import type { RawJMdictSourceRecord } from "@/etl/dictionary/types";
+import { ensureFullJmdictDatabaseState } from "./helpers/jmdictIntegrationSetup";
 
 describe("Phase 14.3D: Controlled Full JMdict Production Ingestion", () => {
+  // Establish this suite's database-state contract explicitly through the
+  // real production ingestion path before any assertion depends on it
+  // (tests 15, 17 and 18 verify the fully established corpus).
+  beforeAll(async () => {
+    await ensureFullJmdictDatabaseState();
+  }, 600_000);
+
   const dummySourceMeta: SourceMetadata = {
     sourceId: JMDICT_SOURCE_ID,
     releaseVersion: EXPECTED_JMDICT_RELEASE,
-    license: "CC-BY-SA-3.0",
+    license: "CC-BY-SA-4.0",
     attribution: "EDRDG",
     xmlPath: resolve(process.cwd(), "data/JMdict.xml"),
     xmlSizeBytes: 115331197,
@@ -340,7 +348,7 @@ describe("Phase 14.3D: Controlled Full JMdict Production Ingestion", () => {
 
     expect(sourceRow).toBeDefined();
     expect(sourceRow?.id).toBe(JMDICT_SOURCE_ID);
-    expect(sourceRow?.license).toBe("CC-BY-SA-3.0");
+    expect(sourceRow?.license).toBe("CC-BY-SA-4.0");
     expect(sourceRow?.name).toContain("JMdict");
   });
 

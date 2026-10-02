@@ -9,6 +9,15 @@
 export const JMDICT_SOURCE_ID = "upstream:jmdict:2023-08";
 export const REJECTED_JMDICT_SOURCE_ID = "upstream:jmdict:2024-07";
 export const EXPECTED_JMDICT_RELEASE = "2023-08-20";
+export const JMDICT_ARCHIVE_REPOSITORY = "Jitendex/edrdg-dictionary-archive";
+export const JMDICT_ARCHIVE_COMMIT = "9cb709b87f43c7bceb494eefbe7f8b8f42744502";
+export const JMDICT_ARCHIVE_PATH = "JMdict/JMdict.br";
+export const JMDICT_ARCHIVE_BLOB_SHA = "127cbaae0ce21dfe95adaaa5feb180b1fcb11d2c";
+export const JMDICT_LICENSE = "CC-BY-SA-4.0";
+export const JMDICT_EDRDG_ATTRIBUTION =
+  "Electronic Dictionary Research and Development Group (EDRDG)";
+export const JMDICT_LICENSE_QUALIFICATION =
+  "Many translations of Japanese words into languages other than English are separately copyrighted by their authors and are not covered by this license.";
 export const EXPECTED_JMDICT_ENTRIES = 206717;
 export const EXPECTED_JMDICT_BYTES = 115331197;
 export const EXPECTED_JMDICT_SHA256 =

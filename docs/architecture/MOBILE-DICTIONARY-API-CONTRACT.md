@@ -139,7 +139,7 @@ All endpoints are versioned under `/api/v1/mobile/...` and emit compact, gzipped
   ],
   "provenance": {
     "sourceId": "upstream:jmdict:2023-08",
-    "license": "CC-BY-SA-3.0",
+    "license": "CC-BY-SA-4.0",
     "attribution": "Electronic Dictionary Research and Development Group (EDRDG)"
   }
 }
@@ -399,7 +399,7 @@ Provenance is **resolved for display**, not passed through raw:
     "authority": "canonical",
     "sourceName": "JMdict Japanese-Multilingual Dictionary",
     "attribution": "Electronic Dictionary Research and Development Group (EDRDG)",
-    "license": "CC-BY-SA-3.0",
+    "license": "CC-BY-SA-4.0",
     "requiresReview": false
   }
 }

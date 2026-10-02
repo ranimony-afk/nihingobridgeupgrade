@@ -319,7 +319,7 @@ Three manifests exist, and **none concerns Tatoeba**:
 | Manifest | Source identity | Measured values | Status claimed |
 | :--- | :--- | :--- | :--- |
 | `PHASE-14.4B-KANJIDIC2-ACQUISITION-MANIFEST.json` | `upstream:kanjidic2:2023-08` | SHA256 `260e6119fcc78cde438de7d7f8227d1c13260469d10ae36a01d866c61f7cc781`, size 15,643,593 B, entryCount 13,108 | `verified` |
-| `PHASE-14.4D-KANJIVG-ACQUISITION-MANIFEST.json` | `upstream:kanjivg:2024-08` | compressed `678a15b1ecf2e75bfc9f08ef40cca7d273ed71eae00f5135b52bba2ef62ac447`, 6,393,856 B, 11,658 files | `verified` |
+| `PHASE-14.4D-KANJIVG-ACQUISITION-MANIFEST.json` | `upstream:kanjivg:2024-08` | compressed `a0cbc5c950d5c68bf3b6b24468ebdb8a829e62f04a4f44e1c7e98bade2597dcd`, 6,403,118 B, 11,658 files (source identity re-pinned 2026-09-29; superseded values `678a15b1…`, 6,393,856 B — see manifest `rePin`) | `verified` |
 | `PHASE-14.4B-KANJI-JMDICT-LINKAGE-MANIFEST.json` | linkage | — | — |
 
 **Both successful acquisitions routed through GitHub.** The KANJIDIC2 manifest records

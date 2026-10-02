@@ -42,3 +42,19 @@ Thumbs.db
 !/data/
 !/data/tatoeba/
 !/data/tatoeba/*.tar.bz2
+# Phase 14.4D — KanjiVG provisioned corpus + index (never commit)
+/data/kanjivg/
+/data/kanjivg-index.json
+/data/jmdict-checkpoint.json
+# Phase 14.4D — derived KanjiVG attachment state (never commit)
+/data/kanjivg-attachment/
+/data/kanjivg-attachment.staging/
+/data/kanjivg-attachment.prev/
+# Phase 14.4E — derived Kanji ↔ JMdict graph state (never commit)
+/data/kanji-jmdict-graph/
+/data/kanji-jmdict-graph.staging/
+/data/kanji-jmdict-graph.prev/
+# Phase 14.4F — derived kanji decomposition state (never commit)
+/data/kanji-decomposition/
+/data/kanji-decomposition.staging/
+/data/kanji-decomposition.prev/

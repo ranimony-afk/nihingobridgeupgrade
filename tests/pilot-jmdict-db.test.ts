@@ -9,11 +9,20 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { runControlledPilot, type PilotVerificationResults } from "../scripts/pilot-jmdict-db";
+import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
 
 describe("Phase 14.3C: Controlled JMdict PostgreSQL Database Pilot", () => {
   let results: PilotVerificationResults;
 
   beforeAll(async () => {
+    // Establish the application's first-party bootstrap through the real path
+    // BEFORE the pilot's 100-record insertion. The app's `ensureSeeded()` is
+    // bootstrap-only (skips once any row exists), so pilot rows inserted first
+    // would permanently block first-party seeding and break any later suite
+    // that legitimately expects `de-mizu` to be present. This call runs the
+    // exact application seed (no manufactured rows): on an empty database it
+    // loads the first-party corpus; on an already-seeded database it is a no-op.
+    await KnowledgeCorpusService.ensureSeeded();
     results = await runControlledPilot();
   }, 120_000);
 
@@ -27,9 +36,36 @@ describe("Phase 14.3C: Controlled JMdict PostgreSQL Database Pilot", () => {
     });
 
     it("verifies disposable database metadata", () => {
-      expect(results.safetyProbe.currentUser).toBe("postgres");
+      // Meaningful invariants instead of a hardcoded username: the probe must
+      // hold a live connection, the connected role must be exactly the role
+      // the connection was opened with (the configured role of the disposable
+      // environment — e.g. "nihongo" in CI, whatever the DSN declares), and
+      // the connected database must match the classified disposable target.
+      // This deliberately passes for any correctly configured role and never
+      // requires the literal name "postgres".
+      const connectionString = process.env.DATABASE_URL;
+      expect(connectionString).toBeTruthy();
+      const configured = new URL(connectionString as string);
+      const configuredRole = decodeURIComponent(configured.username);
+      const configuredDatabase = decodeURIComponent(
+        configured.pathname.replace(/^\//, ""),
+      );
+      expect(configuredRole).not.toBe("");
+
+      expect(results.safetyProbe.currentUser).toBe(configuredRole);
+      expect(results.safetyProbe.databaseName).toBe(configuredDatabase);
       expect(results.safetyProbe.currentSchema).toBe("public");
       expect(results.safetyProbe.postgresVersion).toContain("PostgreSQL");
+
+      // Consistency with the configured disposable database environment.
+      if (process.env.NIHONGO_DB_TARGET_CLASS === "disposable") {
+        expect(results.safetyProbe.classification).toBe("disposable-local-loopback");
+        if (process.env.NIHONGO_DB_EXPECTED_DATABASE) {
+          expect(results.safetyProbe.databaseName).toBe(
+            process.env.NIHONGO_DB_EXPECTED_DATABASE,
+          );
+        }
+      }
     });
   });
 
@@ -37,7 +73,7 @@ describe("Phase 14.3C: Controlled JMdict PostgreSQL Database Pilot", () => {
     it("registers upstream:jmdict:2023-08 provenance in knowledge_sources", () => {
       expect(results.provenance.registeredId).toBe("upstream:jmdict:2023-08");
       expect(results.provenance.version).toBe("2023-08");
-      expect(results.provenance.license).toBe("CC-BY-SA-3.0");
+      expect(results.provenance.license).toBe("CC-BY-SA-4.0");
     });
   });
 

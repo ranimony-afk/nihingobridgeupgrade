@@ -2,7 +2,7 @@
  * Raw JMdict pilot dataset for Phase 3 ingestion.
  *
  * Source: JMdict (EDRDG - Electronic Dictionary Research and Development Group)
- * License: CC-BY-SA-3.0 / CC-BY-SA-4.0
+ * License: CC-BY-SA-4.0 (with separately copyrighted non-English translation material excluded where applicable)
  * URL: https://www.edrdg.org/jmdict/j_jmdict.html
  *
  * Contains 50 curated representative Japanese dictionary entries covering:

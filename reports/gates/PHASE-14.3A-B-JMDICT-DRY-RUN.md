@@ -45,7 +45,7 @@ Phase 14.3A–B executes the acquisition, source verification, streaming parsing
 | **Source Name** | JMdict Japanese-Multilingual Dictionary | Authoritative EDRDG distribution |
 | **Release Version** | `2023-08` | Base release timestamp: `2023-08-20` |
 | **Authoritative URI** | `https://www.edrdg.org/jmdict/j_jmdict.html` | Canonical project documentation |
-| **License** | `CC-BY-SA-3.0` | EDRDG license terms verified |
+| **License** | `CC-BY-SA-4.0` | EDRDG license terms verified; separately copyrighted non-English translation material is excluded where applicable |
 | **Attribution** | Electronic Dictionary Research and Development Group (EDRDG) | Verified |
 | **Format** | XML (`<JMdict><entry>...</entry></JMdict>`) | Standard JMdict DTD conformant |
 | **Languages** | Multilingual (Japanese pivot $\rightarrow$ English, German, French, Dutch, Russian, Spanish, Hungarian, Slovenian) | All languages preserved |
@@ -148,7 +148,7 @@ Every entry was transformed to canonical platform representations (`CanonicalDic
 - **Stamped SourceRef:** `upstream:jmdict:2023-08`
 - **Verified Entries:** `206,717` (100.0%)
 - **Mismatches / Unstamped:** `0` (0.0%)
-- **License Status:** Verified `CC-BY-SA-3.0`.
+- **License Status:** Verified `CC-BY-SA-4.0`; separately copyrighted non-English translation material remains separately copyrighted where applicable.
 - **Operational Status:** Active.
 
 ---
