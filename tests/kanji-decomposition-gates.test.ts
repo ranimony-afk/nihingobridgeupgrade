@@ -54,6 +54,10 @@ const PUBLISH = resolve(BASE, "data/kanji-decomposition");
 const STAGING = resolve(BASE, "data/kanji-decomposition.staging");
 const PREV = resolve(BASE, "data/kanji-decomposition.prev");
 const CORPUS = resolve(BASE, "data/kanjivg");
+const CLI = (args: string[]) =>
+  process.platform === "win32"
+    ? { file: "cmd.exe", args: ["/c", "npx.cmd", ...args] }
+    : { file: "npx", args };
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
@@ -267,11 +271,10 @@ describe("PHASE 14.4F — controlled kanji decomposition gates", () => {
     const rowsBefore = [readRows("components.json"), readRows("containment.json"), readRows("variants.json")];
 
     // two-pass CLI smoke: phase 2 with existing-state validation
-    const out = execFileSync(
-      "npx",
-      ["tsx", "scripts/ingest-kanji-decomposition.ts", "--phase=2", "--require-valid-existing-state"],
-      { cwd: BASE, encoding: "utf-8", env: { ...process.env }, timeout: 600_000 }
-    );
+    const cli = CLI(["tsx", "scripts/ingest-kanji-decomposition.ts", "--phase=2", "--require-valid-existing-state"]);
+    const out = execFileSync(cli.file, cli.args, {
+      cwd: BASE, encoding: "utf-8", env: { ...process.env }, timeout: 600_000
+    });
     expect(out).toContain('"phase": 2');
     expect(out).toContain('"dbImmutable": true');
 
@@ -731,7 +734,8 @@ describe("PHASE 14.4F — controlled kanji decomposition gates", () => {
       let out = "";
       let failed = false;
       try {
-        execFileSync("npx", ["tsx", "scripts/ingest-kanji-decomposition.ts", ...args], {
+        const cli = CLI(["tsx", "scripts/ingest-kanji-decomposition.ts", ...args]);
+        execFileSync(cli.file, cli.args, {
           cwd: BASE,
           encoding: "utf-8",
           env: { ...process.env, ...env },
