@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { DictionaryService } from "@/services/dictionary";
+import { resolveDictionaryReturnHref } from "@/lib/dictionary/searchState";
 import {
   ArrowLeft,
   BookOpen,
@@ -16,12 +17,13 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ returnTo?: string | string[] }>;
 }
 
-export default async function DictionaryEntryPage({ params }: Props) {
-  const { id } = await params;
-  const decodedId = decodeURIComponent(id);
-  const detail = await DictionaryService.getEntryDetail(decodedId);
+export default async function DictionaryEntryPage({ params, searchParams }: Props) {
+  const [{ id }, detailSearchParams] = await Promise.all([params, searchParams]);
+  const backHref = resolveDictionaryReturnHref(detailSearchParams.returnTo);
+  const detail = await DictionaryService.getEntryDetail(id);
 
   if (!detail) {
     notFound();
@@ -36,7 +38,7 @@ export default async function DictionaryEntryPage({ params }: Props) {
       <div className="bg-white border-b border-slate-200">
         <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4">
           <Link
-            href="/dictionary"
+            href={backHref}
             className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-red-600 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />

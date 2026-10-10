@@ -292,11 +292,8 @@ export function normalizeJlpt(rawLevel: string | undefined | null): string {
   if (!rawLevel) return "NONE";
   const upper = rawLevel.trim().toUpperCase();
   if (VALID_JLPT_LEVELS.has(upper)) return upper;
-  const match = upper.match(/N?[1-5]/);
-  if (match) {
-    const num = match[0].replace("N", "");
-    return `N${num}`;
-  }
+  const match = upper.match(/^N?([1-5])$/);
+  if (match) return `N${match[1]}`;
   return "NONE";
 }
 
