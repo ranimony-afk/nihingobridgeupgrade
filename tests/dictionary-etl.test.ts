@@ -29,14 +29,43 @@ describe("Romaji Generation", () => {
 });
 
 describe("Field Mapping and Normalization", () => {
-  it("normalizes JLPT levels", () => {
-    expect(normalizeJlpt("N5")).toBe("N5");
-    expect(normalizeJlpt("n5")).toBe("N5");
-    expect(normalizeJlpt("5")).toBe("N5");
-    expect(normalizeJlpt("N1")).toBe("N1");
-    expect(normalizeJlpt("")).toBe("NONE");
-    expect(normalizeJlpt(null)).toBe("NONE");
-    expect(normalizeJlpt("invalid")).toBe("NONE");
+  it("normalizes supported whole-token JLPT levels", () => {
+    const cases = [
+      ["N5", "N5"],
+      ["n4", "N4"],
+      [" N3 ", "N3"],
+      ["2", "N2"],
+      [" 1 ", "N1"],
+      ["none", "NONE"],
+    ] as const;
+
+    for (const [rawLevel, expected] of cases) {
+      expect(normalizeJlpt(rawLevel)).toBe(expected);
+    }
+  });
+
+  it("rejects absent, embedded, malformed, and out-of-range JLPT levels", () => {
+    const rejected = [
+      null,
+      undefined,
+      "",
+      "   ",
+      "invalid",
+      "2024-07",
+      "v1.5",
+      "test-4",
+      "N0",
+      "N6",
+      "N10",
+      "level N5",
+      "N5 level",
+      "11",
+      "1.5",
+    ] as const;
+
+    for (const rawLevel of rejected) {
+      expect(normalizeJlpt(rawLevel)).toBe("NONE");
+    }
   });
 
   it("normalizes parts of speech", () => {
@@ -73,6 +102,18 @@ describe("Transformer and Validation", () => {
     expect(entry.senses[0].glosses).toContain("water (esp. cool, fresh)");
     expect(entry.kanjiCharacters).toEqual(["水"]);
     expect(entry.sourceRef).toBe(JMDICT_SOURCE_REF);
+  });
+
+  it("does not fabricate JLPT levels or tags from unrelated source text", () => {
+    const raw = {
+      ...JMDICT_PILOT_50_RECORDS[0],
+      jlptLevel: "2024-07",
+    };
+    const result = transformJMdictEntry(raw);
+
+    expect(result.isValid).toBe(true);
+    expect(result.record?.jlptLevel).toBe("NONE");
+    expect(result.record?.tags.some((tag) => tag.startsWith("jlpt:"))).toBe(false);
   });
 
   it("rejects malformed records", () => {
