@@ -2,8 +2,22 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Check, Layers, Loader2, Network, Plus, Volume2, ArrowLeft, GitBranch } from "lucide-react";
+import { useParams, useSearchParams } from "next/navigation";
+import {
+  KanjiReferenceDetails,
+  KanjiStoredExamples,
+} from "@/components/kanji/KanjiReferenceDetails";
+import { KanjiStrokeOrderPanel } from "@/components/kanji/KanjiStrokeOrderPanel";
+import {
+  KanjiVocabularyLinks,
+  type KanjiVocabularyLoadStatus,
+} from "@/components/kanji/KanjiVocabularyLinks";
+import { isDictionaryJlptLevel } from "@/lib/dictionary/searchState";
+import {
+  buildKanjiDetailHref,
+  resolveKanjiDictionaryReturnHref,
+} from "@/lib/kanji/navigation";
+import { Check, Layers, Loader2, Network, Plus, ArrowLeft, GitBranch } from "lucide-react";
 
 interface MindNode {
   id: string;
@@ -50,6 +64,7 @@ interface DetailResponse {
     strokeCount: number;
     jlptLevel: string;
     gradeLevel: number | null;
+    primaryRadicalId: string | null;
     mnemonic: string | null;
     vocabulary: Array<{ word: string; reading: string; meaning: string }>;
   };
@@ -60,6 +75,7 @@ interface DetailResponse {
     position: string | null;
     renderedAs: string;
     element: {
+      id: string;
       character: string;
       meaning: string;
       readingKun: string | null;
@@ -69,6 +85,11 @@ interface DetailResponse {
       mnemonic: string | null;
     } | null;
   }>;
+}
+
+interface KanjiVocabularyResponse {
+  success?: boolean;
+  vocabulary?: unknown;
 }
 
 const ROLE_META: Record<string, { label: string; tone: string; hint: string }> = {
@@ -99,19 +120,32 @@ function speak(text: string) {
 
 export default function KanjiMindTreePage() {
   const params = useParams<{ character: string }>();
+  const searchParams = useSearchParams();
   const character = decodeURIComponent(params.character);
+  const returnToValues = searchParams.getAll("returnTo");
+  const dictionaryReturnHref =
+    resolveKanjiDictionaryReturnHref(returnToValues);
 
   const [data, setData] = useState<DetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [dictionaryVocabulary, setDictionaryVocabulary] = useState<unknown[]>([]);
+  const [dictionaryVocabularyStatus, setDictionaryVocabularyStatus] =
+    useState<KanjiVocabularyLoadStatus>("loading");
   const [busy, setBusy] = useState(false);
   const [added, setAdded] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
+    const encodedCharacter = encodeURIComponent(character);
     setLoading(true);
-    fetch(`/api/kanji/${encodeURIComponent(character)}`)
+    setError(null);
+    setData(null);
+    setDictionaryVocabulary([]);
+    setDictionaryVocabularyStatus("loading");
+
+    fetch(`/api/kanji/${encodedCharacter}`)
       .then((r) => r.json())
       .then((j) => {
         if (!alive) return;
@@ -120,6 +154,25 @@ export default function KanjiMindTreePage() {
       })
       .catch(() => alive && setError("Failed to load"))
       .finally(() => alive && setLoading(false));
+
+    fetch(`/api/kanji/${encodedCharacter}/vocabulary?limit=50`)
+      .then((r) => {
+        if (!r.ok) throw new Error("Vocabulary lookup failed");
+        return r.json() as Promise<KanjiVocabularyResponse>;
+      })
+      .then((result) => {
+        if (!alive) return;
+        if (result.success === true && Array.isArray(result.vocabulary)) {
+          setDictionaryVocabulary(result.vocabulary);
+          setDictionaryVocabularyStatus("loaded");
+        } else {
+          setDictionaryVocabularyStatus("error");
+        }
+      })
+      .catch(() => {
+        if (alive) setDictionaryVocabularyStatus("error");
+      });
+
     return () => {
       alive = false;
     };
@@ -149,8 +202,12 @@ export default function KanjiMindTreePage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4">
-        <Loader2 className="h-10 w-10 animate-spin text-red-600" />
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex min-h-[70vh] flex-col items-center justify-center gap-4"
+      >
+        <Loader2 className="h-10 w-10 animate-spin text-red-600" aria-hidden="true" />
         <p className="text-sm font-semibold text-slate-600">Growing the mind tree…</p>
       </div>
     );
@@ -158,21 +215,40 @@ export default function KanjiMindTreePage() {
 
   if (error || !data) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-20 text-center">
-        <Network className="mx-auto mb-3 h-12 w-12 text-rose-500" />
-        <h2 className="text-xl font-bold text-slate-900">Kanji not in the mind tree</h2>
+      <div
+        role="alert"
+        className="mx-auto max-w-lg px-4 py-20 text-center"
+      >
+        <Network className="mx-auto mb-3 h-12 w-12 text-rose-500" aria-hidden="true" />
+        <h1 className="text-xl font-bold text-slate-900">Kanji not in the mind tree</h1>
         <p className="mt-2 text-sm text-slate-600">{error}</p>
-        <Link
-          href="/kanji"
-          className="mt-6 inline-flex rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white hover:bg-slate-800"
-        >
-          Browse all kanji
-        </Link>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Link
+            href="/kanji"
+            className="inline-flex rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+          >
+            Browse all kanji
+          </Link>
+          {dictionaryReturnHref && (
+            <Link
+              href={dictionaryReturnHref}
+              className="inline-flex rounded-xl border border-slate-300 bg-white px-6 py-2.5 text-sm font-bold text-slate-700 hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+            >
+              Back to Dictionary Search
+            </Link>
+          )}
+        </div>
       </div>
     );
   }
 
   const { kanji, tree, profile } = data;
+  const primaryRadical =
+    typeof kanji.primaryRadicalId === "string"
+      ? profile.find(
+          (item) => item.element?.id === kanji.primaryRadicalId
+        )?.element ?? null
+      : null;
 
   /* Radial layout: centre + two rings of nodes. */
   const RADII = [0, 190, 340];
@@ -191,12 +267,23 @@ export default function KanjiMindTreePage() {
   return (
     <main className="min-h-screen bg-slate-100/60 pb-20 pt-8">
       <div className="mx-auto max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
-        <Link
-          href="/kanji"
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-slate-900"
-        >
-          <ArrowLeft className="h-4 w-4" /> All kanji
-        </Link>
+        {dictionaryReturnHref ? (
+          <Link
+            href={dictionaryReturnHref}
+            aria-label="Return to Dictionary Search results"
+            className="inline-flex items-center gap-1.5 rounded text-xs font-bold text-slate-600 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+            Back to Dictionary Search
+          </Link>
+        ) : (
+          <Link
+            href="/kanji"
+            className="inline-flex items-center gap-1.5 rounded text-xs font-bold text-slate-600 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden="true" /> All kanji
+          </Link>
+        )}
 
         {notice && (
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-900">
@@ -207,49 +294,12 @@ export default function KanjiMindTreePage() {
         {/* Header card */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-100">
           <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="flex items-start gap-5">
-              <button
-                onClick={() => speak(kanji.character)}
-                className="flex h-28 w-28 shrink-0 items-center justify-center rounded-3xl bg-gradient-to-br from-slate-900 to-slate-700 shadow-lg transition-transform hover:scale-105"
-              >
-                <span className="font-japanese text-6xl font-bold text-white">{kanji.character}</span>
-              </button>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                    {kanji.jlptLevel}
-                  </span>
-                  {kanji.gradeLevel && (
-                    <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                      grade {kanji.gradeLevel}
-                    </span>
-                  )}
-                  <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                    {kanji.strokeCount} strokes
-                  </span>
-                </div>
-                <h1 className="mt-2 text-2xl font-extrabold text-slate-900">{kanji.meaning}</h1>
-                <div className="mt-2 space-y-0.5 text-xs">
-                  {kanji.readingsOn.length > 0 && (
-                    <p className="text-slate-700">
-                      <span className="mr-1.5 font-bold text-slate-500">音読み</span>
-                      <span className="font-japanese font-semibold">{kanji.readingsOn.join("、")}</span>
-                    </p>
-                  )}
-                  {kanji.readingsKun.length > 0 && (
-                    <p className="text-slate-700">
-                      <span className="mr-1.5 font-bold text-slate-500">訓読み</span>
-                      <span className="font-japanese font-semibold">{kanji.readingsKun.join("、")}</span>
-                    </p>
-                  )}
-                </div>
-                {kanji.mnemonic && (
-                  <p className="mt-2.5 max-w-lg rounded-xl bg-amber-50 p-2.5 text-[11px] italic leading-relaxed text-amber-900">
-                    {kanji.mnemonic}
-                  </p>
-                )}
-              </div>
-            </div>
+            <KanjiReferenceDetails
+              record={kanji}
+              radical={primaryRadical}
+              returnTo={dictionaryReturnHref}
+              onSpeak={speak}
+            />
 
             <div className="shrink-0 space-y-2">
               <button
@@ -276,28 +326,20 @@ export default function KanjiMindTreePage() {
             </div>
           </div>
 
-          {kanji.vocabulary.length > 0 && (
-            <div className="mt-5 border-t border-slate-100 pt-4">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                Vocabulary using this kanji
-              </span>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {kanji.vocabulary.map((v) => (
-                  <button
-                    key={v.word}
-                    onClick={() => speak(v.word)}
-                    className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left hover:border-slate-400"
-                  >
-                    <span className="font-japanese text-base font-bold text-slate-900">{v.word}</span>
-                    <span className="font-japanese text-[11px] text-slate-500">{v.reading}</span>
-                    <span className="text-[10px] text-slate-600">{v.meaning}</span>
-                    <Volume2 className="h-3 w-3 text-slate-300" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          <KanjiStoredExamples
+            examples={kanji.vocabulary}
+            onSpeak={speak}
+          />
         </div>
+
+        <KanjiStrokeOrderPanel character={kanji.character} />
+
+        <KanjiVocabularyLinks
+          character={kanji.character}
+          records={dictionaryVocabulary}
+          status={dictionaryVocabularyStatus}
+          returnTo={dictionaryReturnHref}
+        />
 
         {/* Mind tree graph */}
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-lg shadow-slate-100">
@@ -356,6 +398,18 @@ export default function KanjiMindTreePage() {
               {/* Nodes */}
               {layout.map(({ node, x, y }) => {
                 const isCentre = node.depth === 0;
+                const nodeDetailHref =
+                  node.kind === "kanji"
+                    ? buildKanjiDetailHref(
+                        node.character,
+                        dictionaryReturnHref ?? undefined
+                      )
+                    : null;
+                const nodeJlptLevel = isDictionaryJlptLevel(
+                  node.jlptLevel ?? null
+                )
+                  ? node.jlptLevel
+                  : null;
                 const isComponent = node.depth === 1;
                 const size = isCentre ? 108 : isComponent ? 84 : 66;
                 const ring = isCentre
@@ -377,18 +431,21 @@ export default function KanjiMindTreePage() {
                   >
                     {isCentre ? (
                       <button
+                        type="button"
                         onClick={() => speak(node.character)}
-                        className={`flex h-full w-full flex-col items-center justify-center rounded-2xl font-bold ${ring}`}
+                        aria-label={`Listen to kanji ${node.character}`}
+                        className={`flex h-full w-full flex-col items-center justify-center rounded-2xl font-bold ${ring} focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-red-500 focus-visible:ring-offset-2`}
                       >
                         <span className="font-japanese text-5xl leading-none">{node.character}</span>
                         <span className="mt-1 max-w-[92px] truncate px-1 text-[9px] opacity-80">
                           {node.meaning}
                         </span>
                       </button>
-                    ) : node.kind === "kanji" ? (
+                    ) : nodeDetailHref ? (
                       <Link
-                        href={`/kanji/${encodeURIComponent(node.character)}`}
-                        className={`flex h-full w-full flex-col items-center justify-center rounded-2xl ${ring}`}
+                        href={nodeDetailHref}
+                        aria-label={`Open Kanji detail for ${node.character}${node.meaning ? `, ${node.meaning}` : ""}`}
+                        className={`flex h-full w-full flex-col items-center justify-center rounded-2xl ${ring} focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500 focus-visible:ring-offset-2`}
                       >
                         <span className="font-japanese text-2xl font-bold leading-none">
                           {node.character}
@@ -396,17 +453,19 @@ export default function KanjiMindTreePage() {
                         <span className="mt-0.5 max-w-[58px] truncate px-1 text-[8px] text-slate-500">
                           {node.meaning}
                         </span>
-                        {node.jlptLevel && (
+                        {nodeJlptLevel && (
                           <span className="mt-0.5 rounded bg-emerald-50 px-1 text-[7px] font-bold text-emerald-700">
-                            {node.jlptLevel}
+                            {nodeJlptLevel}
                           </span>
                         )}
                       </Link>
                     ) : (
                       <button
+                        type="button"
                         onClick={() => speak(node.label)}
+                        aria-label={`Listen to ${node.character}: ${node.meaning}`}
                         title={`${node.label} — ${node.meaning} (${node.role})`}
-                        className={`flex h-full w-full flex-col items-center justify-center rounded-2xl ${ring}`}
+                        className={`flex h-full w-full flex-col items-center justify-center rounded-2xl ${ring} focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500 focus-visible:ring-offset-2`}
                       >
                         <span className="font-japanese text-2xl font-bold leading-none">
                           {node.character}
@@ -486,21 +545,34 @@ export default function KanjiMindTreePage() {
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              {(tree.rings.find((r) => r.depth === 2)?.nodes ?? []).map((n) => (
-                <Link
-                  key={n.id}
-                  href={`/kanji/${encodeURIComponent(n.character)}`}
-                  className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 transition-all hover:border-emerald-400 hover:bg-emerald-50"
-                >
-                  <span className="font-japanese text-2xl font-bold text-slate-900">{n.character}</span>
-                  <span className="text-[10px] text-slate-600">{n.meaning}</span>
-                  {n.jlptLevel && (
-                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
-                      {n.jlptLevel}
-                    </span>
-                  )}
-                </Link>
-              ))}
+              {(tree.rings.find((r) => r.depth === 2)?.nodes ?? []).map((n) => {
+                const familyDetailHref = buildKanjiDetailHref(
+                  n.character,
+                  dictionaryReturnHref ?? undefined
+                );
+                const familyJlptLevel = isDictionaryJlptLevel(
+                  n.jlptLevel ?? null
+                )
+                  ? n.jlptLevel
+                  : null;
+                if (!familyDetailHref) return null;
+                return (
+                  <Link
+                    key={n.id}
+                    href={familyDetailHref}
+                    aria-label={`Open Kanji detail for ${n.character}${n.meaning ? `, ${n.meaning}` : ""}`}
+                    className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 transition-all hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+                  >
+                    <span className="font-japanese text-2xl font-bold text-slate-900">{n.character}</span>
+                    <span className="text-[10px] text-slate-600">{n.meaning}</span>
+                    {familyJlptLevel && (
+                      <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+                        {familyJlptLevel}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
             </div>
           </div>
         )}
