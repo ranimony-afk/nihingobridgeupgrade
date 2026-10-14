@@ -28,6 +28,7 @@ import {
   buildDictionarySearchHref,
   resolveDictionaryReturnHref,
 } from "@/lib/dictionary/searchState";
+import { buildKanjiDetailHref } from "@/lib/kanji/navigation";
 
 const WATER_ENTRY: DictionaryEntryCardEntry = {
   id: "entry/水",
@@ -59,7 +60,16 @@ function dictionaryDetail() {
       sourceRef: "upstream:jmdict:test",
     },
     source: null,
-    kanji: [],
+    kanji: [
+      {
+        id: "kanji/水",
+        character: "水",
+        meaning: "water",
+        readingsKun: ["みず"],
+        jlptLevel: "N5",
+        strokeCount: 4,
+      },
+    ],
     sentences: [],
     relatedGrammar: [],
   };
@@ -167,6 +177,12 @@ describe("dictionary search-context navigation", () => {
     expect(contextual).toContain(
       'href="/dictionary?q=water&amp;level=N2&amp;common=true"'
     );
+    const relatedKanjiHref = buildKanjiDetailHref(
+      "水",
+      "/dictionary?q=water&level=N2&common=true"
+    );
+    expect(relatedKanjiHref).not.toBeNull();
+    expect(contextual).toContain(`href="${relatedKanjiHref}"`);
     expect(direct).toContain('href="/dictionary"');
     expect(unsafe).toContain('href="/dictionary"');
     expect(dictionaryService.getEntryDetail).toHaveBeenCalledWith("entry/水");

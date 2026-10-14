@@ -123,10 +123,17 @@ jobs:
         # before creating the gitignored data/JMdict.xml test input.
         run: npx tsx scripts/provision-jmdict-ci.ts
 
+      - name: Provision exact pinned KanjiVG r20240807 release
+        run: npx tsx scripts/provision-kanjivg-ci.ts
+
       - name: Test (P3/P4 — real Vitest run against PostgreSQL)
         run: |
           npx vitest run \
             tests/dictionary-architecture.test.ts \
+            tests/dictionary-kanji-navigation.test.ts \
+            tests/kanji-detail-learning-experience.test.ts \
+            tests/kanji-stroke-order-panel.test.ts \
+            tests/kanji-stroke-order-route.test.ts \
             tests/dictionary-etl-foundation.test.ts \
             tests/dry-run-jmdict.test.ts \
             tests/full-jmdict-ingestion.test.ts \

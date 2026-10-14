@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import { DictionaryRelatedKanji } from "@/components/dictionary/DictionaryRelatedKanji";
 import { DictionaryService } from "@/services/dictionary";
 import { resolveDictionaryReturnHref } from "@/lib/dictionary/searchState";
 import {
@@ -9,7 +10,6 @@ import {
   Sparkles,
   ExternalLink,
   Tag,
-  Network,
   Share2,
 } from "lucide-react";
 
@@ -152,44 +152,7 @@ export default async function DictionaryEntryPage({ params, searchParams }: Prop
           </div>
         </div>
 
-        {/* Kanji Breakdown Section */}
-        {kanji.length > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <Network className="w-5 h-5 text-red-600" />
-                Kanji Components & Decomposition
-              </h2>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              {kanji.map((k) => (
-                <Link
-                  key={k.id}
-                  href={`/kanji/${encodeURIComponent(k.character)}`}
-                  className="p-4 rounded-2xl border border-slate-200 hover:border-red-400 hover:shadow-sm transition-all group flex items-start gap-4"
-                >
-                  <span className="font-japanese text-4xl font-black text-slate-900 group-hover:text-red-600 transition-colors">
-                    {k.character}
-                  </span>
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm">{k.meaning}</h3>
-                    <p className="text-xs text-slate-500 font-japanese mt-0.5">
-                      {k.readingsKun?.slice(0, 2).join(", ")}
-                    </p>
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {k.jlptLevel}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {k.strokeCount} strokes
-                      </span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+        <DictionaryRelatedKanji records={kanji} returnTo={backHref} />
 
         {/* Example Sentences */}
         {sentences.length > 0 && (
