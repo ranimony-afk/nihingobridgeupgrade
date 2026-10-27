@@ -4,7 +4,7 @@
 layers are deterministic and run without a database; the data-dependent layers require the
 canonical corpus and cannot be exercised in a provisioning-free environment.
 **Phase**: 14.4F-R (search contract) · builds on 14.4A (architecture) and Phase 7 (search)
-**Last updated**: 2026-09-24
+**Last updated**: 2026-10-27
 
 ---
 
@@ -205,3 +205,75 @@ sentence, emitting character positions with `offsetUnit = "unicodeCodePoint"`.
 | Multilingual layer | ❌ requires corpus + `entity_translations` rows |
 
 Unverifiable layers are recorded as such rather than assumed correct.
+
+## 12. Dictionary read reliability
+
+The web dictionary listing/search (`/api/dictionary`), autocomplete, explicit
+search (`/api/dictionary/search`), entry APIs, and server-rendered entry page
+read existing data only. The shared mobile search adapter also uses this same
+read-only service. They do not create tables, seed fixtures, or run migrations.
+Dictionary service queries and optional entry-graph queries use read-only
+transactions with a **10-second per-statement** PostgreSQL timeout. Each
+dictionary transaction explicitly checks out and releases one connection from
+the application's lazy pool, including when transaction startup fails. This is
+not a total-request deadline, a pool-checkout timeout, or a rate limiter.
+Browser search and suggestion requests also time out
+after 15 seconds and expose a retryable failure. A target provider must support
+read-only transactions and `SET LOCAL statement_timeout`; if it does not, reads
+fail closed rather than silently dropping the guard.
+
+The web search query is limited to 1,000 Unicode code points after NUL removal
+and trimming. Web result pages are capped at 100 entries (default 25 on
+`/api/dictionary`, 50 on `/api/dictionary/search`), offsets at 100,000, and
+server suggestions at 20 (default 8; the web control asks for 6). Detail IDs
+are limited to 256 code points; related kanji/graph outputs are capped at 64,
+sentences at 6, and related grammar at 4. Invalid query parameters receive 400;
+valid oversized page limits are clamped. `/api/dictionary` can browse with an
+empty query, while `/api/dictionary/search` requires one. The mobile adapter
+retains its existing 1,000 UTF-16-code-unit limit and frozen response projection.
+Successful response shapes remain unchanged. API lookup failures use generic
+500 responses and absent entries return 404. A failed server-rendered detail
+lookup shows recovery and retry in the HTML with HTTP 200; this status limitation
+should be considered by monitoring. Missing source records are shown as
+unavailable rather than attributed to an invented source.
+
+### Explicit local fixtures
+
+Fixtures are **not production data** and are never populated by dictionary
+reads. To opt in, first create and prepare a database known to be disposable;
+do not point schema or fixture commands at a production, shared, tunneled, or
+ambiguous database. Set `DATABASE_URL` to that database's exact loopback URL,
+`NIHONGO_DB_TARGET_CLASS=disposable`, and `NIHONGO_DB_EXPECTED_DATABASE` to
+the exact database name, then run `npm run dictionary:seed-fixtures` in a
+non-production environment. The URL must include an explicit user and port,
+a single database path, and no query options or fragment: driver options or
+implicit environment defaults could otherwise override the classified target.
+The command checks both the declared target and the actual cached pool before
+writing. It loads only the in-repository
+first-party dictionary and knowledge fixtures; it does not create a schema,
+materialize Tatoeba, or authorize corpus ingestion.
+
+### Verification and remaining scope
+
+`npx vitest run tests/dictionary-kanji-navigation.test.ts` includes an isolated
+in-memory PGlite integration suite. It generates schema offline and uses its own
+loopback-only temporary server, not an inherited database URL. Before/after
+snapshots cover user schemas, types, extensions, tables, columns, constraints,
+indexes, triggers, policies, functions, sequence values, and all rows. Empty,
+seeded, missing-entry, validation, CMS-fallback, and unavailable-database paths
+are exercised. It also traces each dictionary surface through the actual lazy
+pool and verifies transaction settings, connection release, and failure cleanup.
+The helper is imported by an already CI-selected test because the current CI
+workflow lists files explicitly.
+
+This guarantee is scoped to the dictionary paths above, not every GET in the
+application. In particular, the separate multi-entity `/api/search` still
+initializes fixtures and exposes raw exception text on failure; homepage and
+other knowledge/JLPT read paths also have their own initialization behavior.
+They require separate remediation and must not be treated as read-only because
+this dictionary change passed. Separately, non-dictionary `db.transaction` users
+such as CMS still rely on the lazy pool proxy that Drizzle does not identify as
+a pool; their transaction affinity and cleanup need a dedicated fix and tests.
+Public beta remains blocked on those risks, authorization, dependency advisories,
+database TLS, D-13 abuse protection, canonical-data/provenance gates, and
+validation against the intended deployment.

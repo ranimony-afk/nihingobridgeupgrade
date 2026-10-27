@@ -25,7 +25,7 @@ import {
 
 const AUTOCOMPLETE_DEBOUNCE_MS = 150;
 
-type AutocompleteStatus = "idle" | "loading" | "success" | "error";
+type AutocompleteStatus = "idle" | "loading" | "success" | "error" | "invalid-query";
 
 interface AutocompleteResultState {
   query: string;
@@ -50,6 +50,7 @@ export interface DictionaryAutocompleteViewProps extends DictionaryAutocompleteP
   onInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   onSuggestionActive: (index: number) => void;
   onSuggestionSelect: (suggestion: DictionaryAutocompleteSuggestion) => void;
+  onRetrySuggestions: () => void;
 }
 
 interface DictionaryAutocompleteOptionProps {
@@ -119,6 +120,7 @@ interface DictionaryAutocompletePopupProps {
   activeIndex: number;
   onSuggestionActive: (index: number) => void;
   onSuggestionSelect: (suggestion: DictionaryAutocompleteSuggestion) => void;
+  onRetrySuggestions: () => void;
 }
 
 export function DictionaryAutocompletePopup({
@@ -129,10 +131,12 @@ export function DictionaryAutocompletePopup({
   activeIndex,
   onSuggestionActive,
   onSuggestionSelect,
+  onRetrySuggestions,
 }: DictionaryAutocompletePopupProps) {
   const loading = status === "loading";
   const noSuggestions = status === "success" && suggestions.length === 0;
   const failed = status === "error";
+  const invalidQuery = status === "invalid-query";
 
   return (
     <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white text-left shadow-xl animate-in fade-in duration-100">
@@ -173,8 +177,16 @@ export function DictionaryAutocompletePopup({
         </p>
       )}
       {failed && (
-        <p role="status" aria-live="polite" className="p-3.5 text-xs text-slate-600">
-          Suggestions are temporarily unavailable. Edit your search to try again.
+        <div role="status" aria-live="polite" className="p-3.5 text-xs text-slate-600">
+          <p>Suggestions are temporarily unavailable.</p>
+          <button type="button" onClick={onRetrySuggestions} className="mt-2 font-semibold text-red-700 underline focus:outline-none focus:ring-2 focus:ring-red-500">
+            Retry suggestions
+          </button>
+        </div>
+      )}
+      {invalidQuery && (
+        <p id={`${listboxId}-query-error`} role="status" aria-live="polite" className="p-3.5 text-xs text-amber-800">
+          Search must be 1,000 characters or fewer. Shorten your search and try again.
         </p>
       )}
     </div>
@@ -195,6 +207,7 @@ export function DictionaryAutocompleteView({
   onInputKeyDown,
   onSuggestionActive,
   onSuggestionSelect,
+  onRetrySuggestions,
 }: DictionaryAutocompleteViewProps) {
   const activeOptionId =
     popupOpen && activeIndex >= 0 && activeIndex < suggestions.length
@@ -223,6 +236,8 @@ export function DictionaryAutocompleteView({
             aria-expanded={popupOpen}
             aria-controls={popupOpen ? listboxId : undefined}
             aria-activedescendant={activeOptionId}
+            aria-invalid={status === "invalid-query" ? true : undefined}
+            aria-describedby={popupOpen && status === "invalid-query" ? `${listboxId}-query-error` : undefined}
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
             onFocus={onInputFocus}
@@ -249,6 +264,7 @@ export function DictionaryAutocompleteView({
           activeIndex={activeIndex}
           onSuggestionActive={onSuggestionActive}
           onSuggestionSelect={onSuggestionSelect}
+          onRetrySuggestions={onRetrySuggestions}
         />
       )}
     </div>
@@ -267,6 +283,7 @@ export function DictionaryAutocomplete({
   const requestManagerRef = useRef<DictionaryAutocompleteRequestManager | null>(null);
   const [openQuery, setOpenQuery] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const [retryVersion, setRetryVersion] = useState(0);
   const [result, setResult] = useState<AutocompleteResultState>({
     query,
     status: "idle",
@@ -311,7 +328,11 @@ export function DictionaryAutocomplete({
           suggestions: completion.outcome.suggestions,
         });
       } else if (completion.outcome.reason !== "aborted") {
-        setResult({ query: requestedQuery, status: "error", suggestions: [] });
+        setResult({
+          query: requestedQuery,
+          status: completion.outcome.reason === "query_too_long" ? "invalid-query" : "error",
+          suggestions: [],
+        });
       }
     }, AUTOCOMPLETE_DEBOUNCE_MS);
 
@@ -319,7 +340,7 @@ export function DictionaryAutocomplete({
       window.clearTimeout(timer);
       requestManagerRef.current?.cancel();
     };
-  }, [getRequestManager, popupOpen, query]);
+  }, [getRequestManager, popupOpen, query, retryVersion]);
 
   useEffect(() => {
     return () => requestManagerRef.current?.cancel();
@@ -380,6 +401,11 @@ export function DictionaryAutocomplete({
     onSearch();
   };
 
+  const handleRetrySuggestions = () => {
+    setResult({ query, status: "loading", suggestions: [] });
+    setRetryVersion((version) => version + 1);
+  };
+
   return (
     <DictionaryAutocompleteView
       query={query}
@@ -395,6 +421,7 @@ export function DictionaryAutocomplete({
       onInputKeyDown={handleInputKeyDown}
       onSuggestionActive={setActiveIndex}
       onSuggestionSelect={dismissSuggestions}
+      onRetrySuggestions={handleRetrySuggestions}
     />
   );
 }

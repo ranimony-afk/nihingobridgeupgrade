@@ -2,6 +2,8 @@ import {
   isDictionaryJlptLevel,
   type DictionarySearchState,
 } from "@/lib/dictionary/searchState";
+import { codePointLength, MAX_SEARCH_QUERY_LENGTH } from "@/lib/api/routeParams";
+import { createDictionaryRequestSignal } from "@/lib/dictionary/requestTimeout";
 
 export const DICTIONARY_SEARCH_LIMIT = 40;
 
@@ -23,7 +25,7 @@ export interface DictionarySearchSuccess {
   total: number;
 }
 
-export type DictionarySearchFailureReason = "network" | "http" | "invalid" | "aborted";
+export type DictionarySearchFailureReason = "network" | "http" | "invalid" | "aborted" | "query_too_long";
 
 export interface DictionarySearchFailure {
   ok: false;
@@ -113,11 +115,15 @@ export async function requestDictionarySearch(
   state: DictionarySearchState,
   options: RequestOptions = {}
 ): Promise<DictionarySearchOutcome> {
+  if (codePointLength(state.query.replace(/\0/g, "").trim()) > MAX_SEARCH_QUERY_LENGTH) {
+    return { ok: false, reason: "query_too_long" };
+  }
   const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const requestSignal = createDictionaryRequestSignal(options.signal);
 
   try {
     const response = await fetchImpl(buildDictionarySearchRequestUrl(state), {
-      signal: options.signal,
+      signal: requestSignal.signal,
     });
 
     if (!response.ok) return { ok: false, reason: "http" };
@@ -131,10 +137,12 @@ export async function requestDictionarySearch(
 
     return parseDictionarySearchPayload(payload) ?? { ok: false, reason: "invalid" };
   } catch (error) {
-    if (options.signal?.aborted || isAbortError(error)) {
+    if (options.signal?.aborted || (!requestSignal.didTimeOut() && isAbortError(error))) {
       return { ok: false, reason: "aborted" };
     }
     return { ok: false, reason: "network" };
+  } finally {
+    requestSignal.dispose();
   }
 }
 

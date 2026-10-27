@@ -15,6 +15,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
+// Graph enrichment uses a checked-out read transaction; route contracts keep it local.
+vi.mock("@/services/dictionary/readTransaction", () => ({
+  withDictionaryRead: async (run: (tx: object) => Promise<unknown>) => run({}),
+}));
+
 vi.mock("@/services/dictionary", () => ({
   DictionaryService: {
     searchEntries: vi.fn(),
@@ -47,6 +52,7 @@ import { GET as kanjiReadingsGET } from "@/app/api/kanji/[character]/readings/ro
 import { GET as kanjiComponentsGET } from "@/app/api/kanji/[character]/components/route";
 
 import { DictionaryService } from "@/services/dictionary";
+import { MAX_DICTIONARY_RESULTS } from "@/lib/dictionary/limits";
 import {
   kanjiLexicalGraphService,
   extractKanjiCharacters,
@@ -265,7 +271,7 @@ describe("GET /api/dictionary/search", () => {
     const body = await res.json();
 
     expect(body.data.limit).toBe(100);
-    expect(mockSearchEntries.mock.calls[0]?.[0]?.limit).toBe(MAX_PAGE_LIMIT);
+    expect(mockSearchEntries.mock.calls[0]?.[0]?.limit).toBe(MAX_DICTIONARY_RESULTS);
     expect(mockSearchEntries.mock.calls[0]?.[0]?.offset).toBe(100_000);
   });
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DictionaryService } from "@/services/dictionary";
+import { errorBody, isValidRouteIdentifier } from "@/lib/api/routeParams";
 
 export const dynamic = "force-dynamic";
 
@@ -7,38 +8,25 @@ export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  let id: string;
   try {
-    const { id } = await context.params;
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: "Missing entry identifier" },
-        { status: 400 }
-      );
-    }
+    id = (await context.params).id;
+  } catch {
+    return NextResponse.json({ success: false, error: "Invalid entry identifier" }, { status: 400 });
+  }
+  // Next route parameters are already decoded; decoding again can corrupt IDs.
+  if (!isValidRouteIdentifier(id)) {
+    return NextResponse.json({ success: false, error: "Invalid entry identifier" }, { status: 400 });
+  }
 
-    const detail = await DictionaryService.getEntryDetail(decodeURIComponent(id));
+  try {
+    const detail = await DictionaryService.getEntryDetail(id);
     if (!detail) {
-      return NextResponse.json(
-        { success: false, error: "Entry not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ success: false, error: "Entry not found" }, { status: 404 });
     }
-
-    return NextResponse.json({
-      success: true,
-      data: detail,
-    });
-  } catch (error: any) {
-    console.error("GET /api/dictionary/[id] error:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: {
-          code: "INTERNAL_ERROR",
-          message: error instanceof Error ? error.message : "Failed to load entry",
-        },
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true, data: detail });
+  } catch {
+    console.error("GET /api/dictionary/[id] failed");
+    return NextResponse.json(errorBody("INTERNAL_ERROR", "Failed to load entry"), { status: 500 });
   }
 }

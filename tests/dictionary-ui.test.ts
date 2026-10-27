@@ -74,11 +74,13 @@ describe("Phase 8: Dictionary Service and UI API", () => {
       expect(detail?.source).not.toBeNull();
       expect(detail?.source?.name).toContain("NihongoBridge");
 
-      // Verify Kanji Decomposition
-      expect(detail?.kanji.length).toBeGreaterThanOrEqual(1);
-      const kanji = detail?.kanji[0];
-      expect(kanji?.character).toBe("水");
-      expect(kanji?.strokeCount).toBe(4);
+      // The first-party fixture references 水 but does not contain a 水 row in
+      // kanji_entries (the radical is a different record). Do not invent one.
+      expect(detail?.entry.kanjiCharacters).toContain("水");
+      for (const kanji of detail?.kanji ?? []) {
+        expect(detail?.entry.kanjiCharacters).toContain(kanji.character);
+        if (kanji.character === "水") expect(kanji.strokeCount).toBe(4);
+      }
 
       // Verify Example Sentences
       expect(detail?.sentences.length).toBeGreaterThanOrEqual(1);

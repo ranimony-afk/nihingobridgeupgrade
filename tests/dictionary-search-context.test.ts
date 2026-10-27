@@ -98,6 +98,7 @@ function renderAutocomplete(returnTo: string): string {
     onInputKeyDown: vi.fn(),
     onSuggestionActive: vi.fn(),
     onSuggestionSelect: vi.fn(),
+    onRetrySuggestions: vi.fn(),
   };
   return renderToStaticMarkup(createElement(DictionaryAutocompleteView, props));
 }

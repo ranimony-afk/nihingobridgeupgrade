@@ -114,10 +114,10 @@ export async function GET(request: NextRequest) {
         hasMore: result.offset + entries.length < result.total,
       },
     });
-  } catch (error) {
-    // Server-side diagnostics only. The web search route echoes `error.message` to the client;
-    // A11 must not (A10 §A10.16 / A11 §14): a message can carry SQL text, hostnames or paths.
-    console.error("GET /api/v1/mobile/dictionary/search error:", error);
+  } catch {
+    // Keep the frozen response while avoiding SQL, connection strings, or
+    // credentials in either the response or the application log.
+    console.error("GET /api/v1/mobile/dictionary/search failed");
     return NextResponse.json(errorBody("INTERNAL_ERROR", "Dictionary search failed"), {
       status: 500,
     });

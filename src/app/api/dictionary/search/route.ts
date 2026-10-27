@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DictionaryService } from "@/services/dictionary";
+import { MAX_DICTIONARY_RESULTS } from "@/lib/dictionary/limits";
 import {
   detectSearchScript,
   sanitizeSearchQuery,
@@ -9,7 +10,7 @@ import {
   isBooleanFlagInputValid,
   MAX_SEARCH_QUERY_LENGTH,
   parseBooleanFlag,
-  parseLimit,
+  parseBoundedInt,
   parseOffset,
 } from "@/lib/api/routeParams";
 
@@ -46,11 +47,11 @@ export async function GET(request: NextRequest) {
       status: 400,
     });
   }
-  // Malformed numeric values fail closed to the documented default. Valid high
-  // values are clamped by the shared helper; the service applies its own cap.
+  // Reject malformed or excessively long numeric tokens before parsing;
+  // valid high values are clamped at both the route and service boundaries.
   if (
-    (rawLimit !== null && !/^-?\d+$/.test(rawLimit)) ||
-    (rawOffset !== null && !/^-?\d+$/.test(rawOffset))
+    (rawLimit !== null && !/^\d{1,10}$/.test(rawLimit)) ||
+    (rawOffset !== null && !/^\d{1,10}$/.test(rawOffset))
   ) {
     return NextResponse.json(errorBody("INVALID_PAGINATION", "limit and offset must be integers"), {
       status: 400,
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
       query,
       jlptLevel: level,
       isCommon: parseBooleanFlag(rawCommon),
-      limit: parseLimit(rawLimit),
+      limit: parseBoundedInt(rawLimit, { fallback: 50, min: 1, max: MAX_DICTIONARY_RESULTS }),
       offset: parseOffset(rawOffset),
     });
 
