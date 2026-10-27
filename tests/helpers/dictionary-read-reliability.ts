@@ -212,6 +212,7 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
     delete poolCache.__arenaNextJsPostgresqlPool;
     vi.resetModules();
     vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("PGOPTIONS", undefined);
     vi.stubEnv("DATABASE_URL", disposableUrl);
     vi.stubEnv("NIHONGO_DB_TARGET_CLASS", "disposable");
     vi.stubEnv("NIHONGO_DB_EXPECTED_DATABASE", "postgres");
@@ -294,6 +295,10 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
     otherUrl.port = String(Number(otherUrl.port) === 65535 ? 65534 : Number(otherUrl.port) + 1);
     vi.stubEnv("DATABASE_URL", otherUrl.toString());
     await expect(service.ensureInitialized()).rejects.toThrow("mismatched database pool");
+    const differentPassword = new URL(disposableUrl);
+    differentPassword.password = "different-disposable-password";
+    vi.stubEnv("DATABASE_URL", differentPassword.toString());
+    await expect(service.ensureInitialized()).rejects.toThrow("mismatched database pool");
     // node-postgres may override the authority using connection-string options;
     // both examples must be refused before any target could be contacted.
     vi.stubEnv("DATABASE_URL", `${disposableUrl}?host=nonloopback.invalid&port=5432`);
@@ -309,6 +314,10 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
     implicitUser.password = "";
     vi.stubEnv("DATABASE_URL", implicitUser.toString());
     await expect(service.ensureInitialized()).rejects.toThrow("plain, valid disposable");
+    const implicitPassword = new URL(disposableUrl);
+    implicitPassword.password = "";
+    vi.stubEnv("DATABASE_URL", implicitPassword.toString());
+    await expect(service.ensureInitialized()).rejects.toThrow("plain, valid disposable");
     vi.stubEnv("DATABASE_URL", disposableUrl);
     const cachedUrl = backingPool.options.connectionString;
     try {
@@ -317,9 +326,123 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
     } finally {
       backingPool.options.connectionString = cachedUrl;
     }
+
+    // Explicit URL fields defeat inherited PGHOST/PGPORT/PGDATABASE/PGUSER/
+    // PGPASSWORD; PGOPTIONS is instead passed to PostgreSQL as startup SQL.
+    const priorEnv = Object.fromEntries(["PGHOST", "PGPORT", "PGDATABASE", "PGUSER", "PGPASSWORD"].map((key) => [key, process.env[key]]));
+    try {
+      vi.stubEnv("PGHOST", "unrelated.invalid");
+      vi.stubEnv("PGPORT", "65432");
+      vi.stubEnv("PGDATABASE", "other_database");
+      vi.stubEnv("PGUSER", "other_user");
+      vi.stubEnv("PGPASSWORD", "other-disposable-password");
+      const { Client } = await import("pg");
+      const configured = new Client({ connectionString: disposableUrl }); // no socket opened
+      expect(configured.host).toBe("127.0.0.1");
+      expect(configured.port).toBe(Number(new URL(disposableUrl).port));
+      expect(configured.database).toBe("postgres");
+      expect(configured.user).toBe("postgres");
+      expect(configured.password).toBe("disposable");
+      vi.stubEnv("PGOPTIONS", "-c search_path=other_schema");
+      const noConnect = vi.spyOn(backingPool, "connect");
+      try {
+        await expect(service.ensureInitialized()).rejects.toThrow("PGOPTIONS to be unset");
+        expect(noConnect).not.toHaveBeenCalled();
+      } finally {
+        noConnect.mockRestore();
+      }
+    } finally {
+      vi.stubEnv("PGOPTIONS", undefined);
+      for (const [key, value] of Object.entries(priorEnv)) vi.stubEnv(key, value);
+    }
+
+    const poolOptions = backingPool.options.options;
+    try {
+      backingPool.options.options = "-c search_path=other_schema";
+      await expect(service.ensureInitialized()).rejects.toThrow("database startup options");
+    } finally {
+      backingPool.options.options = poolOptions;
+    }
+    const cachedClient = await backingPool.connect();
+    const cachedParameters = (cachedClient as typeof cachedClient & {
+      connectionParameters: { options?: string };
+    }).connectionParameters;
+    cachedParameters.options = "-c search_path=other_schema";
+    cachedClient.release();
+    // The environment is now clear, but the cached client retains its old options.
+    await expect(service.ensureInitialized()).rejects.toThrow("mismatched or configured database client");
+    const mismatchedClient = await backingPool.connect();
+    const mismatchedParameters = (mismatchedClient as typeof mismatchedClient & {
+      connectionParameters: { database?: string };
+    }).connectionParameters;
+    mismatchedParameters.database = "other_database";
+    mismatchedClient.release();
+    await expect(service.ensureInitialized()).rejects.toThrow("mismatched or configured database client");
+    const mismatchedCredentialClient = await backingPool.connect();
+    const mismatchedCredential = (mismatchedCredentialClient as typeof mismatchedCredentialClient & {
+      connectionParameters: { password?: string };
+    }).connectionParameters;
+    mismatchedCredential.password = "other-disposable-password";
+    mismatchedCredentialClient.release();
+    await expect(service.ensureInitialized()).rejects.toThrow("mismatched or configured database client");
+
     vi.stubEnv("NODE_ENV", "production");
     await expect(service.ensureInitialized()).rejects.toThrow("unavailable in production");
     vi.stubEnv("NODE_ENV", "test");
+    expect(await snapshotDatabase(database)).toEqual(before);
+  }, 120_000);
+
+  it("refuses a mismatched server identity and rolls back failed fixture setup", async () => {
+    const before = await snapshotDatabase(database);
+    const acquire = backingPool.connect.bind(backingPool) as () => Promise<PoolClient>;
+    for (const field of ["database", "role"] as const) {
+      const statements: string[] = [];
+      const releases: (Error | boolean | undefined)[] = [];
+      const connectSpy = vi.spyOn(backingPool, "connect").mockImplementation((async () => {
+        const client = await acquire();
+        const query = client.query;
+        const release = client.release;
+        client.query = ((...args: unknown[]) => {
+          const first = args[0] as string | { text?: string };
+          const text = typeof first === "string" ? first : first.text ?? "";
+          statements.push(text);
+          if (/^SELECT pg_catalog\.current_database\(\)/i.test(text)) {
+            return Promise.resolve({ rows: [{
+              database: field === "database" ? "other_database" : "postgres",
+              current_user: "postgres",
+              session_user: field === "role" ? "other_user" : "postgres",
+            }] });
+          }
+          return Reflect.apply(query, client, args);
+        }) as typeof client.query;
+        client.release = (error) => {
+          releases.push(error);
+          client.query = query;
+          client.release = release;
+          release.call(client, error);
+        };
+        return client;
+      }) as unknown as typeof backingPool.connect);
+      try {
+        await expect(service.ensureInitialized()).rejects.toThrow("mismatched database identity");
+        expect(statements.some((text) => /^rollback/i.test(text))).toBe(true);
+        expect(statements.some((text) => /^insert/i.test(text))).toBe(false);
+        expect(releases).toEqual([true]);
+      } finally {
+        connectSpy.mockRestore();
+      }
+    }
+
+    const { KnowledgeService } = await import("@/services/knowledge/knowledgeService");
+    const injectedFailure = vi.spyOn(KnowledgeService, "ensureSeeded")
+      .mockRejectedValue(new Error("synthetic fixture setup failure"));
+    try {
+      // Corpus fixture inserts happen first, then the synthetic failure must
+      // roll every one of them back on the same checked-out transaction.
+      await expect(service.ensureInitialized()).rejects.toThrow("synthetic fixture setup failure");
+    } finally {
+      injectedFailure.mockRestore();
+    }
     expect(await snapshotDatabase(database)).toEqual(before);
   }, 120_000);
 
@@ -374,7 +497,25 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
   }, 120_000);
 
   it("preserves content, ranking, attribution, navigation, bounds and every seeded row across GETs", async () => {
-    await service.ensureInitialized();
+    // A previously used pool client can retain session state even after the
+    // inherited environment has been cleared. Setup must use only one checked-
+    // out client and force the intended schema locally inside its transaction.
+    const staleClient = await backingPool.connect();
+    await staleClient.query("SET search_path TO pg_catalog");
+    staleClient.release();
+    const setupConnect = vi.spyOn(backingPool, "connect");
+    try {
+      await service.ensureInitialized();
+      expect(setupConnect).toHaveBeenCalledTimes(1);
+    } finally {
+      setupConnect.mockRestore();
+      // The PGlite wire shim shares one backend with the native snapshot client.
+      await database.exec("SET search_path TO public");
+    }
+    const seededCount = await database.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM public.dictionary_entries"
+    );
+    expect(seededCount.rows[0].count).toBeGreaterThan(0);
     // Synthetic first-party editorial fixtures, written only during explicit
     // setup. A draft must not become learner-visible; a published override
     // must still be read within the same bounded transaction.
@@ -457,10 +598,26 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
       expect((await detailGET(request("/api/dictionary/de-mizu"), params("de-mizu"))).status).toBe(200);
       expect(await detailPage(pageParams("de-mizu"))).toBeTruthy();
       expect((await enrichedGET(request("/api/dictionary/entry/de-mizu"), params("de-mizu"))).status).toBe(200);
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        const failedStore = {
+          async findPublishedDictionaryOverrides() {
+            throw new Error("synthetic CMS failure SECRET_SQL");
+          },
+        };
+        const canonical = await service.searchEntries({ query: "taberu" }, failedStore);
+        expect(canonical.entries[0].senses[0].glosses).toContain("to eat");
+        expect(canonical.entries[0].senses[0].glosses).not.toContain("to eat (editorial test fixture)");
+        const canonicalDetail = await service.getEntryDetail("de-taberu", failedStore);
+        expect(canonicalDetail?.entry.senses[0].glosses).toContain("to eat");
+        expect(JSON.stringify(warning.mock.calls)).not.toContain("SECRET_SQL");
+      } finally {
+        warning.mockRestore();
+      }
     } finally {
       traceSpy.mockRestore();
     }
-    expect(traces).toHaveLength(8); // enrichment has a detail transaction and a graph transaction
+    expect(traces).toHaveLength(10); // graph enrichment uses a second transaction; two fail-safe CMS cases follow
     for (const trace of traces) {
       expect(trace.statements[0]).toMatch(/^begin read only/i);
       expect(trace.statements[1]).toMatch(/^set local statement_timeout/i);
@@ -469,7 +626,11 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
       expect(trace.settings).toEqual({ readOnly: "on", timeout: "10s" });
       expect(trace.releases).toEqual([undefined]);
     }
-    expect(traces.at(-1)!.statements.filter((text) => /^select/i.test(text))).toHaveLength(2);
+    expect(traces[7].statements.filter((text) => /^select/i.test(text))).toHaveLength(2);
+    for (const trace of traces.slice(8)) {
+      expect(trace.statements.some((text) => /^savepoint/i.test(text))).toBe(true);
+      expect(trace.statements.some((text) => /^rollback to savepoint/i.test(text))).toBe(true);
+    }
 
     for (const query of ["水", "みず", "mizu", "water"]) {
       const response = await webGET(request(`/api/dictionary?q=${encodeURIComponent(query)}`));

@@ -245,13 +245,16 @@ do not point schema or fixture commands at a production, shared, tunneled, or
 ambiguous database. Set `DATABASE_URL` to that database's exact loopback URL,
 `NIHONGO_DB_TARGET_CLASS=disposable`, and `NIHONGO_DB_EXPECTED_DATABASE` to
 the exact database name, then run `npm run dictionary:seed-fixtures` in a
-non-production environment. The URL must include an explicit user and port,
-a single database path, and no query options or fragment: driver options or
-implicit environment defaults could otherwise override the classified target.
-The command checks both the declared target and the actual cached pool before
-writing. It loads only the in-repository
-first-party dictionary and knowledge fixtures; it does not create a schema,
-materialize Tatoeba, or authorize corpus ingestion.
+non-production environment. The URL must include explicit disposable credentials
+and port, a single database path, and no query options or fragment; `PGOPTIONS`
+must be unset. A trust-authenticated local server may use a dummy password. The
+command verifies the declared target, cached pool and checked-out
+client, rejects inherited startup options, and checks the database and role.
+It uses a single transaction with the `public` search path for fixture writes,
+then discards that client. Loopback and these checks cannot detect a tunnel to a
+non-disposable database: the operator must verify the target. It loads only the
+in-repository first-party dictionary and knowledge fixtures; it does not create
+a schema, materialize Tatoeba, or authorize corpus ingestion.
 
 ### Verification and remaining scope
 
