@@ -14,7 +14,9 @@ import type {
   PublishedDictionaryOverride,
 } from "./types";
 
-type Executor = typeof db;
+// Both the shared database and a read-only dictionary transaction can perform
+// this SELECT-only projection.
+type Executor = Pick<typeof db, "select">;
 
 export function createDrizzlePublicationStore(
   executor: Executor = db

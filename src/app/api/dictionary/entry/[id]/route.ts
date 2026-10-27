@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DictionaryService } from "@/services/dictionary";
+import { withDictionaryRead } from "@/services/dictionary/readTransaction";
+import { MAX_DICTIONARY_RELATED_KANJI } from "@/lib/dictionary/limits";
 import {
   kanjiLexicalGraphService,
   extractKanjiCharacters,
 } from "@/services/knowledge/kanjiLexicalGraphService";
-import { errorBody, isValidRouteIdentifier } from "@/lib/api/routeParams";
+import { errorBody, isValidRouteIdentifier, MAX_SEARCH_QUERY_LENGTH } from "@/lib/api/routeParams";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +38,14 @@ export async function GET(
     let kanjiEdges: unknown[] = [];
     let keigo: unknown[] = [];
     try {
-      [kanjiEdges, keigo] = await Promise.all([
-        kanjiLexicalGraphService.getVocabularyKanji(detail.entry.id),
-        kanjiLexicalGraphService.getKeigoRelations(detail.entry.id),
-      ]);
+      [kanjiEdges, keigo] = await withDictionaryRead(async (tx) => {
+        const edges = await kanjiLexicalGraphService.getVocabularyKanji(detail.entry.id, {
+          db: tx,
+          maxEdges: MAX_DICTIONARY_RELATED_KANJI,
+        });
+        const relations = await kanjiLexicalGraphService.getKeigoRelations(detail.entry.id, tx);
+        return [edges, relations];
+      });
     } catch {
       // Graph enrichment is optional; retain the canonical entry response.
       console.warn("Dictionary entry graph enrichment unavailable");
@@ -51,7 +57,8 @@ export async function GET(
         ...detail,
         kanjiEdges,
         keigo,
-        headwordKanji: extractKanjiCharacters(detail.entry.headword),
+        headwordKanji: extractKanjiCharacters(detail.entry.headword.slice(0, MAX_SEARCH_QUERY_LENGTH))
+          .slice(0, MAX_DICTIONARY_RELATED_KANJI),
       },
     });
   } catch {

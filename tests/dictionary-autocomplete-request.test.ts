@@ -66,7 +66,7 @@ describe("dictionary autocomplete request lifecycle", () => {
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/dictionary?q=%E6%B0%B4%20%E6%9B%9C%E6%97%A5&autocomplete=true&limit=6",
-      expect.objectContaining({ signal: undefined })
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     );
     expect(outcome).toEqual({ ok: true, suggestions: suggestions.slice(0, 6) });
   });

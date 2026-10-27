@@ -36,20 +36,22 @@ export interface ProvenanceRecord {
   domain: string;
 }
 
+type SeedExecutor = Pick<typeof db, "select" | "insert">;
+
 export class KnowledgeCorpusService {
   /**
    * Register provenance rows for every knowledge domain, including kanji,
    * which is seeded by KnowledgeService. Runs independently of record
    * seeding so an already-populated database still resolves sources.
    */
-  static async ensureSources(): Promise<void> {
-    const [row] = await db
+  static async ensureSources(executor: SeedExecutor = db): Promise<void> {
+    const [row] = await executor
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(sourceTable);
     if ((row?.count ?? 0) >= KNOWLEDGE_SOURCES.length) return;
 
     for (const source of KNOWLEDGE_SOURCES) {
-      await db
+      await executor
         .insert(sourceTable)
         .values({
           id: source.id,
@@ -75,30 +77,30 @@ export class KnowledgeCorpusService {
   }
 
   /** Idempotently load the first-party corpus. Safe to call on every request. */
-  static async ensureSeeded(): Promise<void> {
-    await this.ensureSources();
+  static async ensureSeeded(executor: SeedExecutor = db): Promise<void> {
+    await this.ensureSources(executor);
 
-    const [row] = await db
+    const [row] = await executor
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(dictionaryTable);
     if ((row?.count ?? 0) > 0) return;
 
     for (const entry of DICTIONARY_ENTRIES) {
-      await db
+      await executor
         .insert(dictionaryTable)
         .values({ ...entry, sourceRef: DICTIONARY_SOURCE_REF })
         .onConflictDoNothing();
     }
 
     for (const pattern of GRAMMAR_PATTERNS) {
-      await db
+      await executor
         .insert(grammarTable)
         .values({ ...pattern, sourceRef: GRAMMAR_SOURCE_REF })
         .onConflictDoNothing();
     }
 
     for (const sentence of EXAMPLE_SENTENCES) {
-      await db
+      await executor
         .insert(sentenceTable)
         .values({ ...sentence, sourceRef: SENTENCE_SOURCE_REF })
         .onConflictDoNothing();

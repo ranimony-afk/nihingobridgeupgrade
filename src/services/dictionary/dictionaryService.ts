@@ -1,4 +1,3 @@
-import { db } from "@/db";
 import {
   dictionaryEntries,
   kanjiEntries,
@@ -7,14 +6,24 @@ import {
   knowledgeSources,
 } from "@/db/schema";
 import { eq, or, ilike, and, sql, inArray, type SQL } from "drizzle-orm";
-import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
-import { KnowledgeService } from "@/services/knowledge/knowledgeService";
-import { escapeLikePattern } from "@/services/search/matcher";
 import {
-  defaultPublicationStore,
+  codePointLength,
+  isValidRouteIdentifier,
+  MAX_OFFSET,
+  MAX_SEARCH_QUERY_LENGTH,
+} from "@/lib/api/routeParams";
+import {
+  MAX_DICTIONARY_AUTOCOMPLETE_RESULTS,
+  MAX_DICTIONARY_RELATED_KANJI,
+  MAX_DICTIONARY_RESULTS,
+} from "@/lib/dictionary/limits";
+import { escapeLikePattern, sanitizeSearchQuery } from "@/services/search/matcher";
+import {
+  createDrizzlePublicationStore,
   resolveLearnerEntries,
 } from "@/services/publication";
 import type { PublicationStore } from "@/services/publication";
+import { withDictionaryRead } from "./readTransaction";
 
 export interface DictionarySearchOptions {
   query?: string;
@@ -37,31 +46,58 @@ export interface DictionaryDetailedEntry {
   relatedGrammar: (typeof grammarPatterns.$inferSelect)[];
 }
 
+function boundedInteger(value: number | undefined, fallback: number, min: number, max: number) {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? Math.min(Math.max(value, min), max)
+    : fallback;
+}
+
+function boundedQuery(value: string | undefined): string {
+  const query = sanitizeSearchQuery(value ?? "");
+  if (codePointLength(query) > MAX_SEARCH_QUERY_LENGTH) {
+    throw new RangeError("Dictionary query exceeds the supported length");
+  }
+  return query;
+}
+
+/** Preserve the existing search ranking and use it for deterministic suggestions. */
+function dictionaryOrder(query: string): SQL {
+  return query
+    ? sql`CASE
+        WHEN ${dictionaryEntries.headword} = ${query} AND ${dictionaryEntries.jlptLevel} != 'NONE' THEN 1
+        WHEN ${dictionaryEntries.headword} = ${query} THEN 2
+        WHEN ${dictionaryEntries.reading} = ${query} AND ${dictionaryEntries.jlptLevel} != 'NONE' THEN 3
+        WHEN ${dictionaryEntries.reading} = ${query} THEN 4
+        WHEN lower(${dictionaryEntries.romaji}) = lower(${query}) THEN 5
+        WHEN ${dictionaryEntries.senses}::text ILIKE ${'%"' + escapeLikePattern(query) + '"%'} AND ${dictionaryEntries.isCommon} = true THEN 6
+        WHEN ${dictionaryEntries.senses}::text ILIKE ${'%"' + escapeLikePattern(query) + '"%'} THEN 7
+        ELSE 8
+      END, ${dictionaryEntries.frequencyRank} ASC NULLS LAST, ${dictionaryEntries.isCommon} DESC, ${dictionaryEntries.id} ASC`
+    : sql`${dictionaryEntries.id} ASC`;
+}
+
 export class DictionaryService {
+  /**
+   * Backward-compatible, explicit fixture setup. It is never called by reads
+   * and refuses targets that have not been classified as disposable.
+   */
   static async ensureInitialized(): Promise<void> {
-    await Promise.all([
-      KnowledgeCorpusService.ensureSeeded(),
-      KnowledgeService.ensureSeeded(),
-    ]);
+    const { seedDictionaryFixturesForDisposableDatabase } = await import("./fixtureSetup");
+    await seedDictionaryFixturesForDisposableDatabase();
   }
 
-  /**
-   * List or search dictionary entries with multi-script queries, JLPT filters, and common-word filters.
-   */
+  /** List/search canonical entries; no setup or seeding occurs on a read. */
   static async searchEntries(
     options: DictionarySearchOptions = {},
-    publicationStore: PublicationStore = defaultPublicationStore
+    publicationStoreOverride?: PublicationStore
   ) {
-    await this.ensureInitialized();
-
-    const query = options.query?.trim() || "";
+    const query = boundedQuery(options.query);
     const jlptLevel = options.jlptLevel?.trim() || undefined;
     const isCommon = options.isCommon;
-    const limit = Math.min(Math.max(options.limit ?? 25, 1), 100);
-    const offset = Math.max(options.offset ?? 0, 0);
+    const limit = boundedInteger(options.limit, 25, 1, MAX_DICTIONARY_RESULTS);
+    const offset = boundedInteger(options.offset, 0, 0, MAX_OFFSET);
 
     const conditions: SQL[] = [];
-
     if (query) {
       const pattern = `%${escapeLikePattern(query)}%`;
       conditions.push(
@@ -73,214 +109,155 @@ export class DictionaryService {
         ) as SQL
       );
     }
-
-    if (jlptLevel) {
-      conditions.push(eq(dictionaryEntries.jlptLevel, jlptLevel));
-    }
-
-    if (typeof isCommon === "boolean") {
-      conditions.push(eq(dictionaryEntries.isCommon, isCommon));
-    }
-
+    if (jlptLevel) conditions.push(eq(dictionaryEntries.jlptLevel, jlptLevel));
+    if (typeof isCommon === "boolean") conditions.push(eq(dictionaryEntries.isCommon, isCommon));
     const whereClause = conditions.length ? and(...conditions) : undefined;
 
-    const [totalRow] = await db
-      .select({ count: sql<number>`cast(count(*) as int)` })
-      .from(dictionaryEntries)
-      .where(whereClause);
+    return withDictionaryRead(async (tx) => {
+      const [totalRow] = await tx
+        .select({ count: sql<number>`cast(count(*) as int)` })
+        .from(dictionaryEntries)
+        .where(whereClause);
+      const rows = await tx
+        .select()
+        .from(dictionaryEntries)
+        .where(whereClause)
+        .orderBy(dictionaryOrder(query))
+        .limit(limit)
+        .offset(offset);
 
-    const orderByClause = query
-      ? sql`CASE
-          WHEN ${dictionaryEntries.headword} = ${query} AND ${dictionaryEntries.jlptLevel} != 'NONE' THEN 1
-          WHEN ${dictionaryEntries.headword} = ${query} THEN 2
-          WHEN ${dictionaryEntries.reading} = ${query} AND ${dictionaryEntries.jlptLevel} != 'NONE' THEN 3
-          WHEN ${dictionaryEntries.reading} = ${query} THEN 4
-          WHEN lower(${dictionaryEntries.romaji}) = lower(${query}) THEN 5
-          WHEN ${dictionaryEntries.senses}::text ILIKE ${'%"' + escapeLikePattern(query) + '"%'} AND ${dictionaryEntries.isCommon} = true THEN 6
-          WHEN ${dictionaryEntries.senses}::text ILIKE ${'%"' + escapeLikePattern(query) + '"%'} THEN 7
-          ELSE 8
-        END, ${dictionaryEntries.frequencyRank} ASC NULLS LAST, ${dictionaryEntries.isCommon} DESC, ${dictionaryEntries.id} ASC`
-      : sql`${dictionaryEntries.id} ASC`;
+      // A savepoint preserves canonical fallback even when the optional CMS
+      // query fails: PostgreSQL otherwise leaves the outer transaction aborted.
+      let entries = rows;
+      if (rows.length) {
+        try {
+          entries = await tx.transaction(async (overlayTx) => {
+            const publicationStore = publicationStoreOverride ?? createDrizzlePublicationStore(overlayTx);
+            return (await resolveLearnerEntries(publicationStore, rows)).entries;
+          });
+        } catch {
+          console.warn("Dictionary publication overlay unavailable; serving canonical.");
+        }
+      }
 
-    const rows = await db
-      .select()
-      .from(dictionaryEntries)
-      .where(whereClause)
-      .orderBy(orderByClause)
-      .limit(limit)
-      .offset(offset);
+      // Preserve the existing exact-match ordering after publication overlays.
+      if (query) {
+        const qLower = query.toLowerCase();
+        entries.sort((a, b) => {
+          const aExact = a.headword === query || a.reading === query || a.romaji?.toLowerCase() === qLower;
+          const bExact = b.headword === query || b.reading === query || b.romaji?.toLowerCase() === qLower;
+          if (aExact && !bExact) return -1;
+          if (!aExact && bExact) return 1;
+          return 0;
+        });
+      }
 
-    // 13.5F: published CMS overrides replace the displayed representation
-    // (identity, order basis, and pagination unchanged). Overlay failure
-    // degrades to canonical — it must never break learner reads.
-    let entries = rows;
-    try {
-      entries = (await resolveLearnerEntries(publicationStore, rows)).entries;
-    } catch (error) {
-      console.warn(
-        "Dictionary publication overlay unavailable; serving canonical.",
-        error
-      );
-    }
-
-    // Sort exact matches on headword, reading, or romaji first
-    if (query) {
-      const qLower = query.toLowerCase();
-      entries.sort((a, b) => {
-        const aExact =
-          a.headword === query ||
-          a.reading === query ||
-          a.romaji?.toLowerCase() === qLower;
-        const bExact =
-          b.headword === query ||
-          b.reading === query ||
-          b.romaji?.toLowerCase() === qLower;
-        if (aExact && !bExact) return -1;
-        if (!aExact && bExact) return 1;
-        return 0;
-      });
-    }
-
-    return {
-      entries,
-      total: totalRow?.count ?? 0,
-      limit,
-      offset,
-    };
-  }
-
-  /**
-   * Lightweight autocomplete helper for header and quick-search input.
-   */
-  static async autocomplete(query: string, limit = 8) {
-    if (!query.trim()) return [];
-    await this.ensureInitialized();
-
-    const pattern = `%${escapeLikePattern(query.trim())}%`;
-    const rows = await db
-      .select({
-        id: dictionaryEntries.id,
-        headword: dictionaryEntries.headword,
-        reading: dictionaryEntries.reading,
-        romaji: dictionaryEntries.romaji,
-        jlptLevel: dictionaryEntries.jlptLevel,
-        senses: dictionaryEntries.senses,
-        isCommon: dictionaryEntries.isCommon,
-      })
-      .from(dictionaryEntries)
-      .where(
-        or(
-          ilike(dictionaryEntries.headword, pattern),
-          ilike(dictionaryEntries.reading, pattern),
-          ilike(dictionaryEntries.romaji, pattern),
-          sql`${dictionaryEntries.senses}::text ILIKE ${pattern}`
-        )
-      )
-      .limit(limit);
-
-    return rows.map((r) => {
-      const senses = Array.isArray(r.senses) ? r.senses : [];
-      const primaryGloss = senses[0]?.glosses?.[0] || "";
-      return {
-        id: r.id,
-        headword: r.headword,
-        reading: r.reading,
-        romaji: r.romaji,
-        jlptLevel: r.jlptLevel,
-        isCommon: r.isCommon,
-        gloss: primaryGloss,
-      };
+      return { entries, total: totalRow?.count ?? 0, limit, offset };
     });
   }
 
-  /**
-   * Full detailed view for a single dictionary entry including related kanji, sentences, grammar, and source provenance.
-   */
+  /** Bounded, deterministic autocomplete over the same canonical dictionary. */
+  static async autocomplete(rawQuery: string, requestedLimit = 8) {
+    const query = boundedQuery(rawQuery);
+    if (!query) return [];
+    const limit = boundedInteger(requestedLimit, 8, 1, MAX_DICTIONARY_AUTOCOMPLETE_RESULTS);
+    const pattern = `%${escapeLikePattern(query)}%`;
+
+    return withDictionaryRead(async (tx) => {
+      const rows = await tx
+        .select({
+          id: dictionaryEntries.id,
+          headword: dictionaryEntries.headword,
+          reading: dictionaryEntries.reading,
+          romaji: dictionaryEntries.romaji,
+          jlptLevel: dictionaryEntries.jlptLevel,
+          senses: dictionaryEntries.senses,
+          isCommon: dictionaryEntries.isCommon,
+        })
+        .from(dictionaryEntries)
+        .where(
+          or(
+            ilike(dictionaryEntries.headword, pattern),
+            ilike(dictionaryEntries.reading, pattern),
+            ilike(dictionaryEntries.romaji, pattern),
+            sql`${dictionaryEntries.senses}::text ILIKE ${pattern}`
+          )
+        )
+        .orderBy(dictionaryOrder(query))
+        .limit(limit);
+
+      return rows.map((row) => ({
+        id: row.id,
+        headword: row.headword,
+        reading: row.reading,
+        romaji: row.romaji,
+        jlptLevel: row.jlptLevel,
+        isCommon: row.isCommon,
+        gloss: Array.isArray(row.senses) ? row.senses[0]?.glosses?.[0] || "" : "",
+      }));
+    });
+  }
+
+  /** Canonical entry, source attribution, and bounded related records. */
   static async getEntryDetail(
     idOrHeadword: string,
-    publicationStore: PublicationStore = defaultPublicationStore
+    publicationStoreOverride?: PublicationStore
   ): Promise<DictionaryDetailedEntry | null> {
-    await this.ensureInitialized();
+    if (!isValidRouteIdentifier(idOrHeadword)) return null;
 
-    const [entry] = await db
-      .select()
-      .from(dictionaryEntries)
-      .where(
-        or(
-          eq(dictionaryEntries.id, idOrHeadword),
-          eq(dictionaryEntries.headword, idOrHeadword)
-        )
-      )
-      .limit(1);
-
-    if (!entry) return null;
-
-    // 13.5F: resolve the learner-visible representation once; every
-    // related lookup below follows the same representation.
-    let resolvedEntry = entry;
-    try {
-      const resolved = await resolveLearnerEntries(publicationStore, [entry]);
-      resolvedEntry = resolved.entries[0] ?? entry;
-    } catch (error) {
-      console.warn(
-        "Dictionary publication overlay unavailable; serving canonical.",
-        error
-      );
-    }
-
-    // 1. Fetch Source Provenance
-    let source: typeof knowledgeSources.$inferSelect | null = null;
-    if (resolvedEntry.sourceRef) {
-      const [srcRow] = await db
+    return withDictionaryRead(async (tx) => {
+      const [entry] = await tx
         .select()
-        .from(knowledgeSources)
-        .where(eq(knowledgeSources.id, resolvedEntry.sourceRef))
+        .from(dictionaryEntries)
+        .where(or(eq(dictionaryEntries.id, idOrHeadword), eq(dictionaryEntries.headword, idOrHeadword)))
         .limit(1);
-      source = srcRow ?? null;
-    }
+      if (!entry) return null;
 
-    // 2. Fetch Related Kanji
-    const kanjiChars = resolvedEntry.kanjiCharacters || [];
-    let relatedKanji: (typeof kanjiEntries.$inferSelect)[] = [];
-    if (kanjiChars.length > 0) {
-      relatedKanji = await db
+      let resolvedEntry = entry;
+      try {
+        resolvedEntry = await tx.transaction(async (overlayTx) => {
+          const publicationStore = publicationStoreOverride ?? createDrizzlePublicationStore(overlayTx);
+          const resolved = await resolveLearnerEntries(publicationStore, [entry]);
+          return resolved.entries[0] ?? entry;
+        });
+      } catch {
+        console.warn("Dictionary publication overlay unavailable; serving canonical.");
+      }
+
+      let source: typeof knowledgeSources.$inferSelect | null = null;
+      if (resolvedEntry.sourceRef) {
+        const [sourceRow] = await tx
+          .select()
+          .from(knowledgeSources)
+          .where(eq(knowledgeSources.id, resolvedEntry.sourceRef))
+          .limit(1);
+        source = sourceRow ?? null;
+      }
+
+      const kanjiChars = Array.isArray(resolvedEntry.kanjiCharacters)
+        ? [...new Set(resolvedEntry.kanjiCharacters)].slice(0, MAX_DICTIONARY_RELATED_KANJI)
+        : [];
+      const kanji = kanjiChars.length
+        ? await tx.select().from(kanjiEntries).where(inArray(kanjiEntries.character, kanjiChars)).limit(MAX_DICTIONARY_RELATED_KANJI)
+        : [];
+
+      const linkedSentence = sql`${exampleSentences.dictionaryEntryIds}::jsonb ? ${resolvedEntry.id}`;
+      const headword = resolvedEntry.headword;
+      const sentenceCondition = headword && codePointLength(headword) <= MAX_SEARCH_QUERY_LENGTH
+        ? or(linkedSentence, ilike(exampleSentences.japanese, `%${escapeLikePattern(headword)}%`))
+        : linkedSentence;
+      const sentences = await tx
         .select()
-        .from(kanjiEntries)
-        .where(inArray(kanjiEntries.character, kanjiChars));
-    }
+        .from(exampleSentences)
+        .where(sentenceCondition)
+        .limit(6);
 
-    // 3. Fetch Linked Sentences
-    const sentences = await db
-      .select()
-      .from(exampleSentences)
-      .where(
-        or(
-          sql`${exampleSentences.dictionaryEntryIds}::jsonb ? ${resolvedEntry.id}`,
-          ilike(exampleSentences.japanese, `%${resolvedEntry.headword}%`)
-        )
-      )
-      .limit(6);
+      const grammarIds = sentences.map((sentence) => sentence.grammarId).filter((id): id is string => Boolean(id));
+      const relatedGrammar = grammarIds.length
+        ? await tx.select().from(grammarPatterns).where(inArray(grammarPatterns.id, grammarIds)).limit(4)
+        : [];
 
-    // 4. Fetch Related Grammar Points (from sentence grammar links or tags)
-    const grammarIds = sentences
-      .map((s) => s.grammarId)
-      .filter((id): id is string => Boolean(id));
-
-    let relatedGrammar: (typeof grammarPatterns.$inferSelect)[] = [];
-    if (grammarIds.length > 0) {
-      relatedGrammar = await db
-        .select()
-        .from(grammarPatterns)
-        .where(inArray(grammarPatterns.id, grammarIds))
-        .limit(4);
-    }
-
-    return {
-      entry: resolvedEntry,
-      source,
-      kanji: relatedKanji,
-      sentences,
-      relatedGrammar,
-    };
+      return { entry: resolvedEntry, source, kanji, sentences, relatedGrammar };
+    });
   }
 }

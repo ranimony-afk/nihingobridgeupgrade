@@ -1,3 +1,6 @@
+// CI explicitly selects this file; register the isolated dictionary GET
+// reliability suite here until the workflow adopts automatic test discovery.
+import "./helpers/dictionary-read-reliability";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";

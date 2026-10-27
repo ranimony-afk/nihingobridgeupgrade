@@ -122,12 +122,14 @@ function toKanaEntry(row: typeof kanaTable.$inferSelect): KanaEntry {
   };
 }
 
+type SeedExecutor = Pick<typeof db, "select" | "insert">;
+
 export class KnowledgeService {
   /* ============================================================
    * SEEDING
    * ============================================================ */
-  static async ensureSeeded(): Promise<void> {
-    const [row] = await db
+  static async ensureSeeded(executor: SeedExecutor = db): Promise<void> {
+    const [row] = await executor
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(kanaTable);
 
@@ -136,13 +138,13 @@ export class KnowledgeService {
     /* ---- Kana ---- */
     const kana = buildKanaDataset();
     for (const k of kana) {
-      await db.insert(kanaTable).values(k).onConflictDoNothing();
+      await executor.insert(kanaTable).values(k).onConflictDoNothing();
     }
 
     /* ---- Elements (radicals + primitives) ---- */
     const allElements = [...ELEMENTS, ...EXTRA_ELEMENTS];
     for (const e of allElements) {
-      await db
+      await executor
         .insert(radicalsTable)
         .values({
           id: e.id,
@@ -163,7 +165,7 @@ export class KnowledgeService {
 
     /* ---- Kanji headwords ---- */
     for (const k of KANJI) {
-      await db
+      await executor
         .insert(kanjiTable)
         .values({
           id: k.id,
@@ -184,7 +186,7 @@ export class KnowledgeService {
 
     /* ---- Composition edges ---- */
     for (const c of COMPOSITION) {
-      await db
+      await executor
         .insert(compositionTable)
         .values({
           id: `comp-${c.kanjiId}-${c.elementId}-${c.orderIndex}`,

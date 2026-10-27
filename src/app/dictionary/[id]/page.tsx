@@ -1,8 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { DictionaryRelatedKanji } from "@/components/dictionary/DictionaryRelatedKanji";
+import { DictionaryEntryUnavailable } from "@/components/dictionary/DictionaryEntryUnavailable";
 import { DictionaryService } from "@/services/dictionary";
-import { resolveDictionaryReturnHref } from "@/lib/dictionary/searchState";
+import { buildDictionaryEntryHref, isDictionaryJlptLevel, resolveDictionaryReturnHref } from "@/lib/dictionary/searchState";
 import {
   ArrowLeft,
   BookOpen,
@@ -23,7 +24,14 @@ interface Props {
 export default async function DictionaryEntryPage({ params, searchParams }: Props) {
   const [{ id }, detailSearchParams] = await Promise.all([params, searchParams]);
   const backHref = resolveDictionaryReturnHref(detailSearchParams.returnTo);
-  const detail = await DictionaryService.getEntryDetail(id);
+  let detail;
+  try {
+    detail = await DictionaryService.getEntryDetail(id);
+  } catch {
+    // Render an honest recovery state even without client-side hydration.
+    console.error("Dictionary entry page failed");
+    return <DictionaryEntryUnavailable retryHref={buildDictionaryEntryHref(id, backHref)} backHref={backHref} />;
+  }
 
   if (!detail) {
     notFound();
@@ -91,9 +99,11 @@ export default async function DictionaryEntryPage({ params, searchParams }: Prop
 
             {/* Badges */}
             <div className="flex sm:flex-col items-center sm:items-end gap-2 flex-shrink-0">
-              <span className="px-3 py-1 rounded-xl text-sm font-black bg-slate-900 text-white shadow-sm">
-                JLPT {entry.jlptLevel}
-              </span>
+              {isDictionaryJlptLevel(entry.jlptLevel) && (
+                <span className="px-3 py-1 rounded-xl text-sm font-black bg-slate-900 text-white shadow-sm">
+                  JLPT {entry.jlptLevel}
+                </span>
+              )}
               {entry.isCommon && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
@@ -141,7 +151,9 @@ export default async function DictionaryEntryPage({ params, searchParams }: Prop
                   {source.name} ({source.version}) — {source.license}
                 </span>
               ) : (
-                <span>{entry.sourceRef || "First-party lexical database"}</span>
+                <span>
+                  Source details unavailable{entry.sourceRef ? ` (${entry.sourceRef})` : ""}
+                </span>
               )}
             </div>
             {entry.frequencyRank && (

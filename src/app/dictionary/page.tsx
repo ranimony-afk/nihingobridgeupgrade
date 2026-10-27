@@ -9,7 +9,10 @@ import {
   type DictionaryEntryCardEntry,
 } from "@/components/dictionary/DictionaryEntryCard";
 import { DictionarySearchError } from "@/components/dictionary/DictionarySearchError";
-import { DictionarySearchRequestManager } from "@/lib/dictionary/searchRequest";
+import {
+  DictionarySearchRequestManager,
+  type DictionarySearchFailureReason,
+} from "@/lib/dictionary/searchRequest";
 import {
   buildDictionarySearchHref,
   DICTIONARY_JLPT_LEVELS,
@@ -63,7 +66,7 @@ function DictionarySearchContent() {
   const [entries, setEntries] = useState<DictionaryEntryCardEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [searchFailed, setSearchFailed] = useState(false);
+  const [searchFailure, setSearchFailure] = useState<DictionarySearchFailureReason | null>(null);
   const requestManagerRef = useRef<DictionarySearchRequestManager | null>(null);
   const updateQuery = useCallback(
     (value: string) => {
@@ -80,7 +83,7 @@ function DictionarySearchContent() {
         (requestManagerRef.current = new DictionarySearchRequestManager());
 
       setLoading(true);
-      setSearchFailed(false);
+      setSearchFailure(null);
 
       const completion = await manager.search({
         query: q,
@@ -94,9 +97,9 @@ function DictionarySearchContent() {
       if (completion.outcome.ok) {
         setEntries(completion.outcome.entries);
         setTotal(completion.outcome.total);
-        setSearchFailed(false);
+        setSearchFailure(null);
       } else if (completion.outcome.reason !== "aborted") {
-        setSearchFailed(true);
+        setSearchFailure(completion.outcome.reason);
       }
 
       setLoading(false);
@@ -251,9 +254,11 @@ function DictionarySearchContent() {
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">
             {loading
               ? "Searching..."
-              : searchFailed
-                ? "Search unavailable"
-                : `${total} Entries Found`}
+              : searchFailure === "query_too_long"
+                ? "Invalid search"
+                : searchFailure
+                  ? "Search unavailable"
+                  : `${total} Entries Found`}
           </p>
           {query && (
             <button
@@ -282,15 +287,34 @@ function DictionarySearchContent() {
             <Loader2 className="w-8 h-8 animate-spin text-red-600 mb-3" />
             <p className="text-sm font-medium">Looking up dictionary entries...</p>
           </div>
-        ) : searchFailed ? (
+        ) : searchFailure === "query_too_long" ? (
+          <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-10 text-center">
+            <h3 className="text-lg font-bold text-slate-900">Search is too long</h3>
+            <p className="mt-2 text-sm text-slate-600">
+              Use 1,000 characters or fewer, then search again.
+            </p>
+          </div>
+        ) : searchFailure ? (
           <DictionarySearchError onRetry={handleRetry} />
         ) : entries.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
-            <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <h3 className="text-lg font-bold text-slate-800">No dictionary entries matched</h3>
-            <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
-              Try searching with another spelling, romaji (e.g. &quot;mizu&quot;), or clear your JLPT level filters.
-            </p>
+          <div role="status" className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-sm">
+            <BookOpen className="w-12 h-12 text-slate-300 mx-auto mb-3" aria-hidden="true" />
+            {committedSearch.query || committedSearch.level !== "ALL" || committedSearch.commonOnly ? (
+              <>
+                <h3 className="text-lg font-bold text-slate-800">No dictionary entries matched</h3>
+                <p className="text-sm text-slate-500 mt-1 max-w-md mx-auto">
+                  Try another spelling or romaji, or clear your filters.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-lg font-bold text-slate-800">No dictionary entries are available</h3>
+                <p className="text-sm text-slate-500 mt-1">Try again later.</p>
+                <button type="button" onClick={handleRetry} className="mt-4 text-sm font-semibold text-red-700 underline">
+                  Retry
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

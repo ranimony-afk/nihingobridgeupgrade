@@ -44,6 +44,7 @@ function renderView(overrides: Partial<DictionaryAutocompleteViewProps> = {}): s
     onInputKeyDown: vi.fn(),
     onSuggestionActive: vi.fn(),
     onSuggestionSelect: vi.fn(),
+    onRetrySuggestions: vi.fn(),
     ...overrides,
   };
 
@@ -177,7 +178,7 @@ describe("DictionaryAutocomplete accessibility and interaction", () => {
     expect(loading).toContain("Loading suggestions…");
     expect(empty).toContain("No dictionary suggestions found.");
     expect(failed).toContain("Suggestions are temporarily unavailable");
-    expect(failed).toContain("Edit your search to try again");
+    expect(failed).toContain("Retry suggestions");
     expect(failed).not.toContain("stack");
     expect(failed).not.toContain("postgres://");
   });

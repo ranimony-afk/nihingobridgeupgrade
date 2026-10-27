@@ -1,3 +1,6 @@
+import { codePointLength, MAX_SEARCH_QUERY_LENGTH } from "@/lib/api/routeParams";
+import { createDictionaryRequestSignal } from "@/lib/dictionary/requestTimeout";
+
 export const DICTIONARY_AUTOCOMPLETE_LIMIT = 6;
 
 export interface DictionaryAutocompleteSuggestion {
@@ -18,7 +21,8 @@ export type DictionaryAutocompleteFailureReason =
   | "network"
   | "http"
   | "invalid"
-  | "aborted";
+  | "aborted"
+  | "query_too_long";
 
 export interface DictionaryAutocompleteFailure {
   ok: false;
@@ -140,13 +144,18 @@ export async function requestDictionaryAutocomplete(
   query: string,
   options: RequestOptions = {}
 ): Promise<DictionaryAutocompleteOutcome> {
-  if (!query.trim()) return { ok: true, suggestions: [] };
+  const normalizedQuery = query.replace(/\0/g, "").trim();
+  if (!normalizedQuery) return { ok: true, suggestions: [] };
+  if (codePointLength(normalizedQuery) > MAX_SEARCH_QUERY_LENGTH) {
+    return { ok: false, reason: "query_too_long" };
+  }
 
   const fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const requestSignal = createDictionaryRequestSignal(options.signal);
 
   try {
     const response = await fetchImpl(buildDictionaryAutocompleteUrl(query), {
-      signal: options.signal,
+      signal: requestSignal.signal,
     });
 
     if (!response.ok) return { ok: false, reason: "http" };
@@ -160,10 +169,12 @@ export async function requestDictionaryAutocomplete(
 
     return parseAutocompletePayload(payload) ?? { ok: false, reason: "invalid" };
   } catch (error) {
-    if (options.signal?.aborted || isAbortError(error)) {
+    if (options.signal?.aborted || (!requestSignal.didTimeOut() && isAbortError(error))) {
       return { ok: false, reason: "aborted" };
     }
     return { ok: false, reason: "network" };
+  } finally {
+    requestSignal.dispose();
   }
 }
 

@@ -545,8 +545,12 @@ export class KanjiLexicalGraphService {
   /**
    * Retrieves all kanji in order of appearance within a dictionary entry.
    */
-  async getVocabularyKanji(entryId: string): Promise<WordKanjiEdge[]> {
-    const [row] = await this.db
+  async getVocabularyKanji(
+    entryId: string,
+    options?: { db?: Pick<typeof defaultDb, "select">; maxEdges?: number }
+  ): Promise<WordKanjiEdge[]> {
+    const reader = options?.db ?? this.db;
+    const [row] = await reader
       .select({
         id: dictionaryEntries.id,
         headword: dictionaryEntries.headword,
@@ -567,7 +571,10 @@ export class KanjiLexicalGraphService {
 
     const edges: WordKanjiEdge[] = [];
 
-    for (let i = 0; i < kanjiList.length; i++) {
+    const edgeCount = options?.maxEdges === undefined
+      ? kanjiList.length
+      : Math.min(kanjiList.length, Math.max(0, Math.trunc(options.maxEdges)));
+    for (let i = 0; i < edgeCount; i++) {
       const char = kanjiList[i];
       const pos = headword.indexOf(char);
       edges.push({
@@ -906,8 +913,11 @@ export class KanjiLexicalGraphService {
    * Retrieves Keigo relations for a given dictionary entry.
    * Grounded strictly in authoritative lexical conventions.
    */
-  async getKeigoRelations(entryId: string): Promise<KeigoRelation[]> {
-    const [row] = await this.db
+  async getKeigoRelations(
+    entryId: string,
+    reader: Pick<typeof defaultDb, "select"> = this.db
+  ): Promise<KeigoRelation[]> {
+    const [row] = await reader
       .select({
         id: dictionaryEntries.id,
         headword: dictionaryEntries.headword,
