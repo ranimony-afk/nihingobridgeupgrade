@@ -8,9 +8,8 @@ import {
   questions,
 } from "@/db/schema";
 import { eq, or, ilike, and, sql, type SQL } from "drizzle-orm";
-import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
-import { KnowledgeService } from "@/services/knowledge/knowledgeService";
-import { TestService } from "@/services/jlpt/testService";
+import { codePointLength, MAX_OFFSET, MAX_SEARCH_QUERY_LENGTH } from "@/lib/api/routeParams";
+import { MAX_UNIFIED_LEVEL_LENGTH, MAX_UNIFIED_SEARCH_RESULTS } from "./limits";
 import {
   defaultPublicationStore,
   resolveLearnerEntries,
@@ -30,40 +29,32 @@ import {
   calculateRelevance,
 } from "./matcher";
 
+function boundedInteger(value: number | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
 export class UnifiedSearchService {
-  private static isInitialized = false;
-
-  /**
-   * Ensure necessary baseline tables are initialized before searching.
-   */
-  static async ensureInitialized(): Promise<void> {
-    if (this.isInitialized) return;
-    await Promise.all([
-      KnowledgeCorpusService.ensureSeeded(),
-      KnowledgeService.ensureSeeded(),
-      TestService.ensureSeeded(),
-    ]);
-    this.isInitialized = true;
-  }
-
-  /**
-   * Primary entry point for multi-target unified search.
-   */
+  /** Search the existing corpus only; fixture setup is never part of a read. */
   static async search(
     rawQuery: string,
     options: UnifiedSearchOptions = {}
   ): Promise<UnifiedSearchResponse> {
     const startTime = performance.now();
-    await this.ensureInitialized();
-
     const query = sanitizeSearchQuery(rawQuery);
-    const detectedScript = detectSearchScript(query);
-    const requestedTargets = options.targets?.length
-      ? options.targets
-      : [...ALL_SEARCH_TARGETS];
     const jlptLevel = options.jlptLevel?.trim() || null;
-    const limit = Math.min(Math.max(options.limit ?? 20, 1), 100);
-    const offset = Math.max(options.offset ?? 0, 0);
+    if (codePointLength(query) > MAX_SEARCH_QUERY_LENGTH ||
+        (jlptLevel && codePointLength(jlptLevel) > MAX_UNIFIED_LEVEL_LENGTH)) {
+      throw new RangeError("Search input exceeds the supported length");
+    }
+    const detectedScript = detectSearchScript(query);
+    const validTargets = options.targets?.filter((target) => ALL_SEARCH_TARGETS.includes(target)) ?? [];
+    // Repeated targets must not multiply database work or duplicate results.
+    const requestedTargets = validTargets.length
+      ? [...new Set(validTargets)]
+      : [...ALL_SEARCH_TARGETS];
+    const limit = boundedInteger(options.limit, 20, 1, MAX_UNIFIED_SEARCH_RESULTS);
+    const offset = boundedInteger(options.offset, 0, 0, MAX_OFFSET);
     const publicationStore: PublicationStore =
       options.publicationStore ?? defaultPublicationStore;
 
@@ -213,11 +204,9 @@ export class UnifiedSearchService {
       displayRows = (
         await resolveLearnerEntries(publicationStore, rows)
       ).entries;
-    } catch (error) {
-      console.warn(
-        "Dictionary publication overlay unavailable; serving canonical.",
-        error
-      );
+    } catch {
+      // Publication is optional; never log database or connection details.
+      console.warn("Dictionary publication overlay unavailable; serving canonical.");
     }
 
     return displayRows.map((r) => {
