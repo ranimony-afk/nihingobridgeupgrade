@@ -33,7 +33,9 @@ export type DiagnosticOperation =
   | "AnalyticsService.trackStudyEvent"
   /* Phase 25 — learning write-route authorization. */
   | "auth.requireActor"
-  | "XpService.findEventOwner";
+  | "XpService.findEventOwner"
+  /* Phase 26C — XP ledger read authorization. */
+  | "XpService.getLedger";
 
 /**
  * Closed set of failure categories. Deliberately coarse: enough to triage
