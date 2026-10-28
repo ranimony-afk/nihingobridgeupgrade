@@ -26,6 +26,7 @@ import { readFileSync } from "node:fs";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import { like } from "drizzle-orm";
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 
@@ -38,7 +39,7 @@ vi.mock("@/services/jlpt/testService", () => ({
   },
 }));
 
-import type { db } from "@/db";
+import { db } from "@/db";
 import { GET, POST } from "@/app/api/questions/route";
 import { TestService } from "@/services/jlpt/testService";
 import type {
@@ -56,6 +57,7 @@ import {
 } from "@/lib/auth";
 import type { NewQuestionRow } from "@/services/jlpt/questionDraft";
 import { parseCreateQuestionDraft } from "@/services/jlpt/questionDraft";
+import { questions as questionsTable } from "@/db/schema";
 import {
   createDrizzleQuestionStore,
   resetQuestionStore,
@@ -960,3 +962,76 @@ describe("POST /api/questions — disposable PGlite integration (real SQL)", () 
     expect(new Date(rows.rows[0]!.created_at).getUTCFullYear()).toBeGreaterThan(1999);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * 10. Real PostgreSQL (runs only when DATABASE_URL points at a database)
+ * ------------------------------------------------------------------ *
+ *
+ * This layer is skipped with an explicit reason when no database is
+ * reachable — it never fabricates a pass. In CI the disposable
+ * `postgres:18-alpine` service provides DATABASE_URL, so the production
+ * Drizzle adapter is exercised against a real PostgreSQL server.
+ *
+ * Safety: rows are confined to the `q-s04-` id prefix and deleted again in
+ * afterEach. Nothing outside the disposable CI database is touched.
+ */
+const REAL_DATABASE_URL = process.env.DATABASE_URL ?? "";
+
+describe.skipIf(REAL_DATABASE_URL.length === 0)(
+  "POST /api/questions — real PostgreSQL integration",
+  () => {
+    const ID_PREFIX = "q-s04-";
+
+    async function prefixedRows() {
+      return db
+        .select({ id: questionsTable.id, isActive: questionsTable.isActive })
+        .from(questionsTable)
+        .where(like(questionsTable.id, `${ID_PREFIX}%`));
+    }
+
+    beforeEach(() => {
+      // The production adapter, over the real database.
+      setQuestionStore(createDrizzleQuestionStore(db));
+    });
+
+    afterEach(async () => {
+      await db.delete(questionsTable).where(like(questionsTable.id, `${ID_PREFIX}%`));
+    });
+
+    it("30. rejected requests write zero rows; an authorized one writes exactly one", async () => {
+      expect(await prefixedRows()).toHaveLength(0);
+
+      authenticateAs(null);
+      expect((await POST(post(validDraft({ id: `${ID_PREFIX}anon` })))).status).toBe(401);
+      expect(await prefixedRows()).toHaveLength(0);
+
+      actAs("learner");
+      expect((await POST(post(validDraft({ id: `${ID_PREFIX}learner` })))).status).toBe(403);
+      expect(await prefixedRows()).toHaveLength(0);
+
+      actAs("editor", "user-editor-1");
+      expect((await POST(post(validDraft({ id: `${ID_PREFIX}bad`, prompt: "" })))).status).toBe(400);
+      expect(await prefixedRows()).toHaveLength(0);
+
+      const created = await POST(
+        post(
+          validDraft({
+            id: `${ID_PREFIX}ok`,
+            // Hostile field: must not survive into the row.
+            isActive: false,
+            role: "admin",
+          })
+        )
+      );
+      expect(created.status).toBe(200);
+      const rows = await prefixedRows();
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ id: `${ID_PREFIX}ok`, isActive: true });
+
+      // Duplicate id: sanitized 409, still exactly one row.
+      const duplicate = await POST(post(validDraft({ id: `${ID_PREFIX}ok` })));
+      expect(duplicate.status).toBe(409);
+      expect(await prefixedRows()).toHaveLength(1);
+    });
+  }
+);
