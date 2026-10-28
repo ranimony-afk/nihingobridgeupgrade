@@ -8,6 +8,7 @@ import {
   userAnalytics as userAnalyticsTable,
 } from "@/db/schema";
 import { eq, and, desc, sql, ilike, inArray } from "drizzle-orm";
+import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
 import { ALL_SEED_QUESTIONS, SEED_JLPT_TESTS } from "@/services/quiz/seedData";
 import { QuizEngine } from "@/services/quiz/engine";
 import { XpService } from "@/services/gamification/xpService";
@@ -106,7 +107,12 @@ export class TestService {
         }
       }
     } catch (error) {
-      console.error("Failed to seed database questions:", error);
+      // Seeding is best-effort: a failure must not break reads. The thrown
+      // value is NOT logged — a Drizzle/pg error carries the SQL, its bound
+      // parameters, and the connection target. Emit a classified diagnostic
+      // (Phase 22A) instead, and let the caller's own query surface the
+      // failure through the route's sanitized error path.
+      logOperationFailure("error", "TestService.ensureSeeded", error);
     }
   }
 
@@ -477,7 +483,8 @@ export class TestService {
       const userId = session.userId || "anonymous-user";
       await this.updateUserAnalytics(userId, session.jlptLevel as JLPTLevel, result);
     } catch (e) {
-      console.warn("Could not update user analytics:", e);
+      // Same rule as ensureSeeded: never serialize the driver error.
+      logOperationFailure("warn", "TestService.updateUserAnalytics", e);
     }
 
     /* ---- Phase 12.1: XP for the exam, plus per-question XP ---- */
