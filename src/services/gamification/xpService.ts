@@ -28,6 +28,7 @@ import {
   XP_RULE_COUNT,
 } from "./xpRegistry";
 import { DailyQueueService, resolveDayWindow } from "@/services/srs/dailyQueueService";
+import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 86_400_000;
@@ -373,7 +374,10 @@ export class XpService {
     try {
       return await this.award(input);
     } catch (error) {
-      console.warn("XP award failed (non-fatal):", error);
+      // Non-fatal BY DESIGN: callers treat `null` as "no award this time".
+      // The raw driver error must still not reach the log — it carries the
+      // SQL, bound parameters and connection target.
+      logOperationFailure("warn", "XpService.awardSafe", error);
       return null;
     }
   }

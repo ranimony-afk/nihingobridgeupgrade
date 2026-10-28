@@ -66,7 +66,11 @@ export class AnalyticsService {
     const userId = params.userId || "anonymous-user";
     const dedupeKey = `study:${params.itemType}:${userId}:${params.itemId}`;
 
-    const res = await XpService.awardSafe({
+    // NOT `awardSafe`: for this route the award IS the mutation, so a failed
+    // ledger write must surface to the caller instead of being swallowed and
+    // reported as a successful 200. Callers whose award is a secondary effect
+    // (SRS grading, session completion, …) keep using `awardSafe`.
+    const res = await XpService.award({
       payload: {
         eventType: "content.read",
         userId,
@@ -78,8 +82,8 @@ export class AnalyticsService {
     });
 
     return {
-      awarded: res !== null && !res.duplicate,
-      points: res?.points ?? 0,
+      awarded: !res.duplicate,
+      points: res.points,
     };
   }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
 import { XpService } from "@/services/gamification/xpService";
 import { listRules, XP_RULE_COUNT, xpAtLevel, MAX_LEVEL } from "@/services/gamification/xpRegistry";
-import { XpEventPayload, XP_EVENT_TYPES } from "@/types/gamification";
+import { XpEventPayload, XpEventType, XP_EVENT_TYPES } from "@/types/gamification";
 
 export const dynamic = "force-dynamic";
 
@@ -54,34 +54,53 @@ export async function GET(request: NextRequest) {
  * did not originate. Always idempotent via dedupeKey.
  */
 export async function POST(request: NextRequest) {
+  // Body parsing is kept OUT of the mutation's try block on purpose. A
+  // malformed body is a client error and must stay a 400 — it must not be
+  // reported as an internal failure, and the parser's own message (which
+  // quotes the offending input) must not be echoed back.
+  let body: Record<string, unknown>;
   try {
-    const body = await request.json();
-    const eventType = body?.eventType;
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "Request body must be valid JSON" },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
+  }
 
-    if (!eventType || !XP_EVENT_TYPES.includes(eventType)) {
-      return NextResponse.json(
-        { success: false, error: `eventType must be one of: ${XP_EVENT_TYPES.join(", ")}` },
-        { status: 400 }
-      );
-    }
+  const eventType = body?.eventType;
 
+  if (typeof eventType !== "string" || !XP_EVENT_TYPES.includes(eventType as XpEventType)) {
+    return NextResponse.json(
+      { success: false, error: `eventType must be one of: ${XP_EVENT_TYPES.join(", ")}` },
+      { status: 400 }
+    );
+  }
+
+  try {
     const payload: XpEventPayload = {
-      ...body,
-      eventType,
-      userId: body.userId || "anonymous-user",
+      ...(body as unknown as XpEventPayload),
+      eventType: eventType as XpEventType,
+      userId: (body.userId as string) || "anonymous-user",
     };
 
     const result = await XpService.award({
       payload,
-      dedupeKey: body.dedupeKey,
-      params: body.params ?? null,
+      dedupeKey: body.dedupeKey as string | undefined,
+      params: (body.params as Record<string, unknown> | undefined) ?? null,
     });
 
     return NextResponse.json({ success: true, result });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to award XP";
-    console.error("POST /api/xp error:", error);
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    // A failed award is a server-side failure, not a client error: the ledger
+    // write never happened, so this must not answer 400 or report success. The
+    // thrown value carries SQL, bound parameters and the connection target, so
+    // it is classified and never echoed or logged.
+    logOperationFailure("error", "XpService.award", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to award XP", code: "INTERNAL_ERROR" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }
 
@@ -100,8 +119,12 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to revoke XP";
-    console.error("DELETE /api/xp error:", error);
-    return NextResponse.json({ success: false, error: message }, { status: 400 });
+    // A failed revoke leaves the ledger untouched: report a server-side
+    // failure, never a 400, and never echo the driver's message.
+    logOperationFailure("error", "XpService.revokeByDedupeKey", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to revoke XP", code: "INTERNAL_ERROR" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }

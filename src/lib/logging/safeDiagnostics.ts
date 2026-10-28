@@ -26,7 +26,11 @@ export type DiagnosticOperation =
   | "TestService.ensureSeeded"
   | "TestService.updateUserAnalytics"
   | "XpService.getSummary"
-  | "AnalyticsService.getUserProgressSummary";
+  | "AnalyticsService.getUserProgressSummary"
+  | "XpService.award"
+  | "XpService.revokeByDedupeKey"
+  | "XpService.awardSafe"
+  | "AnalyticsService.trackStudyEvent";
 
 /**
  * Closed set of failure categories. Deliberately coarse: enough to triage

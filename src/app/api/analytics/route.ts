@@ -51,11 +51,15 @@ export async function POST(request: NextRequest) {
       success: true,
       data: result,
     });
-  } catch (error: any) {
-    console.error("POST /api/analytics error:", error);
+  } catch (error) {
+    // `error: any` + `error.message` was doubly unsafe: the driver message
+    // carries the failing SQL and its bound parameters, and reading `.message`
+    // on a thrown `null`/`undefined` threw INSIDE the catch, escaping the
+    // handler entirely. The thrown value is now only classified.
+    logOperationFailure("error", "AnalyticsService.trackStudyEvent", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to track study event" },
-      { status: 500 }
+      { success: false, error: "Failed to track study event", code: "INTERNAL_ERROR" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
