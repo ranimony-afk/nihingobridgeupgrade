@@ -1,0 +1,2 @@
+ALTER TABLE "xp_events" DROP CONSTRAINT "xp_events_dedupe_key_unique";--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_xp_events_user_dedupe_key_unique" ON "xp_events" USING btree ("user_id","dedupe_key");

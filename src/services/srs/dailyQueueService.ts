@@ -14,6 +14,7 @@ import {
   DayWindow,
   SessionQueueOrder,
 } from "@/types/srs";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 
 export const DEFAULT_DAILY_SETTINGS: DailySettings = {
   timezone: "UTC",
@@ -140,11 +141,20 @@ export class DailyQueueService {
   /* ============================================================
    * SETTINGS
    * ============================================================ */
-  static async getSettings(userId = "anonymous-user"): Promise<DailySettings> {
+  /**
+   * Phase 26F-E3: the owner is REQUIRED and validated before the read.
+   *
+   * This is a learner-owned read (timezone, cutoff hour and daily targets drive
+   * both the queue and the XP day window), yet it defaulted to the shared
+   * legacy sentinel when called without an id — so `XpService.dayWindow()`
+   * could resolve "today" from the wrong learner's timezone.
+   */
+  static async getSettings(userId: string): Promise<DailySettings> {
+    const owner = requireOwner(userId, "DailyQueueService.getSettings");
     const [row] = await db
       .select()
       .from(settingsTable)
-      .where(eq(settingsTable.userId, userId))
+      .where(eq(settingsTable.userId, owner))
       .limit(1);
 
     if (!row) return { ...DEFAULT_DAILY_SETTINGS };

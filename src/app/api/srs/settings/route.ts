@@ -2,10 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { DailyQueueService } from "@/services/srs/dailyQueueService";
 import { resolveDayWindow } from "@/services/srs/dailyQueueService";
 import { DEFAULT_DAILY_SETTINGS } from "@/services/srs/dailyQueueService";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const userId = request.nextUrl.searchParams.get("userId") || "anonymous-user";
     const settings = await DailyQueueService.getSettings(userId);
@@ -27,6 +34,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     const userId = body?.userId || "anonymous-user";

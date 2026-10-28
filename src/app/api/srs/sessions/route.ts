@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SessionService, DEFAULT_SESSION_CONFIG } from "@/services/srs/sessionService";
 import { SESSION_QUEUE_ORDERS, SessionQueueOrder, SessionStatus } from "@/types/srs";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
 /** GET /api/srs/sessions — session history + resumable pointer. */
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const sp = request.nextUrl.searchParams;
     const userId = sp.get("userId") || "anonymous-user";
@@ -37,6 +44,9 @@ export async function GET(request: NextRequest) {
 
 /** POST /api/srs/sessions — plan a queue and open a resumable session. */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json().catch(() => ({}));
     const {

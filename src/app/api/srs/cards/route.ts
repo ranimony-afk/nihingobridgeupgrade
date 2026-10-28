@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SrsService } from "@/services/srs/srsService";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const sp = request.nextUrl.searchParams;
     const cards = await SrsService.queryCards({
@@ -21,6 +28,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     const { deckId, front, back, reading, meaning, hint, cardType, sourceType } = body;

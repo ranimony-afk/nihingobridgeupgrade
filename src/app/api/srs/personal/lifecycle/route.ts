@@ -13,6 +13,10 @@ import {
 import { PersonalizationService } from "@/services/srs/personalizationService";
 import { getScheduler, resolveParams } from "@/services/srs/scheduler";
 import { describeInterval } from "@/services/srs/strategies/shared";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +54,9 @@ function buildStage(stage: LifecycleStep["stage"], detail: string, at: string | 
  *   new card → due → review → rating → reschedule → next due
  */
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const sp = request.nextUrl.searchParams;
     const cardId = sp.get("cardId");
@@ -217,6 +224,9 @@ export async function GET(request: NextRequest) {
  *   new card → due → review → rating → reschedule → next due
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json().catch(() => ({}));
     const userId = body?.userId || "anonymous-user";

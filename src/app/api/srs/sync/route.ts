@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SyncService } from "@/services/srs/syncService";
 import { SyncPlatform } from "@/types/srs";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
 /** GET — device roster, sync log, and aggregate sync totals. */
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const userId = request.nextUrl.searchParams.get("userId") || "anonymous-user";
     const status = await SyncService.getStatus(userId);
@@ -19,6 +26,9 @@ export async function GET(request: NextRequest) {
 
 /** POST — register (or re-register) a device. Idempotent per (user, deviceId). */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     if (!body?.deviceId) {
@@ -43,6 +53,9 @@ export async function POST(request: NextRequest) {
 
 /** DELETE — revoke a device so it can no longer synchronize. */
 export async function DELETE(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const sp = request.nextUrl.searchParams;
     const deviceId = sp.get("deviceId");

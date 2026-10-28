@@ -5,6 +5,10 @@ import { eq } from "drizzle-orm";
 import { srsDecks as decksTable } from "@/db/schema";
 import { getScheduler, resolveParams } from "@/services/srs/scheduler";
 import { XpService } from "@/services/gamification/xpService";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +32,9 @@ export async function GET() {
  * knowledge layer and the SRS stay one system rather than two.
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     const target = body?.target;
@@ -127,6 +134,9 @@ export async function POST(request: NextRequest) {
 
 /** PATCH — retune the algorithm binding on a knowledge-generated deck. */
 export async function PATCH(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     const { deckId, schedulerKey } = body;

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DailyQueueService } from "@/services/srs/dailyQueueService";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +14,9 @@ export const dynamic = "force-dynamic";
  * recommendation that can be posted straight to the session planner.
  */
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const sp = request.nextUrl.searchParams;
 

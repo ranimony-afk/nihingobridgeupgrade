@@ -29,6 +29,20 @@
       "when": 1790142385759,
       "tag": "0003_users_auth_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793175824291,
+      "tag": "0004_xp_dedupe_per_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793186357906,
+      "tag": "0005_srs_catalogue_state_separation",
+      "breakpoints": true
     }
   ]
 }

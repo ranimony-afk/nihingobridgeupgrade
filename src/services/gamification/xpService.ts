@@ -13,6 +13,7 @@ import {
   XpEventPayload,
   XpEventType,
   XpLedgerEntry,
+  XpRuleDescriptor,
   XpSourceBreakdown,
   XpSummary,
 } from "@/types/gamification";
@@ -27,18 +28,174 @@ import {
   XP_RULE_COUNT,
 } from "./xpRegistry";
 import { DailyQueueService, resolveDayWindow } from "@/services/srs/dailyQueueService";
+import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 86_400_000;
+
+/** The subset of `xp_rules` that mirrors the code registry. */
+type StoredRuleMirror = {
+  version: string;
+  eventType: string;
+  name: string;
+  description: string;
+  basePoints: number;
+  dailyCap: number;
+  defaultParams: Record<string, unknown>;
+};
+
+/**
+ * Order-insensitive JSON, so a `jsonb` round-trip is never mistaken for drift
+ * and a drifted row is never mistaken for a match.
+ */
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) => entry !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`);
+  return `{${entries.join(",")}}`;
+}
+
+/**
+ * True when the stored mirror row already carries the registry's metadata.
+ *
+ * `isActive` is deliberately excluded: the insert path sets it to true, but the
+ * conflict path has never reactivated a manually deactivated rule. Ignoring it
+ * keeps that behaviour exactly as it was.
+ */
+function ruleMirrorMatches(stored: StoredRuleMirror | undefined, descriptor: XpRuleDescriptor): boolean {
+  if (!stored) return false;
+  return (
+    stored.version === descriptor.version &&
+    stored.eventType === descriptor.eventType &&
+    stored.name === descriptor.name &&
+    stored.description === descriptor.description &&
+    Number(stored.basePoints) === Number(descriptor.basePoints) &&
+    Number(stored.dailyCap) === Number(descriptor.dailyCap) &&
+    stableJson(stored.defaultParams) === stableJson(descriptor.defaultParams)
+  );
+}
+
+/* ============================================================
+ * PHASE 26A — deduplication is per user
+ *
+ * `dedupe_key` alone is no longer unique (see schema.ts): keys such as
+ * `content.read:<sourceId>` and `knowledge:<cardId>` are identical for every
+ * learner studying the same item, so a global unique key let the first writer
+ * suppress — and disclose — everyone else's award.
+ *
+ * The UNIQUE index is now `(user_id, dedupe_key)`, and this helper recognizes
+ * ONLY that rule as a dedupe collision. Matching the driver's message text is
+ * not enough (Drizzle wraps it: the wrapper reads "Failed query: …"), and
+ * matching every 23505 is too much (a primary-key or unrelated unique
+ * violation must surface as a failure, never as a harmless duplicate).
+ * ============================================================ */
+
+/** Bounded walk of the `cause` chain Drizzle adds around driver errors. */
+const MAX_CAUSE_DEPTH = 3;
+
+interface ViolationFacts {
+  /** SQLSTATE 23505 seen anywhere in the chain. */
+  unique: boolean;
+  /** Constraint / index names reported by the driver. */
+  constraints: string[];
+  /** Innermost driver message (never the Drizzle wrapper, which embeds SQL). */
+  innermostMessage: string;
+}
+
+function violationFacts(error: unknown): ViolationFacts {
+  const facts: ViolationFacts = { unique: false, constraints: [], innermostMessage: "" };
+  let current: unknown = error;
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+    if (typeof current !== "object" || current === null) break;
+    const candidate = current as {
+      code?: unknown;
+      constraint?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (candidate.code === "23505") facts.unique = true;
+    if (typeof candidate.constraint === "string" && candidate.constraint !== "") {
+      facts.constraints.push(candidate.constraint);
+    }
+    if (typeof candidate.message === "string") facts.innermostMessage = candidate.message;
+    current = candidate.cause;
+  }
+  return facts;
+}
+
+/** Does this name identify the per-user dedupe rule? */
+const DEDUPE_RULE_NAME = /dedupe/i;
+
+/** `(dedupe_key)` scope, or `(user_id, dedupe_key)` when a user is supplied. */
+function scopeToKey(dedupeKey: string, userId?: string) {
+  return userId === undefined
+    ? eq(eventsTable.dedupeKey, dedupeKey)
+    : and(eq(eventsTable.dedupeKey, dedupeKey), eq(eventsTable.userId, userId));
+}
+
+/**
+ * True only for a violation of the per-user dedupe index. Exported for
+ * focused classification tests; the award path uses it directly.
+ */
+export function isDedupeCollision(error: unknown): boolean {
+  const facts = violationFacts(error);
+  if (!facts.unique) return false;
+
+  // Constraint/index metadata is authoritative when the driver provides it.
+  // Deliberately NOT the message: Drizzle's wrapper embeds the whole statement,
+  // so every insert on this table mentions "dedupe_key" and message matching
+  // would swallow unrelated violations as duplicates.
+  if (facts.constraints.length > 0) {
+    return facts.constraints.some((name) => DEDUPE_RULE_NAME.test(name));
+  }
+
+  // Fallback for drivers that expose no constraint name: judge the innermost
+  // driver message only, never the wrapper.
+  return DEDUPE_RULE_NAME.test(facts.innermostMessage);
+}
 
 export class XpService {
   /* ============================================================
    * REGISTRY SYNC — DB mirrors code metadata for audit only.
    * ============================================================ */
+  /**
+   * Mirror the code rule registry into `xp_rules`.
+   *
+   * Maintenance work, but reached from read paths (`GET /api/xp` through
+   * `getSummary`, `GET /api/analytics` through `ensureInitialized`). A blanket
+   * upsert therefore made an unauthenticated GET rewrite every rule row and
+   * refresh every `synced_at`. Compare first and write only the rows that are
+   * missing or drifted: the mirror still self-heals, but a read on an
+   * already-correct database issues no writes at all.
+   */
   static async syncRegistry(): Promise<number> {
     assertRulesWellFormed();
 
-    for (const d of listRules()) {
+    const descriptors = listRules();
+    const stored = await db
+      .select({
+        key: rulesTable.key,
+        version: rulesTable.version,
+        eventType: rulesTable.eventType,
+        name: rulesTable.name,
+        description: rulesTable.description,
+        basePoints: rulesTable.basePoints,
+        dailyCap: rulesTable.dailyCap,
+        defaultParams: rulesTable.defaultParams,
+      })
+      .from(rulesTable);
+    const storedByKey = new Map(stored.map((row) => [row.key, row]));
+
+    const stale = descriptors.filter(
+      (descriptor) => !ruleMirrorMatches(storedByKey.get(descriptor.key), descriptor)
+    );
+    if (stale.length === 0) return XP_RULE_COUNT;
+
+    for (const d of stale) {
       await db
         .insert(rulesTable)
         .values({
@@ -150,7 +307,16 @@ export class XpService {
     params?: Record<string, unknown> | null;
   }): Promise<XpAwardResult> {
     const payload = input.payload;
-    const userId = payload.userId || "anonymous-user";
+    /*
+     * Phase 26F-E3 — the owner is required and must not be the shared sentinel.
+     *
+     * This read `payload.userId || "anonymous-user"`, so a call with a missing,
+     * empty or sentinel-valued id booked the award against the shared legacy
+     * account. `awardSafe` converts this throw into `null`, which its callers
+     * already treat as "no award this time" — so a misattributed award is now a
+     * *missing* award (fail closed) instead of a cross-learner write.
+     */
+    const userId = requireOwner(payload.userId, "XpService.award");
 
     const rule = getRuleForEvent(payload.eventType);
     if (!rule) {
@@ -170,12 +336,14 @@ export class XpService {
       input.dedupeKey ??
       (payload.sourceId ? `${payload.eventType}:${payload.sourceId}` : undefined);
 
-    /* ---- Fast-path duplicate check (the UNIQUE index is the real guard) ---- */
+    /* ---- Fast-path duplicate check (the UNIQUE index is the real guard) ----
+     * Scoped to THIS user (Phase 26A): another learner's event with the same
+     * key is not a duplicate, and its id must never reach this caller. */
     if (dedupeKey) {
       const [existing] = await db
         .select({ id: eventsTable.id, points: eventsTable.points })
         .from(eventsTable)
-        .where(eq(eventsTable.dedupeKey, dedupeKey))
+        .where(and(eq(eventsTable.dedupeKey, dedupeKey), eq(eventsTable.userId, userId)))
         .limit(1);
 
       if (existing) {
@@ -244,10 +412,12 @@ export class XpService {
         occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
       });
     } catch (error) {
-      // The UNIQUE index on dedupe_key is the authoritative guard — a race
-      // that loses here is a duplicate, not a failure.
-      const message = error instanceof Error ? error.message : "";
-      if (message.includes("unique") || message.includes("duplicate")) {
+      // The UNIQUE (user_id, dedupe_key) index is the authoritative guard — a
+      // race that loses here is a duplicate OF THIS USER, not a failure. The
+      // classification is structural (SQLSTATE 23505 + the dedupe rule's name),
+      // never a substring of the driver's prose, so an unrelated unique
+      // violation is re-thrown instead of being reported as a duplicate.
+      if (isDedupeCollision(error)) {
         return {
           awarded: false,
           duplicate: true,
@@ -297,7 +467,10 @@ export class XpService {
     try {
       return await this.award(input);
     } catch (error) {
-      console.warn("XP award failed (non-fatal):", error);
+      // Non-fatal BY DESIGN: callers treat `null` as "no award this time".
+      // The raw driver error must still not reach the log — it carries the
+      // SQL, bound parameters and connection target.
+      logOperationFailure("warn", "XpService.awardSafe", error);
       return null;
     }
   }
@@ -305,14 +478,76 @@ export class XpService {
   /* ============================================================
    * REVOKE — used when the originating action is undone
    * ============================================================ */
-  static async revokeByDedupeKey(
+  /**
+   * Owner (`xp_events.user_id`) of the caller's own event carrying `dedupeKey`,
+   * or null when the caller holds no such event. Read-only, single column.
+   *
+   * Phase 26F-E3: the owner is REQUIRED. Previously `userId` was optional and
+   * omitting it silently produced a cross-learner scan, so a caller that forgot
+   * the argument got somebody else's row back. The two modes are now two
+   * methods with different names, because they answer different questions:
+   *
+   *   - `findEventOwner(key, actorUserId)` — "does the CALLER own this key?"
+   *     This is the only variant an authorization decision may use.
+   *   - `findEventOwnerUnscoped(key)` — "does ANYONE own this key?" Used solely
+   *     to tell "nobody has it" from "somebody else has it", and it must never
+   *     be rendered to a client: returning the id would name another learner.
+   */
+  static async findEventOwner(
     dedupeKey: string,
-    reason = "source-action-undone"
-  ): Promise<{ revoked: boolean; points: number }> {
+    actorUserId: string
+  ): Promise<string | null> {
+    const owner = requireOwner(actorUserId, "XpService.findEventOwner");
+    const [row] = await db
+      .select({ userId: eventsTable.userId })
+      .from(eventsTable)
+      .where(scopeToKey(dedupeKey, owner))
+      .limit(1);
+    return row?.userId ?? null;
+  }
+
+  /**
+   * Existence probe across every learner's ledger.
+   *
+   * Phase 26F-E3: this is the old unscoped behaviour, kept under a name that
+   * says out loud that it is not an ownership check. It exists for one caller —
+   * `DELETE /api/xp`, which must answer 403 (not 200 `revoked:false`) when a
+   * key belongs to another learner — and its result is compared to `null`, never
+   * returned, logged, or put in a response body.
+   */
+  static async findEventOwnerUnscoped(dedupeKey: string): Promise<string | null> {
+    const [row] = await db
+      .select({ userId: eventsTable.userId })
+      .from(eventsTable)
+      .where(scopeToKey(dedupeKey, undefined))
+      .limit(1);
+    return row?.userId ?? null;
+  }
+
+  /**
+   * Mark an award revoked, scoped to one learner.
+   *
+   * Phase 26F-E3: `ownerUserId` is REQUIRED and passed by name, so it cannot be
+   * omitted or swapped positionally (three adjacent string parameters would
+   * compile whatever the caller meant). It used to be a trailing optional third
+   * argument; omitting it revoked the key across every learner holding it —
+   * the in-domain caller (`sessionService`, undoing a review) relied on that
+   * "the key embeds a unique review id" argument rather than on a predicate.
+   * A revoke is now always narrowed to a named owner, and that owner is
+   * validated before the UPDATE is issued.
+   */
+  static async revokeByDedupeKey(input: {
+    dedupeKey: string;
+    ownerUserId: string;
+    reason?: string;
+  }): Promise<{ revoked: boolean; points: number }> {
+    const { dedupeKey } = input;
+    const reason = input.reason ?? "source-action-undone";
+    const owner = requireOwner(input.ownerUserId, "XpService.revokeByDedupeKey");
     const [row] = await db
       .update(eventsTable)
       .set({ revokedAt: new Date(), revokedReason: reason })
-      .where(and(eq(eventsTable.dedupeKey, dedupeKey), isNull(eventsTable.revokedAt)))
+      .where(and(scopeToKey(dedupeKey, owner), isNull(eventsTable.revokedAt)))
       .returning();
 
     return { revoked: Boolean(row), points: row?.points ?? 0 };
@@ -321,25 +556,37 @@ export class XpService {
   /* ============================================================
    * DERIVED TOTALS — always summed from the ledger
    * ============================================================ */
-  static async getTotalXp(userId = "anonymous-user"): Promise<number> {
+  /**
+   * Phase 26F-E3: the owner is REQUIRED. The previous `= "anonymous-user"`
+   * default answered an omitted id with the shared legacy account's total — a
+   * wrong answer that looked like a right one.
+   */
+  static async getTotalXp(userId: string): Promise<number> {
+    const owner = requireOwner(userId, "XpService.getTotalXp");
     const [row] = await db
       .select({ total: sql<number>`cast(coalesce(sum(${eventsTable.points}), 0) as int)` })
       .from(eventsTable)
-      .where(and(eq(eventsTable.userId, userId), isNull(eventsTable.revokedAt)));
+      .where(and(eq(eventsTable.userId, owner), isNull(eventsTable.revokedAt)));
     return row?.total ?? 0;
   }
 
-  static async getLevel(userId = "anonymous-user"): Promise<LevelInfo> {
-    return levelForXp(await this.getTotalXp(userId));
+  static async getLevel(userId: string): Promise<LevelInfo> {
+    return levelForXp(await this.getTotalXp(requireOwner(userId, "XpService.getLevel")));
   }
 
   /* ============================================================
    * SUMMARY — everything the dashboard needs, all derived
    * ============================================================ */
-  static async getSummary(userId = "anonymous-user", historyDays = 14): Promise<XpSummary> {
+  /**
+   * Phase 26F-E3: the owner is REQUIRED and validated before `syncRegistry()`
+   * or any read runs. The old `= "anonymous-user"` default summarised the
+   * shared legacy account for a caller that passed no id.
+   */
+  static async getSummary(userId: string, historyDays = 14): Promise<XpSummary> {
+    const owner = requireOwner(userId, "XpService.getSummary");
     await this.syncRegistry();
 
-    const day = await this.dayWindow(userId);
+    const day = await this.dayWindow(owner);
     const offset = Math.round(day.offsetMinutes);
     const shift = sql.raw(`interval '${offset} minutes'`);
 
@@ -349,19 +596,19 @@ export class XpService {
         events: sql<number>`cast(count(*) as int)`,
       })
       .from(eventsTable)
-      .where(and(eq(eventsTable.userId, userId), isNull(eventsTable.revokedAt)));
+      .where(and(eq(eventsTable.userId, owner), isNull(eventsTable.revokedAt)));
 
     const [revokedRow] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(eventsTable)
-      .where(and(eq(eventsTable.userId, userId), sql`${eventsTable.revokedAt} is not null`));
+      .where(and(eq(eventsTable.userId, owner), sql`${eventsTable.revokedAt} is not null`));
 
     const [todayRow] = await db
       .select({ total: sql<number>`cast(coalesce(sum(${eventsTable.points}), 0) as int)` })
       .from(eventsTable)
       .where(
         and(
-          eq(eventsTable.userId, userId),
+          eq(eventsTable.userId, owner),
           isNull(eventsTable.revokedAt),
           gte(eventsTable.occurredAt, new Date(day.start)),
           lt(eventsTable.occurredAt, new Date(day.end))
@@ -374,7 +621,7 @@ export class XpService {
       .from(eventsTable)
       .where(
         and(
-          eq(eventsTable.userId, userId),
+          eq(eventsTable.userId, owner),
           isNull(eventsTable.revokedAt),
           gte(eventsTable.occurredAt, weekStart)
         )
@@ -391,7 +638,7 @@ export class XpService {
         events: sql<number>`cast(count(*) as int)`,
       })
       .from(eventsTable)
-      .where(and(eq(eventsTable.userId, userId), isNull(eventsTable.revokedAt)))
+      .where(and(eq(eventsTable.userId, owner), isNull(eventsTable.revokedAt)))
       .groupBy(eventsTable.eventType, eventsTable.ruleKey);
 
     const bySource: XpSourceBreakdown[] = sourceRows
@@ -415,7 +662,7 @@ export class XpService {
       .from(eventsTable)
       .where(
         and(
-          eq(eventsTable.userId, userId),
+          eq(eventsTable.userId, owner),
           isNull(eventsTable.revokedAt),
           gte(eventsTable.occurredAt, trendStart)
         )
@@ -445,7 +692,7 @@ export class XpService {
     const recentRows = await db
       .select()
       .from(eventsTable)
-      .where(eq(eventsTable.userId, userId))
+      .where(eq(eventsTable.userId, owner))
       .orderBy(desc(eventsTable.occurredAt))
       .limit(25);
 
@@ -469,7 +716,7 @@ export class XpService {
     const capUsage = [];
     for (const d of listRules()) {
       if (d.dailyCap <= 0) continue;
-      const used = await this.awardedTodayByRule(userId, d.key);
+      const used = await this.awardedTodayByRule(owner, d.key);
       capUsage.push({
         ruleKey: d.key,
         name: d.name,
@@ -481,14 +728,14 @@ export class XpService {
     }
 
     return {
-      userId,
+      userId: owner,
       totalXp,
       level: levelForXp(totalXp),
       todayXp: todayRow?.total ?? 0,
       weekXp: weekRow?.total ?? 0,
       totalEvents: totalRow?.events ?? 0,
       revokedEvents: revokedRow?.count ?? 0,
-      currentStreakDays: await this.currentStreak(userId),
+      currentStreakDays: await this.currentStreak(owner),
       bySource,
       daily,
       recent,
@@ -500,12 +747,13 @@ export class XpService {
    * LEDGER — paginated raw feed
    * ============================================================ */
   static async getLedger(params: {
-    userId?: string;
+    /* Phase 26F-E3: required — the ledger is one learner's, never a shared one. */
+    userId: string;
     limit?: number;
     offset?: number;
     eventType?: string;
   }): Promise<{ entries: XpLedgerEntry[]; total: number }> {
-    const userId = params.userId || "anonymous-user";
+    const userId = requireOwner(params.userId, "XpService.getLedger");
     const conditions = [eq(eventsTable.userId, userId)];
     if (params.eventType) conditions.push(eq(eventsTable.eventType, params.eventType));
     const where = and(...conditions);
@@ -547,20 +795,21 @@ export class XpService {
    * Award the once-per-day streak XP. Dedupe key is the local date, so
    * calling this repeatedly in a day is harmless.
    */
-  static async awardDailyStreak(userId = "anonymous-user"): Promise<XpAwardResult | null> {
-    const day = await this.dayWindow(userId);
-    const streak = await this.currentStreak(userId);
+  static async awardDailyStreak(userId: string): Promise<XpAwardResult | null> {
+    const owner = requireOwner(userId, "XpService.awardDailyStreak");
+    const day = await this.dayWindow(owner);
+    const streak = await this.currentStreak(owner);
     if (streak <= 0) return null;
 
     return this.awardSafe({
       payload: {
         eventType: "streak.day_completed",
-        userId,
+        userId: owner,
         sourceType: "streak",
         sourceId: day.localDate,
         streakDays: streak,
       },
-      dedupeKey: `streak:${userId}:${day.localDate}`,
+      dedupeKey: `streak:${owner}:${day.localDate}`,
     });
   }
 }

@@ -669,8 +669,17 @@ export class SessionService {
       .where(eq(cardsTable.id, last.cardId));
 
     /* Phase 12.1: revoke the XP this review earned before deleting it, so the
-     * ledger stays consistent and undo cannot be used to farm XP. */
-    await XpService.revokeByDedupeKey(`review:${last.id}`, "review-undone");
+     * ledger stays consistent and undo cannot be used to farm XP.
+     *
+     * Phase 26F-E3: the revoke is scoped to the SESSION'S owner, read from the
+     * stored row — not to "whoever holds this key". Previously this call passed
+     * no user id at all and relied on the review id being unique; omitting an
+     * argument is no longer a way to reach every learner's ledger. */
+    await XpService.revokeByDedupeKey({
+      dedupeKey: `review:${last.id}`,
+      ownerUserId: row.userId,
+      reason: "review-undone",
+    });
 
     /* Remove the review so cursor + counts revert automatically. */
     await db.delete(reviewsTable).where(eq(reviewsTable.id, last.id));

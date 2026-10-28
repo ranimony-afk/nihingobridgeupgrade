@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SyncService } from "@/services/srs/syncService";
 import { SyncPlatform } from "@/types/srs";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +19,9 @@ export const dynamic = "force-dynamic";
  * same push is a no-op for already-applied events.
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     const deviceId = body?.deviceId;

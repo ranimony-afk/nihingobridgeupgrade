@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SrsService } from "@/services/srs/srsService";
 import { getScheduler, resolveParams } from "@/services/srs/scheduler";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +12,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const { id } = await params;
     const rating = (request.nextUrl.searchParams.get("rating") || "good") as
@@ -61,6 +68,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const { id } = await params;
     const body = await request.json();

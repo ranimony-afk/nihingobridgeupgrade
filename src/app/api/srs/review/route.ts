@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SrsService } from "@/services/srs/srsService";
 import { SRS_RATINGS, SrsRating } from "@/types/srs";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +14,9 @@ export const dynamic = "force-dynamic";
  * at request time, so swapping algorithms requires no code path changes.
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
   try {
     const body = await request.json();
     const { cardId, rating, timeSpentMs, userId } = body;

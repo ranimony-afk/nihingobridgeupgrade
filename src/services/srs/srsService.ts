@@ -29,6 +29,7 @@ import {
 } from "@/types/srs";
 import { describeInterval } from "./strategies/shared";
 import { XpService } from "@/services/gamification/xpService";
+import { seedCatalogue } from "./srsCatalogueService";
 
 type DeckRow = typeof srsDecksTable.$inferSelect;
 type CardRow = typeof srsCardsTable.$inferSelect;
@@ -140,6 +141,16 @@ export class SrsService {
    * ============================================================ */
   static async ensureSeeded(): Promise<void> {
     await this.syncSchedulerRegistry();
+
+    /* Phase 26F-B — the SYSTEM CATALOGUE is seeded unconditionally and repairs
+     * itself, because its completeness is a property of this code version, not
+     * of how many learner decks happen to exist. (The legacy deck-count early
+     * return below is exactly the pattern that made partial seeding permanent.)
+     *
+     * This writes only to srs_system_decks / srs_card_templates. It never
+     * touches srs_decks or srs_cards, so the legacy demo rows and every current
+     * read path behave exactly as before. */
+    await seedCatalogue();
 
     const [deckCountRow] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
