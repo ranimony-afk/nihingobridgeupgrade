@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveSelfIdentity } from "@/lib/auth/learningIdentity";
+import {
+  authenticateActor,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
 import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
 import { AnalyticsService } from "@/services/analytics";
 
@@ -27,10 +32,26 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * POST /api/analytics — record a study event (and its XP award).
+ *
+ * Authorization (Phase 25): the caller must hold a verified identity, and the
+ * event is always recorded against THAT identity. A body `userId` naming
+ * another user is refused with 403 before any write; `trackStudyEvent` derives
+ * its dedupe key from the same id, so the two cannot disagree.
+ */
 export async function POST(request: NextRequest) {
+  // Authorization first: no anonymous caller reaches the body parser, the
+  // analytics aggregates, or the XP ledger behind them.
+  const auth = await authenticateActor("Failed to track study event");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
-    const { userId, itemType, itemId, jlptLevel, timeSpentMs } = body;
+    const { userId: claimedUserId, itemType, itemId, jlptLevel, timeSpentMs } = body;
+
+    const identity = resolveSelfIdentity(auth.actor, claimedUserId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
 
     if (!itemType || !itemId) {
       return NextResponse.json(
@@ -40,7 +61,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await AnalyticsService.trackStudyEvent({
-      userId,
+      // Verified identity, not `body.userId`; no "anonymous-user" fallback.
+      userId: identity.userId,
       itemType,
       itemId,
       jlptLevel,

@@ -31,6 +31,16 @@
  *
  * Sentinels are unique tokens (`SENTINEL_…`, `…_sentinel_…`, `sentinel-…`), so
  * ordinary words in the legitimate messages cannot cause a false positive.
+ *
+ * PHASE 25 UPDATE — the three write routes now require a verified identity
+ * before they validate, read or write anything (see
+ * tests/xp-analytics-write-authorization.test.ts for that contract). This
+ * suite's subject is unchanged: error sanitization on the mutation path. It
+ * therefore makes every request as an authenticated learner via
+ * `setActorResolver` (the same deterministic seam `POST /api/questions` tests
+ * use) and the documented bodies now name that same actor's id. NO assertion
+ * from Phase 24 was removed, relaxed or skipped: every sanitization, status,
+ * envelope and log-classification expectation below is the original one.
  */
 import { format } from "node:util";
 
@@ -173,6 +183,14 @@ import { DELETE as xpDELETE, POST as xpPOST } from "@/app/api/xp/route";
 import { POST as analyticsPOST } from "@/app/api/analytics/route";
 import { AnalyticsService } from "@/services/analytics";
 import { XpService } from "@/services/gamification/xpService";
+import { resetActorResolver, setActorResolver } from "@/lib/auth";
+
+/**
+ * The verified actor every request in this suite runs as. Phase 25 routes
+ * derive the acting user id from this server-side identity, so a body that
+ * names a different user is (correctly) refused with 403.
+ */
+const ACTOR_ID = "u-42";
 
 let errorLog: ReturnType<typeof vi.spyOn>;
 let warnLog: ReturnType<typeof vi.spyOn>;
@@ -235,9 +253,11 @@ beforeEach(() => {
   state.insertFailureFor = null;
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
   warnLog = vi.spyOn(console, "warn").mockImplementation(() => {});
+  setActorResolver(() => ({ id: ACTOR_ID, role: "learner" }));
 });
 
 afterEach(() => {
+  resetActorResolver();
   vi.restoreAllMocks();
 });
 
@@ -451,7 +471,7 @@ describe("Phase 24: every thrown shape is handled without a secondary exception"
 
 describe("Phase 24: validation behaviour is preserved (400, not 500)", () => {
   it("POST /api/analytics rejects a missing itemType/itemId with 400", async () => {
-    const response = await analyticsPOST(postRequest("/api/analytics", { userId: "u-1" }));
+    const response = await analyticsPOST(postRequest("/api/analytics", { userId: ACTOR_ID }));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       success: false,

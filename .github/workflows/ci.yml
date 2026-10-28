@@ -152,7 +152,8 @@ jobs:
             tests/seeding-log-sanitization.test.ts \
             tests/xp-read-path-write-isolation.test.ts \
             tests/xp-analytics-error-sanitization.test.ts \
-            tests/xp-analytics-write-route-sanitization.test.ts
+            tests/xp-analytics-write-route-sanitization.test.ts \
+            tests/xp-analytics-write-authorization.test.ts
 
       - name: Remove temporary JMdict XML
         if: always()

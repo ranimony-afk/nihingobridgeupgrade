@@ -385,6 +385,26 @@ export class XpService {
   /* ============================================================
    * REVOKE — used when the originating action is undone
    * ============================================================ */
+  /**
+   * Owner (`xp_events.user_id`) of the event carrying `dedupeKey`, or null when
+   * no such event exists. Read-only, single column, single row.
+   *
+   * Used by `DELETE /api/xp` (Phase 25) to scope reversal to the caller's own
+   * ledger rows: the route compares this value with the verified actor before
+   * `revokeByDedupeKey` runs, so a foreign key is refused with zero writes.
+   * `revokeByDedupeKey` itself keeps its signature and behavior, because its
+   * in-domain caller (`sessionService`, undoing a review) is already acting for
+   * the user that owns the row.
+   */
+  static async findEventOwner(dedupeKey: string): Promise<string | null> {
+    const [row] = await db
+      .select({ userId: eventsTable.userId })
+      .from(eventsTable)
+      .where(eq(eventsTable.dedupeKey, dedupeKey))
+      .limit(1);
+    return row?.userId ?? null;
+  }
+
   static async revokeByDedupeKey(
     dedupeKey: string,
     reason = "source-action-undone"

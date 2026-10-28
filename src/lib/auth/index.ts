@@ -38,6 +38,14 @@ export {
   setSupabaseClientFactory,
 } from "./identity";
 export type {
+  SelfIdentityRejection,
+  SelfIdentityResolution,
+} from "./learningIdentity";
+export {
+  SELF_IDENTITY_MALFORMED_MESSAGE,
+  resolveSelfIdentity,
+} from "./learningIdentity";
+export type {
   ApplicationUserRecord,
   ApplicationUserStore,
   NewApplicationUser,

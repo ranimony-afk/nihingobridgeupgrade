@@ -1,4 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AuthorizationError } from "@/lib/auth";
+import { resolveSelfIdentity } from "@/lib/auth/learningIdentity";
+import {
+  authenticateActor,
+  authorizationFailureResponse,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
 import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
 import { XpService } from "@/services/gamification/xpService";
 import { listRules, XP_RULE_COUNT, xpAtLevel, MAX_LEVEL } from "@/services/gamification/xpRegistry";
@@ -52,8 +59,19 @@ export async function GET(request: NextRequest) {
  * POST /api/xp — award XP for a domain event.
  * Used by clients (and the Flutter app) to report events the server
  * did not originate. Always idempotent via dedupeKey.
+ *
+ * Authorization (Phase 25): the caller must hold a verified identity, and the
+ * XP is always awarded to THAT identity. The body may name the caller's own id
+ * (explicit self-report) but naming anyone else is refused with 403 — before
+ * any read or write — instead of being written into the ledger.
  */
 export async function POST(request: NextRequest) {
+  // Authorization comes FIRST: before the body is parsed, so an anonymous
+  // caller cannot reach validation, the ledger, or any indirect mutation, and
+  // cannot use validation messages as an unauthenticated oracle.
+  const auth = await authenticateActor("Failed to award XP");
+  if (!auth.ok) return auth.response;
+
   // Body parsing is kept OUT of the mutation's try block on purpose. A
   // malformed body is a client error and must stay a 400 — it must not be
   // reported as an internal failure, and the parser's own message (which
@@ -77,11 +95,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // The claimed id is compared against the verified actor; a foreign claim is
+  // refused here, so a rejected request performs zero writes below.
+  const identity = resolveSelfIdentity(auth.actor, body.userId);
+  if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
+
   try {
     const payload: XpEventPayload = {
       ...(body as unknown as XpEventPayload),
       eventType: eventType as XpEventType,
-      userId: (body.userId as string) || "anonymous-user",
+      // Verified identity, not `body.userId`: the payload can no longer be
+      // aimed at another user, and there is no "anonymous-user" fallback left
+      // to write unattributable rows.
+      userId: identity.userId,
     };
 
     const result = await XpService.award({
@@ -104,12 +130,32 @@ export async function POST(request: NextRequest) {
   }
 }
 
-/** DELETE /api/xp?dedupeKey=... — revoke a previously granted award. */
+/**
+ * DELETE /api/xp?dedupeKey=... — revoke a previously granted award.
+ *
+ * Authorization (Phase 25): authenticated callers may revoke their OWN ledger
+ * event only. Ownership is read from the stored row (`XpService.findEventOwner`)
+ * and compared with the verified actor; a key belonging to another user is
+ * refused with 403 before the update runs, and an unknown key keeps the
+ * pre-existing `{ success: true, revoked: false }` contract.
+ *
+ * A `userId` query parameter is ignored: query strings are never identity.
+ * Legacy rows written under the old `anonymous-user` fallback have no owner and
+ * are therefore not revocable through this route (fail closed).
+ */
 export async function DELETE(request: NextRequest) {
+  const auth = await authenticateActor("Failed to revoke XP");
+  if (!auth.ok) return auth.response;
+
   try {
     const dedupeKey = request.nextUrl.searchParams.get("dedupeKey");
     if (!dedupeKey) {
       return NextResponse.json({ success: false, error: "dedupeKey is required" }, { status: 400 });
+    }
+
+    const owner = await XpService.findEventOwner(dedupeKey);
+    if (owner !== null && owner !== auth.actor.id) {
+      return authorizationFailureResponse(new AuthorizationError(403));
     }
 
     const result = await XpService.revokeByDedupeKey(

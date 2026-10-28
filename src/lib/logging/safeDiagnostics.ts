@@ -30,7 +30,10 @@ export type DiagnosticOperation =
   | "XpService.award"
   | "XpService.revokeByDedupeKey"
   | "XpService.awardSafe"
-  | "AnalyticsService.trackStudyEvent";
+  | "AnalyticsService.trackStudyEvent"
+  /* Phase 25 — learning write-route authorization. */
+  | "auth.requireActor"
+  | "XpService.findEventOwner";
 
 /**
  * Closed set of failure categories. Deliberately coarse: enough to triage
