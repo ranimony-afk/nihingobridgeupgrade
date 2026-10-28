@@ -144,6 +144,7 @@ jobs:
             tests/jmdict-source-contract.test.ts \
             tests/mobile-dictionary-search-api-live.test.ts \
             tests/mobile-dictionary-search-api.test.ts \
+            tests/unified-search.test.ts \
             tests/pilot-jmdict-db.test.ts \
             tests/provenance-foundation.test.ts \
             tests/questions-post-authorization.test.ts

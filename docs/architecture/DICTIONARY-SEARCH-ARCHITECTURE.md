@@ -269,14 +269,39 @@ pool and verifies transaction settings, connection release, and failure cleanup.
 The helper is imported by an already CI-selected test because the current CI
 workflow lists files explicitly.
 
-This guarantee is scoped to the dictionary paths above, not every GET in the
-application. In particular, the separate multi-entity `/api/search` still
-initializes fixtures and exposes raw exception text on failure; homepage and
-other knowledge/JLPT read paths also have their own initialization behavior.
-They require separate remediation and must not be treated as read-only because
-this dictionary change passed. Separately, non-dictionary `db.transaction` users
-such as CMS still rely on the lazy pool proxy that Drizzle does not identify as
-a pool; their transaction affinity and cleanup need a dedicated fix and tests.
-Public beta remains blocked on those risks, authorization, dependency advisories,
-database TLS, D-13 abuse protection, canonical-data/provenance gates, and
-validation against the intended deployment.
+### General multi-entity search
+
+`GET /api/search` now reads only existing dictionary, kanji, radicals, grammar,
+sentences and JLPT-question rows; it does not seed or initialize on a request.
+Empty tables return empty results. Successful envelopes and relevance/length
+ranking remain as before. Repeated targets are deduplicated. Queries are capped
+at 1,000 Unicode code points after normalization, target lists at 256 UTF-16
+units, level filters at 16 code points, result limits at 100 and offsets at
+100,000. Malformed pagination and overlong inputs return 400; valid large
+limits and offsets are clamped. Database and service failures return a generic
+500; optional publication-overlay failures are logged generically and fall back
+to canonical entries.
+
+This endpoint uses ordinary bounded SELECT queries rather than a transaction;
+concurrent writes may therefore be observed inconsistently across targets. It
+does **not** add a database statement timeout, request deadline, connection
+checkout timeout, or rate limiter. The existing per-target candidate cap means
+`totalResults` counts the fetched candidates, not all matches in the database.
+`npm run dictionary:seed-fixtures` remains an explicit guarded development/test
+operation for dictionary and knowledge fixtures; JLPT test setup in
+`tests/unified-search.test.ts` inserts a synthetic test-only question directly
+into its own in-memory disposable database. The same test snapshots the complete
+application schema, catalogs, sequences and rows before and after GETs and
+failures, including empty and populated databases, and traces SELECTs and seeder
+calls. It never uses an inherited database URL.
+
+These guarantees are not global. Other GETs can still initialize fixtures,
+including `/api/ai/retrieve`, `/api/quiz/analytics`, `/api/kana`, `/api/kanji`,
+`/api/kanji/[character]`, `/api/knowledge/srs`, `/api/questions` and its detail,
+`/api/jlpt/tests` and its detail, JLPT session/overview/progress routes, and
+`/api/analytics`; the homepage does so as well. They require separate review.
+Non-dictionary `db.transaction` users such as CMS still rely on the lazy pool
+proxy that Drizzle does not identify as a pool; their transaction affinity and
+cleanup need a dedicated fix and tests. Public beta remains blocked on these
+risks, authorization, dependency advisories, database TLS, D-13 abuse protection,
+canonical-data/provenance gates, and validation against the intended deployment.
