@@ -148,7 +148,9 @@ jobs:
             tests/pilot-jmdict-db.test.ts \
             tests/provenance-foundation.test.ts \
             tests/questions-post-authorization.test.ts \
-            tests/questions-get-error-sanitization.test.ts
+            tests/questions-get-error-sanitization.test.ts \
+            tests/seeding-log-sanitization.test.ts \
+            tests/xp-read-path-write-isolation.test.ts
 
       - name: Remove temporary JMdict XML
         if: always()

@@ -13,6 +13,7 @@ import {
   XpEventPayload,
   XpEventType,
   XpLedgerEntry,
+  XpRuleDescriptor,
   XpSourceBreakdown,
   XpSummary,
 } from "@/types/gamification";
@@ -31,14 +32,89 @@ import { DailyQueueService, resolveDayWindow } from "@/services/srs/dailyQueueSe
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 86_400_000;
 
+/** The subset of `xp_rules` that mirrors the code registry. */
+type StoredRuleMirror = {
+  version: string;
+  eventType: string;
+  name: string;
+  description: string;
+  basePoints: number;
+  dailyCap: number;
+  defaultParams: Record<string, unknown>;
+};
+
+/**
+ * Order-insensitive JSON, so a `jsonb` round-trip is never mistaken for drift
+ * and a drifted row is never mistaken for a match.
+ */
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) => entry !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, entry]) => `${JSON.stringify(key)}:${stableJson(entry)}`);
+  return `{${entries.join(",")}}`;
+}
+
+/**
+ * True when the stored mirror row already carries the registry's metadata.
+ *
+ * `isActive` is deliberately excluded: the insert path sets it to true, but the
+ * conflict path has never reactivated a manually deactivated rule. Ignoring it
+ * keeps that behaviour exactly as it was.
+ */
+function ruleMirrorMatches(stored: StoredRuleMirror | undefined, descriptor: XpRuleDescriptor): boolean {
+  if (!stored) return false;
+  return (
+    stored.version === descriptor.version &&
+    stored.eventType === descriptor.eventType &&
+    stored.name === descriptor.name &&
+    stored.description === descriptor.description &&
+    Number(stored.basePoints) === Number(descriptor.basePoints) &&
+    Number(stored.dailyCap) === Number(descriptor.dailyCap) &&
+    stableJson(stored.defaultParams) === stableJson(descriptor.defaultParams)
+  );
+}
+
 export class XpService {
   /* ============================================================
    * REGISTRY SYNC — DB mirrors code metadata for audit only.
    * ============================================================ */
+  /**
+   * Mirror the code rule registry into `xp_rules`.
+   *
+   * Maintenance work, but reached from read paths (`GET /api/xp` through
+   * `getSummary`, `GET /api/analytics` through `ensureInitialized`). A blanket
+   * upsert therefore made an unauthenticated GET rewrite every rule row and
+   * refresh every `synced_at`. Compare first and write only the rows that are
+   * missing or drifted: the mirror still self-heals, but a read on an
+   * already-correct database issues no writes at all.
+   */
   static async syncRegistry(): Promise<number> {
     assertRulesWellFormed();
 
-    for (const d of listRules()) {
+    const descriptors = listRules();
+    const stored = await db
+      .select({
+        key: rulesTable.key,
+        version: rulesTable.version,
+        eventType: rulesTable.eventType,
+        name: rulesTable.name,
+        description: rulesTable.description,
+        basePoints: rulesTable.basePoints,
+        dailyCap: rulesTable.dailyCap,
+        defaultParams: rulesTable.defaultParams,
+      })
+      .from(rulesTable);
+    const storedByKey = new Map(stored.map((row) => [row.key, row]));
+
+    const stale = descriptors.filter(
+      (descriptor) => !ruleMirrorMatches(storedByKey.get(descriptor.key), descriptor)
+    );
+    if (stale.length === 0) return XP_RULE_COUNT;
+
+    for (const d of stale) {
       await db
         .insert(rulesTable)
         .values({
