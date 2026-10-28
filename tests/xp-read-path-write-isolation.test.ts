@@ -16,6 +16,14 @@
  *
  * Nothing here touches a production database: the server is an in-memory
  * PGlite instance created by this file and torn down in `afterAll`.
+ *
+ * PHASE 26B UPDATE — both read routes now require a verified identity and serve
+ * only the caller's own ledger (tests/xp-analytics-read-authorization.test.ts
+ * owns that contract). This suite's subject is unchanged: the read paths must
+ * not write. It therefore installs one deterministic actor through
+ * `setActorResolver` after the module reset, and the two assertions that named
+ * the old anonymous fallback now name that actor. Every initialisation and
+ * zero-write assertion is otherwise untouched.
  */
 import { execFileSync } from "node:child_process";
 import type { AddressInfo, Server } from "node:net";
@@ -87,6 +95,9 @@ function writesIn(statements: string[]): string[] {
   return statements.filter((statement) => WRITE.test(statement));
 }
 
+/** The verified actor every read in this suite runs as (Phase 26B). */
+const READ_ACTOR_ID = "phase22b-reader";
+
 beforeAll(async () => {
   // Export DDL offline; no inherited database URL and no application credentials.
   const schema = execFileSync(
@@ -135,6 +146,12 @@ beforeAll(async () => {
   expect(pool.options.connectionString).toBe(disposableUrl);
   backingPool = poolCache.__arenaNextJsPostgresqlPool!;
 
+  // Phase 26B: the read routes require a verified actor. Install one on the
+  // module instance this suite just loaded.
+  const auth = await import("@/lib/auth");
+  auth.resetActorResolver();
+  auth.setActorResolver(() => ({ id: READ_ACTOR_ID, role: "learner" }));
+
   xpGET = (await import("@/app/api/xp/route")).GET;
   analyticsGET = (await import("@/app/api/analytics/route")).GET;
   const registry = await import("@/services/gamification/xpRegistry");
@@ -150,6 +167,7 @@ afterAll(async () => {
       server.close((error) => (error ? reject(error) : resolve()))
     );
   if (database) await database.close();
+  (await import("@/lib/auth")).resetActorResolver();
   delete poolCache.__arenaNextJsPostgresqlPool;
   if (previousPool) poolCache.__arenaNextJsPostgresqlPool = previousPool;
   vi.unstubAllEnvs();
@@ -171,7 +189,7 @@ describe("A. an empty disposable database still initialises on first read", () =
     expect(body.success).toBe(true);
     expect(body.registry.ruleCount).toBe(XP_RULE_COUNT);
     expect(body.rules).toHaveLength(XP_RULE_COUNT);
-    expect(body.summary.userId).toBe("anonymous-user");
+    expect(body.summary.userId).toBe(READ_ACTOR_ID);
     expect(body.summary.totalXp).toBe(0);
     expect(body.summary.level.level).toBeGreaterThanOrEqual(1);
     expect(body.summary.bySource).toEqual([]);
@@ -193,7 +211,7 @@ describe("A. an empty disposable database still initialises on first read", () =
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.success).toBe(true);
-    expect(body.data.userId).toBe("anonymous-user");
+    expect(body.data.userId).toBe(READ_ACTOR_ID);
     expect(body.data.xp.totalPoints).toBe(0);
     expect(body.data.studyMetrics.srsReviewsCompleted).toBe(0);
 

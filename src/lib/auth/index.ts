@@ -42,7 +42,9 @@ export type {
   SelfIdentityResolution,
 } from "./learningIdentity";
 export {
+  QUERY_IDENTITY_MALFORMED_MESSAGE,
   SELF_IDENTITY_MALFORMED_MESSAGE,
+  resolveQueryIdentity,
   resolveSelfIdentity,
 } from "./learningIdentity";
 export type {

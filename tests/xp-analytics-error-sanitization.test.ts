@@ -20,6 +20,17 @@
  *   - Logs are captured through the application's actual `console`, not through
  *     source-text assertions.
  *
+ * PHASE 26B UPDATE — both read routes now require a verified identity and serve
+ * only the caller's own data (see tests/xp-analytics-read-authorization.test.ts
+ * for that contract). This suite's subject is unchanged: error sanitization on
+ * the read path. It therefore makes every request as an authenticated learner
+ * through `setActorResolver` (the same deterministic seam the other suites use),
+ * and the two assertions that named the old anonymous fallback now name that
+ * actor — `anonymous-user` no longer exists as a readable identity. The
+ * sanitization assertions below are untouched; the trailing "documented userId
+ * query parameter" case keeps its subject (the parameter is honoured) while
+ * using a SELF id, because a foreign id is now correctly 403.
+ *
  * Sentinels are unique tokens: `XpService`, `failed`, `category`, `summary` and
  * other ordinary words in the legitimate message can never cause a false
  * positive, so these assertions cannot be satisfied by accident.
@@ -130,6 +141,10 @@ vi.mock("@/db", () => {
 import { GET as xpGET } from "@/app/api/xp/route";
 import { GET as analyticsGET } from "@/app/api/analytics/route";
 import { XP_RULE_COUNT } from "@/services/gamification/xpRegistry";
+import { resetActorResolver, setActorResolver } from "@/lib/auth";
+
+/** The verified actor every read in this suite runs as (Phase 26B). */
+const ACTOR_ID = "phase23-user";
 
 let errorLog: ReturnType<typeof vi.spyOn>;
 let warnLog: ReturnType<typeof vi.spyOn>;
@@ -186,9 +201,11 @@ beforeEach(() => {
   state.insert = NO_FAILURE;
   errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
   warnLog = vi.spyOn(console, "warn").mockImplementation(() => {});
+  setActorResolver(() => ({ id: ACTOR_ID, role: "learner" }));
 });
 
 afterEach(() => {
+  resetActorResolver();
   vi.restoreAllMocks();
 });
 
@@ -312,7 +329,7 @@ describe("Phase 23: successful response contracts are unchanged", () => {
     expect(body.registry.ruleCount).toBe(XP_RULE_COUNT);
     expect(body.rules).toHaveLength(XP_RULE_COUNT);
     expect(body.summary).toMatchObject({
-      userId: "anonymous-user",
+      userId: ACTOR_ID,
       totalXp: 0,
       todayXp: 0,
       weekXp: 0,
@@ -333,7 +350,7 @@ describe("Phase 23: successful response contracts are unchanged", () => {
 
     const body = await response.json();
     expect(body.success).toBe(true);
-    expect(body.data.userId).toBe("anonymous-user");
+    expect(body.data.userId).toBe(ACTOR_ID);
     expect(body.data.xp).toMatchObject({ totalPoints: 0 });
     expect(body.data.studyMetrics).toMatchObject({
       vocabularyStudied: 0,
@@ -350,12 +367,28 @@ describe("Phase 23: successful response contracts are unchanged", () => {
   });
 
   it("honours the documented userId query parameter on the success path", async () => {
-    const xpResponse = await xpGET(nextRequest("http://phase23.invalid/api/xp?userId=phase23-user"));
-    expect((await xpResponse.json()).summary.userId).toBe("phase23-user");
+    // Phase 26B: the parameter is still honoured, but only for the caller's own
+    // id — reading another learner is 403 (asserted at the end of this case).
+    const xpResponse = await xpGET(nextRequest(`http://phase23.invalid/api/xp?userId=${ACTOR_ID}`));
+    expect((await xpResponse.json()).summary.userId).toBe(ACTOR_ID);
 
     const analyticsResponse = await analyticsGET(
-      nextRequest("http://phase23.invalid/api/analytics?userId=phase23-user")
+      nextRequest(`http://phase23.invalid/api/analytics?userId=${ACTOR_ID}`)
     );
-    expect((await analyticsResponse.json()).data.userId).toBe("phase23-user");
+    expect((await analyticsResponse.json()).data.userId).toBe(ACTOR_ID);
+
+    // ...and an omitted id resolves to the same actor rather than to a shared
+    // anonymous ledger.
+    const omitted = await xpGET(nextRequest("http://phase23.invalid/api/xp"));
+    expect((await omitted.json()).summary.userId).toBe(ACTOR_ID);
+
+    // A foreign id is refused, in the same envelope family this suite checks.
+    const foreign = await xpGET(nextRequest("http://phase23.invalid/api/xp?userId=someone-else"));
+    expect(foreign.status).toBe(403);
+    expect(await foreign.json()).toEqual({
+      success: false,
+      error: "You do not have permission to perform this action.",
+      code: "FORBIDDEN",
+    });
   });
 });

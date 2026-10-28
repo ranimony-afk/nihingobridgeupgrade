@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthorizationError } from "@/lib/auth";
-import { resolveSelfIdentity } from "@/lib/auth/learningIdentity";
+import {
+  resolveQueryIdentity,
+  resolveSelfIdentity,
+} from "@/lib/auth/learningIdentity";
 import {
   authenticateActor,
   authorizationFailureResponse,
+  queryIdentityFailureResponse,
   selfIdentityFailureResponse,
 } from "@/app/api/_shared/authorizationResponse";
 import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
@@ -13,14 +17,29 @@ import { XpEventPayload, XpEventType, XP_EVENT_TYPES } from "@/types/gamificatio
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/xp — summary: total, level, trend, sources, cap usage, ledger. */
+/**
+ * GET /api/xp — summary: total, level, trend, sources, cap usage, ledger.
+ *
+ * Authorization (Phase 26B): XP totals are one learner's data. The caller must
+ * hold a verified identity and may read only its OWN ledger — an omitted
+ * `userId` resolves to the actor, a foreign one is 403, an empty or repeated
+ * one is 400. Authentication runs before the query string is interpreted and
+ * before any database access, so an anonymous caller cannot reach the summary
+ * (or use this route as a read oracle). There is no `anonymous-user` fallback
+ * left on this path.
+ */
 export async function GET(request: NextRequest) {
+  const auth = await authenticateActor("Failed to load XP summary");
+  if (!auth.ok) return auth.response;
+
+  const sp = request.nextUrl.searchParams;
+  const identity = resolveQueryIdentity(auth.actor, sp.getAll("userId"));
+  if (!identity.ok) return queryIdentityFailureResponse(identity.reason);
+
   try {
-    const sp = request.nextUrl.searchParams;
-    const userId = sp.get("userId") || "anonymous-user";
     const historyDays = sp.get("historyDays") ? parseInt(sp.get("historyDays")!, 10) : 14;
 
-    const summary = await XpService.getSummary(userId, historyDays);
+    const summary = await XpService.getSummary(identity.userId, historyDays);
 
     return NextResponse.json({
       success: true,

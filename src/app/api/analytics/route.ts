@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { resolveSelfIdentity } from "@/lib/auth/learningIdentity";
+import {
+  resolveQueryIdentity,
+  resolveSelfIdentity,
+} from "@/lib/auth/learningIdentity";
 import {
   authenticateActor,
+  queryIdentityFailureResponse,
   selfIdentityFailureResponse,
 } from "@/app/api/_shared/authorizationResponse";
 import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
@@ -9,12 +13,25 @@ import { AnalyticsService } from "@/services/analytics";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/analytics — aggregated learning progress for ONE learner.
+ *
+ * Authorization (Phase 26B): the caller must hold a verified identity and may
+ * read only its OWN summary; an omitted `userId` resolves to the actor, a
+ * foreign one is 403, an empty or repeated one is 400. Authentication runs
+ * before the query string and before any database access, and the
+ * `anonymous-user` fallback is gone.
+ */
 export async function GET(request: NextRequest) {
+  const auth = await authenticateActor("Failed to load progress summary");
+  if (!auth.ok) return auth.response;
+
   const params = request.nextUrl.searchParams;
-  const userId = params.get("userId") || "anonymous-user";
+  const identity = resolveQueryIdentity(auth.actor, params.getAll("userId"));
+  if (!identity.ok) return queryIdentityFailureResponse(identity.reason);
 
   try {
-    const summary = await AnalyticsService.getUserProgressSummary(userId);
+    const summary = await AnalyticsService.getUserProgressSummary(identity.userId);
     return NextResponse.json({
       success: true,
       data: summary,

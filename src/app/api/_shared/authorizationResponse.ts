@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { AuthorizationError, requireActor } from "@/lib/auth";
 import type { CmsActor } from "@/lib/auth";
 import {
+  QUERY_IDENTITY_MALFORMED_MESSAGE,
   SELF_IDENTITY_MALFORMED_MESSAGE,
   type SelfIdentityRejection,
 } from "@/lib/auth/learningIdentity";
@@ -44,6 +45,23 @@ export function selfIdentityFailureResponse(
   }
   return NextResponse.json(
     { success: false, error: SELF_IDENTITY_MALFORMED_MESSAGE },
+    { status: 400, headers: NO_STORE }
+  );
+}
+
+/**
+ * 400 for an unusable query `userId` (empty, blank or repeated), 403 for a
+ * foreign one. The query transport has its own message because the failure is
+ * about the parameter's shape, not its JSON type.
+ */
+export function queryIdentityFailureResponse(
+  reason: SelfIdentityRejection
+): NextResponse {
+  if (reason === "foreign") {
+    return authorizationFailureResponse(new AuthorizationError(403));
+  }
+  return NextResponse.json(
+    { success: false, error: QUERY_IDENTITY_MALFORMED_MESSAGE },
     { status: 400, headers: NO_STORE }
   );
 }
