@@ -139,6 +139,10 @@ export async function POST(request: NextRequest) {
  * refused with 403 before the update runs, and an unknown key keeps the
  * pre-existing `{ success: true, revoked: false }` contract.
  *
+ * Since Phase 26A the dedupe rule is `(user_id, dedupe_key)`, so the same key
+ * may exist for several learners: ownership is resolved within the caller's
+ * own ledger and the revoke is scoped to it.
+ *
  * A `userId` query parameter is ignored: query strings are never identity.
  * Legacy rows written under the old `anonymous-user` fallback have no owner and
  * are therefore not revocable through this route (fail closed).
@@ -153,14 +157,28 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ success: false, error: "dedupeKey is required" }, { status: 400 });
     }
 
-    const owner = await XpService.findEventOwner(dedupeKey);
+    /* Ownership, in two steps (Phase 26A).
+     *
+     * The dedupe rule is `(user_id, dedupe_key)`, so the same key may exist
+     * for several learners. The scoped lookup answers "does the caller own
+     * this key?" without ever being confused by somebody else's row; the
+     * unscoped lookup runs only when the caller does not, and only to tell an
+     * unknown key (`revoked:false`) from a foreign one (403). No branch
+     * writes anything. */
+    const owner = await XpService.findEventOwner(dedupeKey, auth.actor.id);
     if (owner !== null && owner !== auth.actor.id) {
       return authorizationFailureResponse(new AuthorizationError(403));
     }
+    if (owner === null && (await XpService.findEventOwner(dedupeKey)) !== null) {
+      return authorizationFailureResponse(new AuthorizationError(403));
+    }
 
+    // Scoped to the caller: revoking one user's key must not revoke another
+    // user's identically-keyed event.
     const result = await XpService.revokeByDedupeKey(
       dedupeKey,
-      request.nextUrl.searchParams.get("reason") || "manual-revoke"
+      request.nextUrl.searchParams.get("reason") || "manual-revoke",
+      auth.actor.id
     );
 
     return NextResponse.json({ success: true, ...result });

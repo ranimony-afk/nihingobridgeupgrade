@@ -78,6 +78,85 @@ function ruleMirrorMatches(stored: StoredRuleMirror | undefined, descriptor: XpR
   );
 }
 
+/* ============================================================
+ * PHASE 26A — deduplication is per user
+ *
+ * `dedupe_key` alone is no longer unique (see schema.ts): keys such as
+ * `content.read:<sourceId>` and `knowledge:<cardId>` are identical for every
+ * learner studying the same item, so a global unique key let the first writer
+ * suppress — and disclose — everyone else's award.
+ *
+ * The UNIQUE index is now `(user_id, dedupe_key)`, and this helper recognizes
+ * ONLY that rule as a dedupe collision. Matching the driver's message text is
+ * not enough (Drizzle wraps it: the wrapper reads "Failed query: …"), and
+ * matching every 23505 is too much (a primary-key or unrelated unique
+ * violation must surface as a failure, never as a harmless duplicate).
+ * ============================================================ */
+
+/** Bounded walk of the `cause` chain Drizzle adds around driver errors. */
+const MAX_CAUSE_DEPTH = 3;
+
+interface ViolationFacts {
+  /** SQLSTATE 23505 seen anywhere in the chain. */
+  unique: boolean;
+  /** Constraint / index names reported by the driver. */
+  constraints: string[];
+  /** Innermost driver message (never the Drizzle wrapper, which embeds SQL). */
+  innermostMessage: string;
+}
+
+function violationFacts(error: unknown): ViolationFacts {
+  const facts: ViolationFacts = { unique: false, constraints: [], innermostMessage: "" };
+  let current: unknown = error;
+  for (let depth = 0; depth <= MAX_CAUSE_DEPTH; depth += 1) {
+    if (typeof current !== "object" || current === null) break;
+    const candidate = current as {
+      code?: unknown;
+      constraint?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (candidate.code === "23505") facts.unique = true;
+    if (typeof candidate.constraint === "string" && candidate.constraint !== "") {
+      facts.constraints.push(candidate.constraint);
+    }
+    if (typeof candidate.message === "string") facts.innermostMessage = candidate.message;
+    current = candidate.cause;
+  }
+  return facts;
+}
+
+/** Does this name identify the per-user dedupe rule? */
+const DEDUPE_RULE_NAME = /dedupe/i;
+
+/** `(dedupe_key)` scope, or `(user_id, dedupe_key)` when a user is supplied. */
+function scopeToKey(dedupeKey: string, userId?: string) {
+  return userId === undefined
+    ? eq(eventsTable.dedupeKey, dedupeKey)
+    : and(eq(eventsTable.dedupeKey, dedupeKey), eq(eventsTable.userId, userId));
+}
+
+/**
+ * True only for a violation of the per-user dedupe index. Exported for
+ * focused classification tests; the award path uses it directly.
+ */
+export function isDedupeCollision(error: unknown): boolean {
+  const facts = violationFacts(error);
+  if (!facts.unique) return false;
+
+  // Constraint/index metadata is authoritative when the driver provides it.
+  // Deliberately NOT the message: Drizzle's wrapper embeds the whole statement,
+  // so every insert on this table mentions "dedupe_key" and message matching
+  // would swallow unrelated violations as duplicates.
+  if (facts.constraints.length > 0) {
+    return facts.constraints.some((name) => DEDUPE_RULE_NAME.test(name));
+  }
+
+  // Fallback for drivers that expose no constraint name: judge the innermost
+  // driver message only, never the wrapper.
+  return DEDUPE_RULE_NAME.test(facts.innermostMessage);
+}
+
 export class XpService {
   /* ============================================================
    * REGISTRY SYNC — DB mirrors code metadata for audit only.
@@ -247,12 +326,14 @@ export class XpService {
       input.dedupeKey ??
       (payload.sourceId ? `${payload.eventType}:${payload.sourceId}` : undefined);
 
-    /* ---- Fast-path duplicate check (the UNIQUE index is the real guard) ---- */
+    /* ---- Fast-path duplicate check (the UNIQUE index is the real guard) ----
+     * Scoped to THIS user (Phase 26A): another learner's event with the same
+     * key is not a duplicate, and its id must never reach this caller. */
     if (dedupeKey) {
       const [existing] = await db
         .select({ id: eventsTable.id, points: eventsTable.points })
         .from(eventsTable)
-        .where(eq(eventsTable.dedupeKey, dedupeKey))
+        .where(and(eq(eventsTable.dedupeKey, dedupeKey), eq(eventsTable.userId, userId)))
         .limit(1);
 
       if (existing) {
@@ -321,10 +402,12 @@ export class XpService {
         occurredAt: payload.occurredAt ? new Date(payload.occurredAt) : new Date(),
       });
     } catch (error) {
-      // The UNIQUE index on dedupe_key is the authoritative guard — a race
-      // that loses here is a duplicate, not a failure.
-      const message = error instanceof Error ? error.message : "";
-      if (message.includes("unique") || message.includes("duplicate")) {
+      // The UNIQUE (user_id, dedupe_key) index is the authoritative guard — a
+      // race that loses here is a duplicate OF THIS USER, not a failure. The
+      // classification is structural (SQLSTATE 23505 + the dedupe rule's name),
+      // never a substring of the driver's prose, so an unrelated unique
+      // violation is re-thrown instead of being reported as a duplicate.
+      if (isDedupeCollision(error)) {
         return {
           awarded: false,
           duplicate: true,
@@ -387,32 +470,44 @@ export class XpService {
    * ============================================================ */
   /**
    * Owner (`xp_events.user_id`) of the event carrying `dedupeKey`, or null when
-   * no such event exists. Read-only, single column, single row.
+   * no matching event exists. Read-only, single column, single row.
    *
-   * Used by `DELETE /api/xp` (Phase 25) to scope reversal to the caller's own
-   * ledger rows: the route compares this value with the verified actor before
-   * `revokeByDedupeKey` runs, so a foreign key is refused with zero writes.
-   * `revokeByDedupeKey` itself keeps its signature and behavior, because its
-   * in-domain caller (`sessionService`, undoing a review) is already acting for
-   * the user that owns the row.
+   * `userId` narrows the lookup to one learner's ledger (Phase 26A). Since the
+   * dedupe rule is now `(user_id, dedupe_key)`, several users may legitimately
+   * hold the same key, so an unscoped lookup could return somebody else's row
+   * and wrongly deny the real owner. `DELETE /api/xp` therefore asks twice: the
+   * scoped lookup decides ownership, and the unscoped one only distinguishes
+   * "nobody has this key" (200, `revoked:false`) from "someone else has it"
+   * (403).
    */
-  static async findEventOwner(dedupeKey: string): Promise<string | null> {
+  static async findEventOwner(
+    dedupeKey: string,
+    userId?: string
+  ): Promise<string | null> {
     const [row] = await db
       .select({ userId: eventsTable.userId })
       .from(eventsTable)
-      .where(eq(eventsTable.dedupeKey, dedupeKey))
+      .where(scopeToKey(dedupeKey, userId))
       .limit(1);
     return row?.userId ?? null;
   }
 
+  /**
+   * Mark an award revoked. `userId` narrows the update to that learner's rows
+   * (Phase 26A): without it, a revoke by key would also hit every other user
+   * holding the same key. The signature stays backward compatible — the
+   * in-domain caller (`sessionService`, undoing a review) passes no user id
+   * because its key embeds a review id that belongs to exactly one learner.
+   */
   static async revokeByDedupeKey(
     dedupeKey: string,
-    reason = "source-action-undone"
+    reason = "source-action-undone",
+    userId?: string
   ): Promise<{ revoked: boolean; points: number }> {
     const [row] = await db
       .update(eventsTable)
       .set({ revokedAt: new Date(), revokedReason: reason })
-      .where(and(eq(eventsTable.dedupeKey, dedupeKey), isNull(eventsTable.revokedAt)))
+      .where(and(scopeToKey(dedupeKey, userId), isNull(eventsTable.revokedAt)))
       .returning();
 
     return { revoked: Boolean(row), points: row?.points ?? 0 };
