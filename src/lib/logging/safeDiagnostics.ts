@@ -24,7 +24,9 @@
 /** Closed set of operations permitted to emit a diagnostic. */
 export type DiagnosticOperation =
   | "TestService.ensureSeeded"
-  | "TestService.updateUserAnalytics";
+  | "TestService.updateUserAnalytics"
+  | "XpService.getSummary"
+  | "AnalyticsService.getUserProgressSummary";
 
 /**
  * Closed set of failure categories. Deliberately coarse: enough to triage

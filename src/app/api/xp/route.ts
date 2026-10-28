@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { logOperationFailure } from "@/lib/logging/safeDiagnostics";
 import { XpService } from "@/services/gamification/xpService";
 import { listRules, XP_RULE_COUNT, xpAtLevel, MAX_LEVEL } from "@/services/gamification/xpRegistry";
 import { XpEventPayload, XP_EVENT_TYPES } from "@/types/gamification";
@@ -33,9 +34,17 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to load XP summary";
-    console.error("GET /api/xp error:", error);
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    // A failing Drizzle query carries its SQL text, bound parameters, driver
+    // `detail`/`hint` and connection target in `message`, and the raw object
+    // carries the stack plus a `cause` chain. Neither the response nor the log
+    // may echo any of it: clients get a stable message with the internal error
+    // code, operators get a classified diagnostic. Same convention as
+    // GET /api/questions and GET /api/search.
+    logOperationFailure("error", "XpService.getSummary", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to load XP summary", code: "INTERNAL_ERROR" },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
   }
 }
 
