@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TestService } from "@/services/jlpt/testService";
-import { db } from "@/db";
-import { questions as questionsTable } from "@/db/schema";
+import { AuthorizationError } from "@/lib/auth";
+import { createQuestion } from "@/services/jlpt/questionAuthoring";
+import { QuestionAuthoringError } from "@/services/jlpt/questionDraft";
 import { JLPTLevel, QuestionCategory, QuestionSection } from "@/types/quiz";
 
 export const dynamic = "force-dynamic";
@@ -49,77 +50,79 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * POST /api/questions — create one question bank entry.
+ *
+ * AUTHENTICATED + AUTHORIZED. This route used to accept anonymous writes;
+ * it now delegates to `createQuestion()` (src/services/jlpt/questionAuthoring.ts),
+ * which verifies the server-side identity and requires `cms.create` BEFORE
+ * the body is parsed, validated, or written. The route itself performs no
+ * database access, so the service is the single enforcement point.
+ *
+ * Responses (the pre-existing envelope is preserved — `error` stays a
+ * human-readable string so existing callers keep working; `code` is added
+ * for machine handling):
+ *   200 { success: true, message, id }
+ *   400 { success: false, error, code: "VALIDATION_ERROR", field? }
+ *   401 { success: false, error, code: "UNAUTHENTICATED" }
+ *   403 { success: false, error, code: "FORBIDDEN" }
+ *   409 { success: false, error, code: "QUESTION_ID_CONFLICT", field? }
+ *   500 { success: false, error, code: "INTERNAL_ERROR" }
+ *
+ * Error bodies never contain SQL, constraint names, driver text, stack
+ * traces, credentials, or authorization internals.
+ */
+export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const {
-      id = `q-${Date.now()}`,
-      jlptLevel = "N5",
-      section,
-      category,
-      mondaiNumber = 1,
-      mondaiTitle = "問題１",
-      questionType = "multiple_choice",
-      prompt,
-      promptFurigana,
-      promptTranslation,
-      passage,
-      passageFurigana,
-      passageTranslation,
-      audioScript,
-      audioUrl,
-      options,
-      starOrderParts,
-      correctAnswer,
-      explanation,
-      explanationBreakdown,
-      difficulty = 3,
-      tags = [],
-    } = body;
+    // Read the raw body only. Interpretation is the service's job, and it
+    // happens strictly after the authorization check.
+    const rawBody = await request.text();
+    const { id } = await createQuestion(rawBody);
 
-    if (!prompt || !options || !correctAnswer || !explanation) {
-      return NextResponse.json(
-        { success: false, error: "Missing required question fields" },
-        { status: 400 }
-      );
-    }
-
-    await db.insert(questionsTable).values({
-      id,
-      jlptLevel,
-      section: section || "vocab",
-      category: category || "contextual_use",
-      mondaiNumber,
-      mondaiTitle,
-      questionType,
-      prompt,
-      promptFurigana: promptFurigana || null,
-      promptTranslation,
-      passage: passage || null,
-      passageFurigana: passageFurigana || null,
-      passageTranslation: passageTranslation || null,
-      audioScript: audioScript || null,
-      audioUrl: audioUrl || null,
-      options,
-      starOrderParts: starOrderParts || null,
-      correctAnswer,
-      explanation,
-      explanationBreakdown: explanationBreakdown || null,
-      difficulty,
-      tags,
-      isActive: true,
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: "Question created successfully",
-      id,
-    });
-  } catch (error: any) {
-    console.error("POST /api/questions error:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create question" },
-      { status: 500 }
+      {
+        success: true,
+        message: "Question created successfully",
+        id,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (error) {
+    return questionErrorResponse(error);
+  }
+}
+
+/** Map a failure to a sanitized, non-cacheable HTTP response. */
+function questionErrorResponse(error: unknown): NextResponse {
+  const noStore = { headers: { "Cache-Control": "no-store" } };
+
+  if (error instanceof AuthorizationError) {
+    // Canonical 401/403 payload semantics, flattened into this route's
+    // pre-existing `error: string` envelope. AuthorizationError messages
+    // are already generic by construction.
+    return NextResponse.json(
+      { success: false, error: error.message, code: error.code },
+      { status: error.status, ...noStore }
     );
   }
+
+  if (error instanceof QuestionAuthoringError) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: error.message,
+        code: error.code,
+        ...(error.field !== undefined ? { field: error.field } : {}),
+      },
+      { status: error.status, ...noStore }
+    );
+  }
+
+  // Unexpected failure: full detail stays in server logs, the client gets
+  // a stable message with no internal state.
+  console.error("POST /api/questions error:", error);
+  return NextResponse.json(
+    { success: false, error: "Failed to create question.", code: "INTERNAL_ERROR" },
+    { status: 500, ...noStore }
+  );
 }
