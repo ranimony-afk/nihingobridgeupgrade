@@ -977,6 +977,19 @@ describe("POST /api/questions — disposable PGlite integration (real SQL)", () 
  */
 const REAL_DATABASE_URL = process.env.DATABASE_URL ?? "";
 
+/**
+ * The skip below is for developer machines only. In CI the service container
+ * always provides DATABASE_URL, so a silently skipped layer there would be
+ * vacuous evidence — this guard turns that into a visible failure.
+ */
+describe("POST /api/questions — real PostgreSQL availability", () => {
+  it("30. CI runs this layer rather than skipping it", () => {
+    if (process.env.CI === "true") {
+      expect(REAL_DATABASE_URL.length).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe.skipIf(REAL_DATABASE_URL.length === 0)(
   "POST /api/questions — real PostgreSQL integration",
   () => {
@@ -998,7 +1011,7 @@ describe.skipIf(REAL_DATABASE_URL.length === 0)(
       await db.delete(questionsTable).where(like(questionsTable.id, `${ID_PREFIX}%`));
     });
 
-    it("30. rejected requests write zero rows; an authorized one writes exactly one", async () => {
+    it("31. rejected requests write zero rows; an authorized one writes exactly one", async () => {
       expect(await prefixedRows()).toHaveLength(0);
 
       authenticateAs(null);
