@@ -6,6 +6,7 @@ import {
   exampleSentences,
 } from "@/db/schema";
 import { SrsService } from "../srsService";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 import type { SrsCard } from "@/types/srs";
 
 export interface CardGenerationResult {
@@ -43,13 +44,19 @@ export class SrsCardGenerator {
    * Generate SRS cards from dictionary entries.
    */
   static async fromDictionary(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string;
     entryIds?: string[];
     jlptLevel?: string;
     limit?: number;
   }): Promise<CardGenerationResult> {
-    const userId = params.userId || "anonymous-user";
+    /*
+     * Phase 26F-E4: generation writes learner-owned decks and cards, so it
+     * requires a verified owner. This used to fall back to the shared sentinel,
+     * which silently generated cards into the legacy shared account.
+     */
+    const userId = requireOwner(params.userId, "SrsCardGenerator.generate");
     const deckId =
       params.deckId ||
       (await this.ensureDefaultDeck(
@@ -89,6 +96,7 @@ export class SrsCardGenerator {
           hint: item.partsOfSpeech?.join(", ") || undefined,
           sourceType: "dictionary",
           sourceRef: item.id,
+          actorUserId: userId,
         });
         if (card) createdCards.push(card);
         else skipped++;
@@ -110,13 +118,19 @@ export class SrsCardGenerator {
    * Generate SRS cards from Kanji entries.
    */
   static async fromKanji(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string;
     characters?: string[];
     jlptLevel?: string;
     limit?: number;
   }): Promise<CardGenerationResult> {
-    const userId = params.userId || "anonymous-user";
+    /*
+     * Phase 26F-E4: generation writes learner-owned decks and cards, so it
+     * requires a verified owner. This used to fall back to the shared sentinel,
+     * which silently generated cards into the legacy shared account.
+     */
+    const userId = requireOwner(params.userId, "SrsCardGenerator.generate");
     const deckId =
       params.deckId ||
       (await this.ensureDefaultDeck(
@@ -157,6 +171,7 @@ export class SrsCardGenerator {
           hint: `${item.strokeCount} strokes · JLPT ${item.jlptLevel}`,
           sourceType: "kanji",
           sourceRef: item.id,
+          actorUserId: userId,
         });
         if (card) createdCards.push(card);
         else skipped++;
@@ -178,13 +193,19 @@ export class SrsCardGenerator {
    * Generate SRS cards from Grammar patterns.
    */
   static async fromGrammar(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string;
     grammarIds?: string[];
     jlptLevel?: string;
     limit?: number;
   }): Promise<CardGenerationResult> {
-    const userId = params.userId || "anonymous-user";
+    /*
+     * Phase 26F-E4: generation writes learner-owned decks and cards, so it
+     * requires a verified owner. This used to fall back to the shared sentinel,
+     * which silently generated cards into the legacy shared account.
+     */
+    const userId = requireOwner(params.userId, "SrsCardGenerator.generate");
     const deckId =
       params.deckId ||
       (await this.ensureDefaultDeck(
@@ -220,6 +241,7 @@ export class SrsCardGenerator {
           hint: `JLPT ${item.jlptLevel}`,
           sourceType: "grammar",
           sourceRef: item.id,
+          actorUserId: userId,
         });
         if (card) createdCards.push(card);
         else skipped++;
@@ -241,13 +263,19 @@ export class SrsCardGenerator {
    * Generate SRS cards from Example Sentences.
    */
   static async fromSentences(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string;
     sentenceIds?: string[];
     jlptLevel?: string;
     limit?: number;
   }): Promise<CardGenerationResult> {
-    const userId = params.userId || "anonymous-user";
+    /*
+     * Phase 26F-E4: generation writes learner-owned decks and cards, so it
+     * requires a verified owner. This used to fall back to the shared sentinel,
+     * which silently generated cards into the legacy shared account.
+     */
+    const userId = requireOwner(params.userId, "SrsCardGenerator.generate");
     const deckId =
       params.deckId ||
       (await this.ensureDefaultDeck(
@@ -283,6 +311,7 @@ export class SrsCardGenerator {
           hint: item.tags?.join(", ") || undefined,
           sourceType: "sentence",
           sourceRef: item.id,
+          actorUserId: userId,
         });
         if (card) createdCards.push(card);
         else skipped++;

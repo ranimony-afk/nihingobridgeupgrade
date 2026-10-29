@@ -5,6 +5,12 @@ import {
   srsContainmentActive,
   srsContainmentResponse,
 } from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  queryIdentityFailureResponse,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveQueryIdentity, resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +19,18 @@ export async function GET(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: history, resume pointer and daily-budget usage are one
+   * learner's own. An omitted `userId` resolves to the actor; a foreign one is
+   * refused instead of served. */
+  const auth = await authenticateActor("Failed to list sessions");
+  if (!auth.ok) return auth.response;
+
   try {
     const sp = request.nextUrl.searchParams;
-    const userId = sp.get("userId") || "anonymous-user";
+    const identity = resolveQueryIdentity(auth.actor, sp.getAll("userId"));
+    if (!identity.ok) return queryIdentityFailureResponse(identity.reason);
+    const userId = identity.userId;
     const statusParam = sp.get("status") as SessionStatus | null;
 
     const [sessions, resumable] = await Promise.all([
@@ -47,6 +62,11 @@ export async function POST(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: a planned session belongs to the verified actor. */
+  const auth = await authenticateActor("Failed to plan session");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json().catch(() => ({}));
     const {
@@ -59,6 +79,9 @@ export async function POST(request: NextRequest) {
       dailyNewBudget,
     } = body;
 
+    const identity = resolveSelfIdentity(auth.actor, userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
+
     if (order && !SESSION_QUEUE_ORDERS.includes(order)) {
       return NextResponse.json(
         { success: false, error: `order must be one of: ${SESSION_QUEUE_ORDERS.join(", ")}` },
@@ -69,7 +92,7 @@ export async function POST(request: NextRequest) {
     const dueHorizon = body?.dueHorizon === "day" ? "day" : "now";
 
     const { session, skipped } = await SessionService.planSession({
-      userId,
+      userId: identity.userId,
       deckId: deckId ?? null,
       newLimit,
       reviewLimit,

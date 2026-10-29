@@ -175,7 +175,9 @@ export class DailyQueueService {
     userId: string,
     patch: Partial<DailySettings>
   ): Promise<DailySettings> {
-    const current = await this.getSettings(userId);
+    /* `getSettings` rejects a missing/blank/sentinel owner before the write. */
+    const owner = requireOwner(userId, "DailyQueueService.updateSettings");
+    const current = await this.getSettings(owner);
 
     const next: DailySettings = {
       timezone: patch.timezone ?? current.timezone,
@@ -196,7 +198,7 @@ export class DailyQueueService {
 
     await db
       .insert(settingsTable)
-      .values({ userId, ...next, updatedAt: new Date() })
+      .values({ userId: owner, ...next, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: settingsTable.userId,
         set: { ...next, updatedAt: new Date() },
@@ -209,7 +211,8 @@ export class DailyQueueService {
    * DUE BUCKETS
    * ============================================================ */
   private static async loadDeckScope(userId: string, deckId?: string | null) {
-    const rows = await db.select().from(decksTable).where(eq(decksTable.ownerId, userId));
+    const owner = requireOwner(userId, "DailyQueueService.loadDeckScope");
+    const rows = await db.select().from(decksTable).where(eq(decksTable.ownerId, owner));
     return rows.filter((d) => !d.isArchived && (!deckId || d.id === deckId));
   }
 
@@ -240,10 +243,19 @@ export class DailyQueueService {
 
   private static async buildBuckets(
     deckIds: string[],
+    actorUserId: string,
     day: DayWindow,
     now: Date
   ): Promise<DailyBuckets> {
-    const inDecks = inArray(cardsTable.deckId, deckIds);
+    /*
+     * Phase 26F-E4: the card predicate is applied in addition to the deck
+     * predicate. A pre-E4 row can sit in one learner's deck while being owned by
+     * another, so deck scoping alone would count and serve a foreign card.
+     */
+    const inDecks = and(
+      inArray(cardsTable.deckId, deckIds),
+      eq(cardsTable.userId, requireOwner(actorUserId, "DailyQueueService.buildBuckets"))
+    );
 
     const [overdueRows, todayRows, laterRows, newRows] = await Promise.all([
       // Overdue: due strictly before today's cutoff, excluding learning-phase cards
@@ -424,6 +436,7 @@ export class DailyQueueService {
    * ============================================================ */
   private static async buildForecast(
     deckIds: string[],
+    actorUserId: string,
     day: DayWindow,
     settings: DailySettings,
     now: Date
@@ -443,6 +456,7 @@ export class DailyQueueService {
       .where(
         and(
           inArray(cardsTable.deckId, deckIds),
+          eq(cardsTable.userId, requireOwner(actorUserId, "DailyQueueService.buildForecast")),
           eq(cardsTable.isSuspended, false),
           gte(cardsTable.dueAt, horizonStart),
           lt(cardsTable.dueAt, horizonEnd)
@@ -674,11 +688,17 @@ export class DailyQueueService {
    * MAIN ENTRY — assemble the full daily queue view
    * ============================================================ */
   static async getDailyQueue(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string | null;
     historyDays?: number;
   }): Promise<DailyQueueResponse> {
-    const userId = params.userId || "anonymous-user";
+    /*
+     * Phase 26F-E4: the daily view aggregates one learner's schedule, streak,
+     * progress and forecast. The `|| "anonymous-user"` fallback meant an
+     * identity-less call produced the legacy shared account's day.
+     */
+    const userId = requireOwner(params.userId, "DailyQueueService.getDailyQueue");
     const settings = await this.getSettings(userId);
     const now = new Date();
 
@@ -752,10 +772,10 @@ export class DailyQueueService {
     }
 
     const [buckets, progress, streak, forecast] = await Promise.all([
-      this.buildBuckets(deckIds, day, now),
+      this.buildBuckets(deckIds, userId, day, now),
       this.buildProgress(userId, day, settings),
       this.buildStreak(userId, day, settings),
-      this.buildForecast(deckIds, day, settings, now),
+      this.buildForecast(deckIds, userId, day, settings, now),
     ]);
 
     /* ---- Portfolio maturity totals ---- */
@@ -767,7 +787,13 @@ export class DailyQueueService {
         mature: sql<number>`cast(count(*) filter (where ${cardsTable.isLearning} = false and ${cardsTable.intervalDays} >= 21) as int)`,
       })
       .from(cardsTable)
-      .where(and(inArray(cardsTable.deckId, deckIds), eq(cardsTable.isSuspended, false)));
+      .where(
+        and(
+          inArray(cardsTable.deckId, deckIds),
+          eq(cardsTable.userId, requireOwner(userId, "DailyQueueService.getDailyQueue")),
+          eq(cardsTable.isSuspended, false)
+        )
+      );
 
     const totals: DailyTotals = {
       totalDueToday: buckets.overdue.count + buckets.dueToday.count,

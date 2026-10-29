@@ -5,6 +5,12 @@ import {
   srsContainmentActive,
   srsContainmentResponse,
 } from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  queryIdentityFailureResponse,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveQueryIdentity, resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +24,19 @@ export async function GET(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: the personalized view is derived from one learner's review
+   * log and preferences. */
+  const auth = await authenticateActor("Failed to build personalization");
+  if (!auth.ok) return auth.response;
+
   try {
     const sp = request.nextUrl.searchParams;
+    const identity = resolveQueryIdentity(auth.actor, sp.getAll("userId"));
+    if (!identity.ok) return queryIdentityFailureResponse(identity.reason);
+
     const view = await PersonalizationService.getPersonalizedView({
-      userId: sp.get("userId") || undefined,
+      userId: identity.userId,
       deckId: sp.get("deckId") || null,
       trailingDays: sp.get("trailingDays") ? parseInt(sp.get("trailingDays")!, 10) : undefined,
     });
@@ -39,11 +54,17 @@ export async function PUT(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: preferences are written for the actor only. */
+  const auth = await authenticateActor("Failed to save preferences");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
-    const userId = body?.userId || "anonymous-user";
+    const identity = resolveSelfIdentity(auth.actor, body?.userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
 
-    const prefs = await PersonalizationService.updatePrefs(userId, {
+    const prefs = await PersonalizationService.updatePrefs(identity.userId, {
       weaknessWeight: body.weaknessWeight,
       urgencyWeight: body.urgencyWeight,
       difficultyWeight: body.difficultyWeight,
@@ -70,9 +91,17 @@ export async function POST(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: launching a personalized session writes a session row for the
+   * actor. */
+  const auth = await authenticateActor("Failed to start personalized session");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json().catch(() => ({}));
-    const userId = body?.userId || "anonymous-user";
+    const identity = resolveSelfIdentity(auth.actor, body?.userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
+    const userId = identity.userId;
     const deckId = body?.deckId ?? null;
 
     const { plan } = await PersonalizationService.buildPlan({ userId, deckId });

@@ -23,6 +23,7 @@ import {
   SessionQueueOrder,
 } from "@/types/srs";
 import { DailyQueueService, DEFAULT_DAILY_SETTINGS, resolveDayWindow } from "./dailyQueueService";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 import { getScheduler, resolveParams } from "./scheduler";
 import { describeInterval } from "./strategies/shared";
 
@@ -53,6 +54,7 @@ export class PersonalizationService {
    * rather than stored, so it cannot drift.
    * ============================================================ */
   static async countNewIntroducedToday(userId: string, day: DayWindow): Promise<number> {
+    requireOwner(userId, "PersonalizationService.countNewIntroducedToday");
     const [row] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(reviewsTable)
@@ -70,11 +72,17 @@ export class PersonalizationService {
   /* ============================================================
    * PREFERENCES — the only thing persisted
    * ============================================================ */
-  static async getPrefs(userId = "anonymous-user"): Promise<PersonalizationPrefs> {
+  static async getPrefs(userId: string): Promise<PersonalizationPrefs> {
+    /*
+     * Phase 26F-E4: preferences are one learner's own. This used to default to
+     * the shared sentinel, so an omitted identity read — and, through
+     * `updatePrefs`, wrote — the legacy shared account's row.
+     */
+    const owner = requireOwner(userId, "PersonalizationService.getPrefs");
     const [row] = await db
       .select()
       .from(prefsTable)
-      .where(eq(prefsTable.userId, userId))
+      .where(eq(prefsTable.userId, owner))
       .limit(1);
 
     if (!row) return { ...DEFAULT_PERSONALIZATION };
@@ -169,10 +177,12 @@ export class PersonalizationService {
    * LEARNER PROFILE — derived entirely from the review log
    * ============================================================ */
   static async buildProfile(
-    userId = "anonymous-user",
+    userId: string,
     options: { deckId?: string | null; trailingDays?: number } = {}
   ): Promise<LearnerProfile> {
-    const deckRows = await db.select().from(decksTable).where(eq(decksTable.ownerId, userId));
+    /* Phase 26F-E4: the profile is derived from the actor's own review log. */
+    const owner = requireOwner(userId, "PersonalizationService.buildProfile");
+    const deckRows = await db.select().from(decksTable).where(eq(decksTable.ownerId, owner));
     const scoped = deckRows.filter(
       (d) => !d.isArchived && (!options.deckId || d.id === options.deckId)
     );
@@ -197,10 +207,17 @@ export class PersonalizationService {
 
     if (deckIds.length === 0) return emptyProfile;
 
+    /* Phase 26F-E4: card predicate independent of the deck predicate. */
     const cardRows = await db
       .select()
       .from(cardsTable)
-      .where(and(inArray(cardsTable.deckId, deckIds), eq(cardsTable.isSuspended, false)));
+      .where(
+        and(
+          inArray(cardsTable.deckId, deckIds),
+          eq(cardsTable.userId, owner),
+          eq(cardsTable.isSuspended, false)
+        )
+      );
     const cardIds = cardRows.map((c) => c.id);
 
     const reviewRows =
@@ -622,12 +639,13 @@ export class PersonalizationService {
    * PLAN — the personalized recommendation for right now
    * ============================================================ */
   static async buildPlan(input: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string | null;
     profile?: LearnerProfile;
     day?: DayWindow;
   }): Promise<{ plan: PersonalizedPlan; prefs: PersonalizationPrefs; settings: DailySettings }> {
-    const userId = input.userId || "anonymous-user";
+    const userId = requireOwner(input.userId, "PersonalizationService.buildPlan");
     const prefs = await this.getPrefs(userId);
     const settings = await DailyQueueService.getSettings(userId);
     const profile = input.profile ?? (await this.buildProfile(userId, { deckId: input.deckId ?? null }));
@@ -654,6 +672,7 @@ export class PersonalizationService {
             .where(
               and(
                 inArray(cardsTable.deckId, deckIds),
+                eq(cardsTable.userId, userId),
                 eq(cardsTable.isSuspended, false),
                 lte(cardsTable.dueAt, new Date(day.end))
               )
@@ -774,11 +793,12 @@ export class PersonalizationService {
    * AGGREGATE RESPONSE
    * ============================================================ */
   static async getPersonalizedView(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string | null;
     trailingDays?: number;
   }): Promise<PersonalizedResponse> {
-    const userId = params.userId || "anonymous-user";
+    const userId = requireOwner(params.userId, "PersonalizationService.getPersonalizedView");
     const prefs = await this.getPrefs(userId);
     const settings = await DailyQueueService.getSettings(userId);
     const day = resolveDayWindow(new Date(), settings.timezone, settings.dayCutoffHour);

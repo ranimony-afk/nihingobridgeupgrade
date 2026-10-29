@@ -5,6 +5,12 @@ import {
   srsContainmentActive,
   srsContainmentResponse,
 } from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  queryIdentityFailureResponse,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveQueryIdentity, resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +23,18 @@ export async function GET(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: the due queue is one learner's own cards. */
+  const auth = await authenticateActor("Failed to load due queue");
+  if (!auth.ok) return auth.response;
+
   try {
     const sp = request.nextUrl.searchParams;
+    const identity = resolveQueryIdentity(auth.actor, sp.getAll("userId"));
+    if (!identity.ok) return queryIdentityFailureResponse(identity.reason);
 
     const { queue, totalDue } = await SrsService.getDueQueue({
-      userId: sp.get("userId") || undefined,
+      userId: identity.userId,
       deckId: sp.get("deckId") || undefined,
       limit: sp.get("limit") ? parseInt(sp.get("limit")!, 10) : 20,
     });

@@ -86,6 +86,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
     it("should create a new card in the initial learning phase", async () => {
       const card = await SrsService.createCard({
         deckId,
+        actorUserId: userId,
         front: "日本語",
         back: "にほんご — Japanese language",
         reading: "にほんご",
@@ -108,6 +109,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
         cardId: testCardId,
         rating: "again",
         timeSpentMs: 4000,
+        actorUserId: userId,
       });
 
       expect(gradeResult).not.toBeNull();
@@ -121,6 +123,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
         cardId: testCardId,
         rating: "good",
         timeSpentMs: 3500,
+        actorUserId: userId,
       });
 
       expect(gradeResult).not.toBeNull();
@@ -134,6 +137,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
         cardId: testCardId,
         rating: "good",
         timeSpentMs: 2000,
+        actorUserId: userId,
       });
 
       expect(gradeResult).not.toBeNull();
@@ -165,6 +169,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
       // 1. Create a fresh card to ensure a review is present in queue
       const sessionCard = await SrsService.createCard({
         deckId,
+        actorUserId: userId,
         front: "勉強",
         back: "べんきょう — Study",
         meaning: "Study",
@@ -185,7 +190,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
       const sessionId = planned.session.id;
 
       // 3. Inspect session state to get the current due card
-      const state = await SessionService.getSessionState(sessionId);
+      const state = await SessionService.getSessionState(sessionId, userId);
       expect(state).not.toBeNull();
       expect(state?.currentCard).not.toBeNull();
 
@@ -197,10 +202,11 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
         cardId: targetCardId,
         rating: "good",
         timeSpentMs: 2500,
+        actorUserId: userId,
       });
 
       // 5. Complete session
-      const completed = await SessionService.completeSession(sessionId);
+      const completed = await SessionService.completeSession(sessionId, userId);
       expect(completed).not.toBeNull();
       expect(completed?.status).toBe("completed");
     });
@@ -221,9 +227,11 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
     it("should register sync device and perform delta pull / push", async () => {
       const deviceId = `device-${Date.now()}`;
 
-      // Register device for anonymous-user to match syncService push default
+      // Phase 26F-E4: a device belongs to a verified learner. This used to
+      // register under `anonymous-user` to match the push() default, which was
+      // the defect: every device replayed into one shared account.
       const reg = await SyncService.registerDevice({
-        userId: "anonymous-user",
+        userId,
         deviceId,
         name: "Test Mobile Device",
         platform: "android",
@@ -234,7 +242,7 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
 
       // Pull delta
       const pull = await SyncService.pull({
-        userId: "anonymous-user",
+        userId,
         deviceId,
       });
       expect(pull.cards.length).toBeGreaterThanOrEqual(1);
@@ -242,34 +250,40 @@ describe("Phase 10: NihongoBridge SRS Activation & Lifecycle", () => {
 
       // Push review event idempotently
       const pushClientId = `client-rev-${Date.now()}`;
-      const pushResult = await SyncService.push({
-        deviceId,
-        events: [
-          {
-            clientId: pushClientId,
-            cardId: testCardId,
-            rating: "easy",
-            timeSpentMs: 1200,
-            reviewedAt: new Date().toISOString(),
-          },
-        ],
-      });
+      const pushResult = await SyncService.push(
+        {
+          deviceId,
+          events: [
+            {
+              clientId: pushClientId,
+              cardId: testCardId,
+              rating: "easy",
+              timeSpentMs: 1200,
+              reviewedAt: new Date().toISOString(),
+            },
+          ],
+        },
+        userId
+      );
       expect(pushResult.accepted).toBe(1);
       expect(pushResult.duplicatesSkipped).toBe(0);
 
       // Repeated push with same clientId should be skipped safely
-      const dupeResult = await SyncService.push({
-        deviceId,
-        events: [
-          {
-            clientId: pushClientId,
-            cardId: testCardId,
-            rating: "easy",
-            timeSpentMs: 1200,
-            reviewedAt: new Date().toISOString(),
-          },
-        ],
-      });
+      const dupeResult = await SyncService.push(
+        {
+          deviceId,
+          events: [
+            {
+              clientId: pushClientId,
+              cardId: testCardId,
+              rating: "easy",
+              timeSpentMs: 1200,
+              reviewedAt: new Date().toISOString(),
+            },
+          ],
+        },
+        userId
+      );
       expect(dupeResult.duplicatesSkipped).toBe(1);
       expect(dupeResult.accepted).toBe(0);
     });

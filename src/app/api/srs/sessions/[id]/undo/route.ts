@@ -4,6 +4,7 @@ import {
   srsContainmentActive,
   srsContainmentResponse,
 } from "@/app/api/_shared/srsContainment";
+import { authenticateActor } from "@/app/api/_shared/authorizationResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,14 @@ export async function POST(
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: undo rewrites state, revokes XP and deletes a review row. */
+  const auth = await authenticateActor("Failed to undo answer");
+  if (!auth.ok) return auth.response;
+
   try {
     const { id: sessionId } = await params;
-    const result = await SessionService.undo({ sessionId });
+    const result = await SessionService.undo({ sessionId, actorUserId: auth.actor.id });
 
     if (!result) {
       return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });

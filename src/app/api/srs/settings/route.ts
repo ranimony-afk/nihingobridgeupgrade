@@ -6,6 +6,12 @@ import {
   srsContainmentActive,
   srsContainmentResponse,
 } from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  queryIdentityFailureResponse,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveQueryIdentity, resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -13,9 +19,20 @@ export async function GET(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: day settings decide which day counts as "today" for a
+   * learner, so they are one learner's own. */
+  const auth = await authenticateActor("Failed to load settings");
+  if (!auth.ok) return auth.response;
+
   try {
-    const userId = request.nextUrl.searchParams.get("userId") || "anonymous-user";
-    const settings = await DailyQueueService.getSettings(userId);
+    const identity = resolveQueryIdentity(
+      auth.actor,
+      request.nextUrl.searchParams.getAll("userId")
+    );
+    if (!identity.ok) return queryIdentityFailureResponse(identity.reason);
+
+    const settings = await DailyQueueService.getSettings(identity.userId);
 
     // Echo back the resolved day so the UI can explain the cutoff instantly.
     const day = resolveDayWindow(new Date(), settings.timezone, settings.dayCutoffHour);
@@ -37,11 +54,17 @@ export async function PUT(request: NextRequest) {
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: settings are written for the actor only. */
+  const auth = await authenticateActor("Failed to update settings");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
-    const userId = body?.userId || "anonymous-user";
+    const identity = resolveSelfIdentity(auth.actor, body?.userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
 
-    const settings = await DailyQueueService.updateSettings(userId, {
+    const settings = await DailyQueueService.updateSettings(identity.userId, {
       timezone: body.timezone,
       dayCutoffHour: body.dayCutoffHour,
       dailyNewTarget: body.dailyNewTarget,

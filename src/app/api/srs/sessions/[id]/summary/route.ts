@@ -4,6 +4,7 @@ import {
   srsContainmentActive,
   srsContainmentResponse,
 } from "@/app/api/_shared/srsContainment";
+import { authenticateActor } from "@/app/api/_shared/authorizationResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +16,14 @@ export async function GET(
   /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
    * Denies before request parsing, service calls, DB access and XP awards. */
   if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: the post-session report is the owner's data. */
+  const auth = await authenticateActor("Failed to build summary");
+  if (!auth.ok) return auth.response;
+
   try {
     const { id } = await params;
-    const summary = await SessionService.getSummary(id);
+    const summary = await SessionService.getSummary(id, auth.actor.id);
 
     if (!summary) {
       return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });

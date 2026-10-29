@@ -16,6 +16,8 @@ import {
   KANJI,
   KANJI_SOURCE_REF,
 } from "@/data/kanji";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
+import { learnerCardIdFor, learnerDeckIdFor } from "@/services/srs/srsCatalogueService";
 
 export interface KanaEntry {
   id: string;
@@ -615,13 +617,18 @@ export class KnowledgeService {
   /* ============================================================
    * SRS INTEGRATION — turn knowledge rows into reviewable cards
    * ============================================================ */
-  static async addKanaToSrs(input: { kanaId: string; userId?: string }): Promise<{
+  static async addKanaToSrs(input: { kanaId: string; userId: string }): Promise<{
     cardId: string;
     deckId: string;
     created: boolean;
     front: string;
     back: string;
   } | null> {
+    /*
+     * Phase 26F-E4: adding a card to SRS writes learner-owned state, so an
+     * owner is REQUIRED. This used to fall back to the shared sentinel.
+     */
+    const owner = requireOwner(input.userId, "KnowledgeService.addKanaToSrs");
     await this.ensureSeeded();
 
     const [kanaRow] = await db
@@ -632,16 +639,30 @@ export class KnowledgeService {
     if (!kanaRow) return null;
     const kana = toKanaEntry(kanaRow);
 
-    const deckId = `deck-kana-${kana.script}`;
+    /*
+     * Phase 26F-E4: PER-LEARNER rows.
+     *
+     * The deck used to be the fixed id `deck-kana-<script>` owned by whichever
+     * learner created it first, and the card the fixed id `card-kana-<kana>`
+     * owned by whoever inserted it first. The second learner either collided on
+     * the primary key or was handed the FIRST learner's card by
+     * `findExistingCard`, i.e. was pointed at someone else's scheduling state.
+     * Deriving both ids from (learner, content) keeps the deterministic
+     * identity the feature needs without letting two learners share a row.
+     */
+    const systemDeckId = `deck-kana-${kana.script}`;
+    const deckId = learnerDeckIdFor(owner, systemDeckId);
     await this.ensureDeck({
       deckId,
+      ownerUserId: owner,
+      systemDeckId,
       name: kana.script === "hiragana" ? "Kana — Hiragana Chart" : "Kana — Katakana Chart",
       description:
         "Kana cards generated directly from the interactive kana chart. Reading recall, symbol → romaji.",
       jlptLevel: "N5",
     });
 
-    const existing = await this.findExistingCard(deckId, kana.character);
+    const existing = await this.findExistingCard(deckId, kana.character, owner);
     if (existing) {
       return {
         cardId: existing,
@@ -652,13 +673,13 @@ export class KnowledgeService {
       };
     }
 
-    const cardId = `card-kana-${kana.id}`;
+    const cardId = learnerCardIdFor(owner, `card-kana-${kana.id}`);
     await db
       .insert(cardsTable)
       .values({
         id: cardId,
         deckId,
-        userId: input.userId || "anonymous-user",
+        userId: owner,
         cardType: "kana",
         front: kana.character,
         back: kana.romaji,
@@ -678,7 +699,9 @@ export class KnowledgeService {
     return { cardId, deckId, created: true, front: kana.character, back: kana.romaji };
   }
 
-  static async addKanjiToSrs(input: { character: string; userId?: string }) {
+  static async addKanjiToSrs(input: { character: string; userId: string }) {
+    /* Phase 26F-E4: REQUIRED verified owner. */
+    const owner = requireOwner(input.userId, "KnowledgeService.addKanjiToSrs");
     await this.ensureSeeded();
 
     const [kanji] = await db
@@ -688,16 +711,21 @@ export class KnowledgeService {
       .limit(1);
     if (!kanji) return null;
 
-    const deckId = `deck-kanji-${kanji.jlptLevel.toLowerCase()}`;
+    /* Phase 26F-E4: per-learner deck and card, for the reason documented in
+     * `addKanaToSrs`. */
+    const systemDeckId = `deck-kanji-${kanji.jlptLevel.toLowerCase()}`;
+    const deckId = learnerDeckIdFor(owner, systemDeckId);
     await this.ensureDeck({
       deckId,
+      ownerUserId: owner,
+      systemDeckId,
       name: `Kanji ${kanji.jlptLevel} — Mind Tree`,
       description:
         "Kanji cards generated from the mind tree. Front shows the character plus its components as a hint.",
       jlptLevel: kanji.jlptLevel,
     });
 
-    const existing = await this.findExistingCard(deckId, kanji.character);
+    const existing = await this.findExistingCard(deckId, kanji.character, owner);
     if (existing) {
       return {
         cardId: existing,
@@ -714,13 +742,13 @@ export class KnowledgeService {
       .where(eq(compositionTable.kanjiId, kanji.id))
       .orderBy(asc(compositionTable.orderIndex));
 
-    const cardId = `card-kanji-${kanji.id}`;
+    const cardId = learnerCardIdFor(owner, `card-kanji-${kanji.id}`);
     await db
       .insert(cardsTable)
       .values({
         id: cardId,
         deckId,
-        userId: input.userId || "anonymous-user",
+        userId: owner,
         cardType: "kanji",
         front: kanji.character,
         back: `${kanji.readingsOn.join(", ") || "—"} · ${kanji.readingsKun.join(", ") || "—"} — ${kanji.meaning}`,
@@ -750,8 +778,10 @@ export class KnowledgeService {
   static async addKanaRowToSrs(input: {
     rowKey: string;
     script: "hiragana" | "katakana";
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
   }): Promise<{ created: number; skipped: number; deckId: string }> {
+    const owner = requireOwner(input.userId, "KnowledgeService.addKanaRowToSrs");
     await this.ensureSeeded();
 
     const rows = await db
@@ -763,7 +793,7 @@ export class KnowledgeService {
     let created = 0;
     let skipped = 0;
     for (const k of rows) {
-      const res = await this.addKanaToSrs({ kanaId: k.id, userId: input.userId });
+      const res = await this.addKanaToSrs({ kanaId: k.id, userId: owner });
       if (res?.created) created += 1;
       else skipped += 1;
     }
@@ -771,16 +801,23 @@ export class KnowledgeService {
     return {
       created,
       skipped,
-      deckId: `deck-kana-${input.script}`,
+      deckId: learnerDeckIdFor(owner, `deck-kana-${input.script}`),
     };
   }
 
   private static async ensureDeck(input: {
     deckId: string;
+    /** Phase 26F-E4: the deck is created for THIS learner, never for the
+     * shared sentinel. */
+    ownerUserId: string;
+    /** Provenance only, and NULL here: these are learner-owned decks
+     * materialized on demand, not copies of a system catalogue deck. */
+    systemDeckId?: string;
     name: string;
     description: string;
     jlptLevel: string;
   }): Promise<void> {
+    const owner = requireOwner(input.ownerUserId, "KnowledgeService.ensureDeck");
     await db
       .insert(decksTable)
       .values({
@@ -788,18 +825,31 @@ export class KnowledgeService {
         name: input.name,
         description: input.description,
         jlptLevel: input.jlptLevel,
-        ownerId: "anonymous-user",
+        ownerId: owner,
         schedulerKey: "sm2",
         schedulerParams: {},
       })
       .onConflictDoNothing();
   }
 
-  private static async findExistingCard(deckId: string, front: string): Promise<string | null> {
+  private static async findExistingCard(
+    deckId: string,
+    front: string,
+    actorUserId: string
+  ): Promise<string | null> {
+    /* Phase 26F-E4: the lookup is scoped to the actor. Previously it returned
+     * the first card with that prompt in a SHARED deck — another learner's. */
+    const owner = requireOwner(actorUserId, "KnowledgeService.findExistingCard");
     const [row] = await db
       .select({ id: cardsTable.id })
       .from(cardsTable)
-      .where(and(eq(cardsTable.deckId, deckId), eq(cardsTable.front, front)))
+      .where(
+        and(
+          eq(cardsTable.deckId, deckId),
+          eq(cardsTable.front, front),
+          eq(cardsTable.userId, owner)
+        )
+      )
       .limit(1);
     return row?.id ?? null;
   }
