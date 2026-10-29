@@ -1,0 +1,1915 @@
+{
+  "artifactVersion": "nihongobridge-kanjidic2-mindtree-facts@1",
+  "source": {
+    "sourceRef": "upstream:kanjidic2:2023-08",
+    "sourceVersion": "2023-08-20 / database 2023-232 / file version 4",
+    "archiveRepository": "https://github.com/Jitendex/edrdg-dictionary-archive",
+    "archiveCommit": "9cb709b87f43c7bceb494eefbe7f8b8f42744502",
+    "archivePath": "kanjidic2_xml/kanjidic2.xml.br",
+    "archiveBlobSha": "e6e448946b29480a765f167e9ee1cc3fc9314c6b",
+    "archiveSha256": "175d4fe7b846fb0ab140d5f341bc07c66c8eb9dc4f970c2fa97b1e9d7d6497eb",
+    "xmlSha256": "260e6119fcc78cde438de7d7f8227d1c13260469d10ae36a01d866c61f7cc781",
+    "license": "CC-BY-SA-4.0",
+    "attribution": "KANJIDIC2, compiled and maintained by the Electronic Dictionary Research and Development Group (EDRDG). https://www.edrdg.org/wiki/index.php/KANJIDIC2",
+    "licenseNotice": "https://www.edrdg.org/edrdg/licence.html",
+    "excludedFields": [
+      "non-English meanings",
+      "SKIP, Pinyin, Korean and other third-party reading/code material",
+      "JMdict vocabulary and example sentences"
+    ]
+  },
+  "selectionPolicy": "All 33 existing first-party MindTree characters plus KANJIDIC2 grade-1 characters ordered by primary stroke count then Unicode scalar value until 100 unique characters are reached; every selected character must also have a matching SVG in pinned KanjiVG r20240807.",
+  "transformationVersion": "nihongobridge-kanjidic2-mindtree-extract@1",
+  "generatedAt": "reproducible",
+  "records": [
+    {
+      "character": "一",
+      "meaningsEnglish": [
+        "one",
+        "one radical (no.1)"
+      ],
+      "readingsKun": [
+        "ひと-",
+        "ひと.つ"
+      ],
+      "readingsOn": [
+        "イチ",
+        "イツ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 1,
+      "classicalRadicalNumber": 1
+    },
+    {
+      "character": "七",
+      "meaningsEnglish": [
+        "seven"
+      ],
+      "readingsKun": [
+        "なな",
+        "なな.つ",
+        "なの"
+      ],
+      "readingsOn": [
+        "シチ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 1
+    },
+    {
+      "character": "三",
+      "meaningsEnglish": [
+        "three"
+      ],
+      "readingsKun": [
+        "み",
+        "み.つ",
+        "みっ.つ"
+      ],
+      "readingsOn": [
+        "サン",
+        "ゾウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 1
+    },
+    {
+      "character": "上",
+      "meaningsEnglish": [
+        "above",
+        "up"
+      ],
+      "readingsKun": [
+        "うえ",
+        "-うえ",
+        "うわ-",
+        "かみ",
+        "あ.げる",
+        "-あ.げる",
+        "あ.がる",
+        "-あ.がる",
+        "あ.がり",
+        "-あ.がり",
+        "のぼ.る",
+        "のぼ.り",
+        "のぼ.せる",
+        "のぼ.す",
+        "たてまつ.る"
+      ],
+      "readingsOn": [
+        "ジョウ",
+        "ショウ",
+        "シャン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 1
+    },
+    {
+      "character": "下",
+      "meaningsEnglish": [
+        "below",
+        "down",
+        "descend",
+        "give",
+        "low",
+        "inferior"
+      ],
+      "readingsKun": [
+        "した",
+        "しも",
+        "もと",
+        "さ.げる",
+        "さ.がる",
+        "くだ.る",
+        "くだ.り",
+        "くだ.す",
+        "-くだ.す",
+        "くだ.さる",
+        "お.ろす",
+        "お.りる"
+      ],
+      "readingsOn": [
+        "カ",
+        "ゲ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 1
+    },
+    {
+      "character": "中",
+      "meaningsEnglish": [
+        "in",
+        "inside",
+        "middle",
+        "mean",
+        "center"
+      ],
+      "readingsKun": [
+        "なか",
+        "うち",
+        "あた.る"
+      ],
+      "readingsOn": [
+        "チュウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 2
+    },
+    {
+      "character": "九",
+      "meaningsEnglish": [
+        "nine"
+      ],
+      "readingsKun": [
+        "ここの",
+        "ここの.つ"
+      ],
+      "readingsOn": [
+        "キュウ",
+        "ク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 5
+    },
+    {
+      "character": "二",
+      "meaningsEnglish": [
+        "two",
+        "two radical (no. 7)"
+      ],
+      "readingsKun": [
+        "ふた",
+        "ふた.つ",
+        "ふたたび"
+      ],
+      "readingsOn": [
+        "ニ",
+        "ジ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 7
+    },
+    {
+      "character": "五",
+      "meaningsEnglish": [
+        "five"
+      ],
+      "readingsKun": [
+        "いつ",
+        "いつ.つ"
+      ],
+      "readingsOn": [
+        "ゴ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 7
+    },
+    {
+      "character": "人",
+      "meaningsEnglish": [
+        "person"
+      ],
+      "readingsKun": [
+        "ひと",
+        "-り",
+        "-と"
+      ],
+      "readingsOn": [
+        "ジン",
+        "ニン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 9
+    },
+    {
+      "character": "休",
+      "meaningsEnglish": [
+        "rest",
+        "day off",
+        "retire",
+        "sleep"
+      ],
+      "readingsKun": [
+        "やす.む",
+        "やす.まる",
+        "やす.める"
+      ],
+      "readingsOn": [
+        "キュウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 9
+    },
+    {
+      "character": "先",
+      "meaningsEnglish": [
+        "before",
+        "ahead",
+        "previous",
+        "future",
+        "precedence"
+      ],
+      "readingsKun": [
+        "さき",
+        "ま.ず"
+      ],
+      "readingsOn": [
+        "セン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 10
+    },
+    {
+      "character": "入",
+      "meaningsEnglish": [
+        "enter",
+        "insert"
+      ],
+      "readingsKun": [
+        "い.る",
+        "-い.る",
+        "-い.り",
+        "い.れる",
+        "-い.れ",
+        "はい.る"
+      ],
+      "readingsOn": [
+        "ニュウ",
+        "ジュ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 11
+    },
+    {
+      "character": "八",
+      "meaningsEnglish": [
+        "eight",
+        "eight radical (no. 12)"
+      ],
+      "readingsKun": [
+        "や",
+        "や.つ",
+        "やっ.つ",
+        "よう"
+      ],
+      "readingsOn": [
+        "ハチ",
+        "ハツ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 12
+    },
+    {
+      "character": "六",
+      "meaningsEnglish": [
+        "six"
+      ],
+      "readingsKun": [
+        "む",
+        "む.つ",
+        "むっ.つ",
+        "むい"
+      ],
+      "readingsOn": [
+        "ロク",
+        "リク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 12
+    },
+    {
+      "character": "円",
+      "meaningsEnglish": [
+        "circle",
+        "yen",
+        "round"
+      ],
+      "readingsKun": [
+        "まる.い",
+        "まる",
+        "まど",
+        "まど.か",
+        "まろ.やか"
+      ],
+      "readingsOn": [
+        "エン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 13
+    },
+    {
+      "character": "出",
+      "meaningsEnglish": [
+        "exit",
+        "leave",
+        "go out",
+        "come out",
+        "put out",
+        "protrude"
+      ],
+      "readingsKun": [
+        "で.る",
+        "-で",
+        "だ.す",
+        "-だ.す",
+        "い.でる",
+        "い.だす"
+      ],
+      "readingsOn": [
+        "シュツ",
+        "スイ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 17
+    },
+    {
+      "character": "力",
+      "meaningsEnglish": [
+        "power",
+        "strength",
+        "strong",
+        "strain",
+        "bear up",
+        "exert"
+      ],
+      "readingsKun": [
+        "ちから"
+      ],
+      "readingsOn": [
+        "リョク",
+        "リキ",
+        "リイ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 19
+    },
+    {
+      "character": "十",
+      "meaningsEnglish": [
+        "ten"
+      ],
+      "readingsKun": [
+        "とお",
+        "と",
+        "そ"
+      ],
+      "readingsOn": [
+        "ジュウ",
+        "ジッ",
+        "ジュッ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 2,
+      "classicalRadicalNumber": 24
+    },
+    {
+      "character": "千",
+      "meaningsEnglish": [
+        "thousand"
+      ],
+      "readingsKun": [
+        "ち"
+      ],
+      "readingsOn": [
+        "セン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 24
+    },
+    {
+      "character": "取",
+      "meaningsEnglish": [
+        "take",
+        "fetch",
+        "take up"
+      ],
+      "readingsKun": [
+        "と.る",
+        "と.り",
+        "と.り-",
+        "とり",
+        "-ど.り"
+      ],
+      "readingsOn": [
+        "シュ"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 8,
+      "classicalRadicalNumber": 29
+    },
+    {
+      "character": "口",
+      "meaningsEnglish": [
+        "mouth"
+      ],
+      "readingsKun": [
+        "くち"
+      ],
+      "readingsOn": [
+        "コウ",
+        "ク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 30
+    },
+    {
+      "character": "右",
+      "meaningsEnglish": [
+        "right"
+      ],
+      "readingsKun": [
+        "みぎ"
+      ],
+      "readingsOn": [
+        "ウ",
+        "ユウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 30
+    },
+    {
+      "character": "名",
+      "meaningsEnglish": [
+        "name",
+        "noted",
+        "distinguished",
+        "reputation"
+      ],
+      "readingsKun": [
+        "な",
+        "-な"
+      ],
+      "readingsOn": [
+        "メイ",
+        "ミョウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 30
+    },
+    {
+      "character": "員",
+      "meaningsEnglish": [
+        "employee",
+        "member",
+        "number",
+        "the one in charge"
+      ],
+      "readingsKun": [],
+      "readingsOn": [
+        "イン"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 10,
+      "classicalRadicalNumber": 30
+    },
+    {
+      "character": "四",
+      "meaningsEnglish": [
+        "four"
+      ],
+      "readingsKun": [
+        "よ",
+        "よ.つ",
+        "よっ.つ",
+        "よん"
+      ],
+      "readingsOn": [
+        "シ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 31
+    },
+    {
+      "character": "土",
+      "meaningsEnglish": [
+        "soil",
+        "earth",
+        "ground",
+        "Turkey"
+      ],
+      "readingsKun": [
+        "つち"
+      ],
+      "readingsOn": [
+        "ド",
+        "ト"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 32
+    },
+    {
+      "character": "夕",
+      "meaningsEnglish": [
+        "evening"
+      ],
+      "readingsKun": [
+        "ゆう"
+      ],
+      "readingsOn": [
+        "セキ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 36
+    },
+    {
+      "character": "大",
+      "meaningsEnglish": [
+        "large",
+        "big"
+      ],
+      "readingsKun": [
+        "おお-",
+        "おお.きい",
+        "-おお.いに"
+      ],
+      "readingsOn": [
+        "ダイ",
+        "タイ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 37
+    },
+    {
+      "character": "天",
+      "meaningsEnglish": [
+        "heavens",
+        "sky",
+        "imperial"
+      ],
+      "readingsKun": [
+        "あまつ",
+        "あめ",
+        "あま-"
+      ],
+      "readingsOn": [
+        "テン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 37
+    },
+    {
+      "character": "女",
+      "meaningsEnglish": [
+        "woman",
+        "female"
+      ],
+      "readingsKun": [
+        "おんな",
+        "め"
+      ],
+      "readingsOn": [
+        "ジョ",
+        "ニョ",
+        "ニョウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 38
+    },
+    {
+      "character": "好",
+      "meaningsEnglish": [
+        "fond",
+        "pleasing",
+        "like something"
+      ],
+      "readingsKun": [
+        "この.む",
+        "す.く",
+        "よ.い",
+        "い.い"
+      ],
+      "readingsOn": [
+        "コウ"
+      ],
+      "gradeLevel": 4,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 38
+    },
+    {
+      "character": "子",
+      "meaningsEnglish": [
+        "child",
+        "sign of the rat",
+        "11PM-1AM",
+        "first sign of Chinese zodiac"
+      ],
+      "readingsKun": [
+        "こ",
+        "-こ",
+        "ね"
+      ],
+      "readingsOn": [
+        "シ",
+        "ス",
+        "ツ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 39
+    },
+    {
+      "character": "字",
+      "meaningsEnglish": [
+        "character",
+        "letter",
+        "word",
+        "section of village"
+      ],
+      "readingsKun": [
+        "あざ",
+        "あざな",
+        "-な"
+      ],
+      "readingsOn": [
+        "ジ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 39
+    },
+    {
+      "character": "学",
+      "meaningsEnglish": [
+        "study",
+        "learning",
+        "science"
+      ],
+      "readingsKun": [
+        "まな.ぶ"
+      ],
+      "readingsOn": [
+        "ガク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 8,
+      "classicalRadicalNumber": 39
+    },
+    {
+      "character": "安",
+      "meaningsEnglish": [
+        "relax",
+        "cheap",
+        "low",
+        "quiet",
+        "rested",
+        "contented",
+        "peaceful"
+      ],
+      "readingsKun": [
+        "やす.い",
+        "やす.まる",
+        "やす",
+        "やす.らか"
+      ],
+      "readingsOn": [
+        "アン"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 40
+    },
+    {
+      "character": "室",
+      "meaningsEnglish": [
+        "room",
+        "apartment",
+        "chamber",
+        "greenhouse",
+        "cellar"
+      ],
+      "readingsKun": [
+        "むろ"
+      ],
+      "readingsOn": [
+        "シツ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 40
+    },
+    {
+      "character": "小",
+      "meaningsEnglish": [
+        "little",
+        "small"
+      ],
+      "readingsKun": [
+        "ちい.さい",
+        "こ-",
+        "お-",
+        "さ-"
+      ],
+      "readingsOn": [
+        "ショウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 42
+    },
+    {
+      "character": "山",
+      "meaningsEnglish": [
+        "mountain"
+      ],
+      "readingsKun": [
+        "やま"
+      ],
+      "readingsOn": [
+        "サン",
+        "セン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 46
+    },
+    {
+      "character": "峠",
+      "meaningsEnglish": [
+        "mountain peak",
+        "mountain pass",
+        "climax",
+        "crest",
+        "(kokuji)"
+      ],
+      "readingsKun": [
+        "とうげ"
+      ],
+      "readingsOn": [],
+      "gradeLevel": 8,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 46
+    },
+    {
+      "character": "川",
+      "meaningsEnglish": [
+        "stream",
+        "river",
+        "river or three-stroke river radical (no. 47)"
+      ],
+      "readingsKun": [
+        "かわ"
+      ],
+      "readingsOn": [
+        "セン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 3,
+      "classicalRadicalNumber": 47
+    },
+    {
+      "character": "左",
+      "meaningsEnglish": [
+        "left"
+      ],
+      "readingsKun": [
+        "ひだり"
+      ],
+      "readingsOn": [
+        "サ",
+        "シャ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 48
+    },
+    {
+      "character": "年",
+      "meaningsEnglish": [
+        "year",
+        "counter for years"
+      ],
+      "readingsKun": [
+        "とし"
+      ],
+      "readingsOn": [
+        "ネン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 51
+    },
+    {
+      "character": "待",
+      "meaningsEnglish": [
+        "wait",
+        "depend on"
+      ],
+      "readingsKun": [
+        "ま.つ",
+        "-ま.ち"
+      ],
+      "readingsOn": [
+        "タイ"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 60
+    },
+    {
+      "character": "息",
+      "meaningsEnglish": [
+        "breath",
+        "respiration",
+        "son",
+        "interest (on money)",
+        "nuture",
+        "rest",
+        "coming to an end"
+      ],
+      "readingsKun": [
+        "いき"
+      ],
+      "readingsOn": [
+        "ソク"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 10,
+      "classicalRadicalNumber": 61
+    },
+    {
+      "character": "手",
+      "meaningsEnglish": [
+        "hand"
+      ],
+      "readingsKun": [
+        "て",
+        "て-",
+        "-て",
+        "た-"
+      ],
+      "readingsOn": [
+        "シュ",
+        "ズ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 64
+    },
+    {
+      "character": "招",
+      "meaningsEnglish": [
+        "beckon",
+        "invite",
+        "summon",
+        "engage"
+      ],
+      "readingsKun": [
+        "まね.く"
+      ],
+      "readingsOn": [
+        "ショウ"
+      ],
+      "gradeLevel": 5,
+      "strokeCount": 8,
+      "classicalRadicalNumber": 64
+    },
+    {
+      "character": "持",
+      "meaningsEnglish": [
+        "hold",
+        "have"
+      ],
+      "readingsKun": [
+        "も.つ",
+        "-も.ち",
+        "も.てる"
+      ],
+      "readingsOn": [
+        "ジ"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 64
+    },
+    {
+      "character": "文",
+      "meaningsEnglish": [
+        "sentence",
+        "literature",
+        "style",
+        "art",
+        "decoration",
+        "figures",
+        "plan",
+        "literary radical (no. 67)"
+      ],
+      "readingsKun": [
+        "ふみ",
+        "あや"
+      ],
+      "readingsOn": [
+        "ブン",
+        "モン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 67
+    },
+    {
+      "character": "日",
+      "meaningsEnglish": [
+        "day",
+        "sun",
+        "Japan",
+        "counter for days"
+      ],
+      "readingsKun": [
+        "ひ",
+        "-び",
+        "-か"
+      ],
+      "readingsOn": [
+        "ニチ",
+        "ジツ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 72
+    },
+    {
+      "character": "早",
+      "meaningsEnglish": [
+        "early",
+        "fast"
+      ],
+      "readingsKun": [
+        "はや.い",
+        "はや",
+        "はや-",
+        "はや.まる",
+        "はや.める",
+        "さ-"
+      ],
+      "readingsOn": [
+        "ソウ",
+        "サッ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 72
+    },
+    {
+      "character": "明",
+      "meaningsEnglish": [
+        "bright",
+        "light"
+      ],
+      "readingsKun": [
+        "あ.かり",
+        "あか.るい",
+        "あか.るむ",
+        "あか.らむ",
+        "あき.らか",
+        "あ.ける",
+        "-あ.け",
+        "あ.く",
+        "あ.くる",
+        "あ.かす"
+      ],
+      "readingsOn": [
+        "メイ",
+        "ミョウ",
+        "ミン"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 8,
+      "classicalRadicalNumber": 72
+    },
+    {
+      "character": "時",
+      "meaningsEnglish": [
+        "time",
+        "hour"
+      ],
+      "readingsKun": [
+        "とき",
+        "-どき"
+      ],
+      "readingsOn": [
+        "ジ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 10,
+      "classicalRadicalNumber": 72
+    },
+    {
+      "character": "月",
+      "meaningsEnglish": [
+        "month",
+        "moon"
+      ],
+      "readingsKun": [
+        "つき"
+      ],
+      "readingsOn": [
+        "ゲツ",
+        "ガツ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 74
+    },
+    {
+      "character": "木",
+      "meaningsEnglish": [
+        "tree",
+        "wood"
+      ],
+      "readingsKun": [
+        "き",
+        "こ-"
+      ],
+      "readingsOn": [
+        "ボク",
+        "モク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 75
+    },
+    {
+      "character": "本",
+      "meaningsEnglish": [
+        "book",
+        "present",
+        "main",
+        "origin",
+        "true",
+        "real",
+        "counter for long cylindrical things"
+      ],
+      "readingsKun": [
+        "もと"
+      ],
+      "readingsOn": [
+        "ホン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 75
+    },
+    {
+      "character": "村",
+      "meaningsEnglish": [
+        "village",
+        "town"
+      ],
+      "readingsKun": [
+        "むら"
+      ],
+      "readingsOn": [
+        "ソン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 75
+    },
+    {
+      "character": "林",
+      "meaningsEnglish": [
+        "grove",
+        "forest"
+      ],
+      "readingsKun": [
+        "はやし"
+      ],
+      "readingsOn": [
+        "リン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 8,
+      "classicalRadicalNumber": 75
+    },
+    {
+      "character": "森",
+      "meaningsEnglish": [
+        "forest",
+        "woods"
+      ],
+      "readingsKun": [
+        "もり"
+      ],
+      "readingsOn": [
+        "シン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 12,
+      "classicalRadicalNumber": 75
+    },
+    {
+      "character": "正",
+      "meaningsEnglish": [
+        "correct",
+        "justice",
+        "righteous",
+        "10**40"
+      ],
+      "readingsKun": [
+        "ただ.しい",
+        "ただ.す",
+        "まさ",
+        "まさ.に"
+      ],
+      "readingsOn": [
+        "セイ",
+        "ショウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 77
+    },
+    {
+      "character": "気",
+      "meaningsEnglish": [
+        "spirit",
+        "mind",
+        "air",
+        "atmosphere",
+        "mood"
+      ],
+      "readingsKun": [
+        "き"
+      ],
+      "readingsOn": [
+        "キ",
+        "ケ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 84
+    },
+    {
+      "character": "水",
+      "meaningsEnglish": [
+        "water"
+      ],
+      "readingsKun": [
+        "みず",
+        "みず-"
+      ],
+      "readingsOn": [
+        "スイ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 85
+    },
+    {
+      "character": "汗",
+      "meaningsEnglish": [
+        "sweat",
+        "perspire"
+      ],
+      "readingsKun": [
+        "あせ"
+      ],
+      "readingsOn": [
+        "カン"
+      ],
+      "gradeLevel": 8,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 85
+    },
+    {
+      "character": "洗",
+      "meaningsEnglish": [
+        "wash",
+        "inquire into",
+        "probe"
+      ],
+      "readingsKun": [
+        "あら.う"
+      ],
+      "readingsOn": [
+        "セン"
+      ],
+      "gradeLevel": 6,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 85
+    },
+    {
+      "character": "海",
+      "meaningsEnglish": [
+        "sea",
+        "ocean"
+      ],
+      "readingsKun": [
+        "うみ"
+      ],
+      "readingsOn": [
+        "カイ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 85
+    },
+    {
+      "character": "火",
+      "meaningsEnglish": [
+        "fire"
+      ],
+      "readingsKun": [
+        "ひ",
+        "-び",
+        "ほ-"
+      ],
+      "readingsOn": [
+        "カ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 86
+    },
+    {
+      "character": "灯",
+      "meaningsEnglish": [
+        "lamp",
+        "a light",
+        "light",
+        "counter for lights"
+      ],
+      "readingsKun": [
+        "ひ",
+        "ほ-",
+        "ともしび",
+        "とも.す",
+        "あかり"
+      ],
+      "readingsOn": [
+        "トウ"
+      ],
+      "gradeLevel": 4,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 86
+    },
+    {
+      "character": "犬",
+      "meaningsEnglish": [
+        "dog"
+      ],
+      "readingsKun": [
+        "いぬ",
+        "いぬ-"
+      ],
+      "readingsOn": [
+        "ケン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 94
+    },
+    {
+      "character": "玉",
+      "meaningsEnglish": [
+        "jewel",
+        "ball"
+      ],
+      "readingsKun": [
+        "たま",
+        "たま-",
+        "-だま"
+      ],
+      "readingsOn": [
+        "ギョク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 96
+    },
+    {
+      "character": "王",
+      "meaningsEnglish": [
+        "king",
+        "rule",
+        "magnate"
+      ],
+      "readingsKun": [],
+      "readingsOn": [
+        "オウ",
+        "-ノウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 4,
+      "classicalRadicalNumber": 96
+    },
+    {
+      "character": "生",
+      "meaningsEnglish": [
+        "life",
+        "genuine",
+        "birth"
+      ],
+      "readingsKun": [
+        "い.きる",
+        "い.かす",
+        "い.ける",
+        "う.まれる",
+        "うま.れる",
+        "う.まれ",
+        "うまれ",
+        "う.む",
+        "お.う",
+        "は.える",
+        "は.やす",
+        "き",
+        "なま",
+        "なま-",
+        "な.る",
+        "な.す",
+        "む.す",
+        "-う"
+      ],
+      "readingsOn": [
+        "セイ",
+        "ショウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 100
+    },
+    {
+      "character": "田",
+      "meaningsEnglish": [
+        "rice field",
+        "rice paddy"
+      ],
+      "readingsKun": [
+        "た"
+      ],
+      "readingsOn": [
+        "デン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 102
+    },
+    {
+      "character": "男",
+      "meaningsEnglish": [
+        "male"
+      ],
+      "readingsKun": [
+        "おとこ",
+        "お"
+      ],
+      "readingsOn": [
+        "ダン",
+        "ナン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 102
+    },
+    {
+      "character": "町",
+      "meaningsEnglish": [
+        "town",
+        "village",
+        "block",
+        "street"
+      ],
+      "readingsKun": [
+        "まち"
+      ],
+      "readingsOn": [
+        "チョウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 102
+    },
+    {
+      "character": "白",
+      "meaningsEnglish": [
+        "white"
+      ],
+      "readingsKun": [
+        "しろ",
+        "しら-",
+        "しろ.い"
+      ],
+      "readingsOn": [
+        "ハク",
+        "ビャク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 106
+    },
+    {
+      "character": "百",
+      "meaningsEnglish": [
+        "hundred"
+      ],
+      "readingsKun": [
+        "もも"
+      ],
+      "readingsOn": [
+        "ヒャク",
+        "ビャク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 106
+    },
+    {
+      "character": "目",
+      "meaningsEnglish": [
+        "eye",
+        "class",
+        "look",
+        "insight",
+        "experience",
+        "care",
+        "favor"
+      ],
+      "readingsKun": [
+        "め",
+        "-め",
+        "ま-"
+      ],
+      "readingsOn": [
+        "モク",
+        "ボク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 109
+    },
+    {
+      "character": "石",
+      "meaningsEnglish": [
+        "stone"
+      ],
+      "readingsKun": [
+        "いし"
+      ],
+      "readingsOn": [
+        "セキ",
+        "シャク",
+        "コク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 112
+    },
+    {
+      "character": "空",
+      "meaningsEnglish": [
+        "empty",
+        "sky",
+        "void",
+        "vacant",
+        "vacuum"
+      ],
+      "readingsKun": [
+        "そら",
+        "あ.く",
+        "あ.き",
+        "あ.ける",
+        "から",
+        "す.く",
+        "す.かす",
+        "むな.しい"
+      ],
+      "readingsOn": [
+        "クウ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 8,
+      "classicalRadicalNumber": 116
+    },
+    {
+      "character": "立",
+      "meaningsEnglish": [
+        "stand up",
+        "rise",
+        "set up",
+        "erect"
+      ],
+      "readingsKun": [
+        "た.つ",
+        "-た.つ",
+        "た.ち-",
+        "た.てる",
+        "-た.てる",
+        "た.て-",
+        "たて-",
+        "-た.て",
+        "-だ.て",
+        "-だ.てる"
+      ],
+      "readingsOn": [
+        "リツ",
+        "リュウ",
+        "リットル"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 5,
+      "classicalRadicalNumber": 117
+    },
+    {
+      "character": "竹",
+      "meaningsEnglish": [
+        "bamboo"
+      ],
+      "readingsKun": [
+        "たけ"
+      ],
+      "readingsOn": [
+        "チク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 118
+    },
+    {
+      "character": "箱",
+      "meaningsEnglish": [
+        "box",
+        "chest",
+        "case",
+        "bin",
+        "railway car"
+      ],
+      "readingsKun": [
+        "はこ"
+      ],
+      "readingsOn": [
+        "ソウ"
+      ],
+      "gradeLevel": 3,
+      "strokeCount": 15,
+      "classicalRadicalNumber": 118
+    },
+    {
+      "character": "箸",
+      "meaningsEnglish": [
+        "chopsticks"
+      ],
+      "readingsKun": [
+        "はし"
+      ],
+      "readingsOn": [
+        "チョ",
+        "チャク"
+      ],
+      "gradeLevel": 8,
+      "strokeCount": 15,
+      "classicalRadicalNumber": 118
+    },
+    {
+      "character": "糸",
+      "meaningsEnglish": [
+        "thread"
+      ],
+      "readingsKun": [
+        "いと"
+      ],
+      "readingsOn": [
+        "シ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 120
+    },
+    {
+      "character": "耳",
+      "meaningsEnglish": [
+        "ear"
+      ],
+      "readingsKun": [
+        "みみ"
+      ],
+      "readingsOn": [
+        "ジ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 128
+    },
+    {
+      "character": "聞",
+      "meaningsEnglish": [
+        "hear",
+        "ask",
+        "listen"
+      ],
+      "readingsKun": [
+        "き.く",
+        "き.こえる"
+      ],
+      "readingsOn": [
+        "ブン",
+        "モン"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 14,
+      "classicalRadicalNumber": 128
+    },
+    {
+      "character": "花",
+      "meaningsEnglish": [
+        "flower"
+      ],
+      "readingsKun": [
+        "はな"
+      ],
+      "readingsOn": [
+        "カ",
+        "ケ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 140
+    },
+    {
+      "character": "茶",
+      "meaningsEnglish": [
+        "tea"
+      ],
+      "readingsKun": [],
+      "readingsOn": [
+        "チャ",
+        "サ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 9,
+      "classicalRadicalNumber": 140
+    },
+    {
+      "character": "虫",
+      "meaningsEnglish": [
+        "insect",
+        "bug",
+        "temper"
+      ],
+      "readingsKun": [
+        "むし"
+      ],
+      "readingsOn": [
+        "チュウ",
+        "キ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 6,
+      "classicalRadicalNumber": 142
+    },
+    {
+      "character": "見",
+      "meaningsEnglish": [
+        "see",
+        "hopes",
+        "chances",
+        "idea",
+        "opinion",
+        "look at",
+        "visible"
+      ],
+      "readingsKun": [
+        "み.る",
+        "み.える",
+        "み.せる"
+      ],
+      "readingsOn": [
+        "ケン"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 147
+    },
+    {
+      "character": "語",
+      "meaningsEnglish": [
+        "word",
+        "speech",
+        "language"
+      ],
+      "readingsKun": [
+        "かた.る",
+        "かた.らう"
+      ],
+      "readingsOn": [
+        "ゴ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 14,
+      "classicalRadicalNumber": 149
+    },
+    {
+      "character": "貝",
+      "meaningsEnglish": [
+        "shellfish"
+      ],
+      "readingsKun": [
+        "かい"
+      ],
+      "readingsOn": [
+        "バイ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 154
+    },
+    {
+      "character": "買",
+      "meaningsEnglish": [
+        "buy"
+      ],
+      "readingsKun": [
+        "か.う"
+      ],
+      "readingsOn": [
+        "バイ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 12,
+      "classicalRadicalNumber": 154
+    },
+    {
+      "character": "赤",
+      "meaningsEnglish": [
+        "red"
+      ],
+      "readingsKun": [
+        "あか",
+        "あか-",
+        "あか.い",
+        "あか.らむ",
+        "あか.らめる"
+      ],
+      "readingsOn": [
+        "セキ",
+        "シャク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 155
+    },
+    {
+      "character": "走",
+      "meaningsEnglish": [
+        "run"
+      ],
+      "readingsKun": [
+        "はし.る"
+      ],
+      "readingsOn": [
+        "ソウ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 156
+    },
+    {
+      "character": "足",
+      "meaningsEnglish": [
+        "leg",
+        "foot",
+        "be sufficient",
+        "counter for pairs of footwear"
+      ],
+      "readingsKun": [
+        "あし",
+        "た.りる",
+        "た.る",
+        "た.す"
+      ],
+      "readingsOn": [
+        "ソク"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 157
+    },
+    {
+      "character": "車",
+      "meaningsEnglish": [
+        "car"
+      ],
+      "readingsKun": [
+        "くるま"
+      ],
+      "readingsOn": [
+        "シャ"
+      ],
+      "gradeLevel": 1,
+      "strokeCount": 7,
+      "classicalRadicalNumber": 159
+    },
+    {
+      "character": "間",
+      "meaningsEnglish": [
+        "interval",
+        "space"
+      ],
+      "readingsKun": [
+        "あいだ",
+        "ま",
+        "あい"
+      ],
+      "readingsOn": [
+        "カン",
+        "ケン"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 12,
+      "classicalRadicalNumber": 169
+    },
+    {
+      "character": "雪",
+      "meaningsEnglish": [
+        "snow"
+      ],
+      "readingsKun": [
+        "ゆき"
+      ],
+      "readingsOn": [
+        "セツ"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 11,
+      "classicalRadicalNumber": 173
+    },
+    {
+      "character": "電",
+      "meaningsEnglish": [
+        "electricity"
+      ],
+      "readingsKun": [],
+      "readingsOn": [
+        "デン"
+      ],
+      "gradeLevel": 2,
+      "strokeCount": 13,
+      "classicalRadicalNumber": 173
+    }
+  ]
+}

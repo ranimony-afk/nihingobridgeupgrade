@@ -318,6 +318,12 @@ export default function KanjiMindTreePage() {
                 )}
                 {added ? "In your deck" : "Add to SRS"}
               </button>
+              <Link
+                href={`/mindtree/${encodeURIComponent(kanji.character)}`}
+                className="flex min-h-10 items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-800 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2"
+              >
+                Open visual-source MindTree
+              </Link>
               <div className="flex items-center justify-center gap-3 text-[10px] font-semibold text-slate-500">
                 <span>{tree.stats.components} components</span>
                 <span>·</span>
