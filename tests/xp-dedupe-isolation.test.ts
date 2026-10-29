@@ -426,7 +426,11 @@ describe("Phase 26A: the dedupe constraint change is safe for historical rows", 
 
   it("18. the committed migration chain applies in order and ends with the per-user rule", async () => {
     const files = readdirSync("drizzle").filter((f) => f.endsWith(".sql")).sort();
-    expect(files.at(-1)).toMatch(/^0004_/);
+    // Phase 26F-B added 0005 after this phase's migration, so "the newest
+    // migration" is no longer 0004. The intent of this assertion is that the
+    // 26A migration is present and that the whole chain still applies — not
+    // that nothing may ever be added after it.
+    expect(files.some((f) => /^0004_/.test(f)), "26A migration present").toBe(true);
 
     const chained = new PGlite();
     try {

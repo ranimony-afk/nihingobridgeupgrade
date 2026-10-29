@@ -28,6 +28,7 @@ import {
   SchedulerParams,
 } from "@/types/srs";
 import { SrsService } from "./srsService";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 import { getScheduler, listSchedulers, resolveParams } from "./scheduler";
 import { describeInterval } from "./strategies/shared";
 
@@ -118,13 +119,19 @@ export class SyncService {
    * Idempotent on (userId, deviceId).
    * ============================================================ */
   static async registerDevice(input: {
-    userId?: string;
+    /**
+     * Phase 26F-E4: REQUIRED verified owner.
+     *
+     * A device row is keyed on (userId, deviceId), so the userId decides whose
+     * device roster the row lands in. It used to default to the shared sentinel.
+     */
+    userId: string;
     deviceId: string;
     name?: string;
     platform?: SyncPlatform;
     appVersion?: string;
   }): Promise<{ device: SyncDevice; created: boolean }> {
-    const userId = input.userId || "anonymous-user";
+    const userId = requireOwner(input.userId, "SyncService.registerDevice");
 
     const [existing] = await db
       .select()
@@ -180,15 +187,22 @@ export class SyncService {
   }
 
   private static async requireDevice(userId: string, deviceId: string) {
+    /*
+     * Phase 26F-E4: the pair (owner, deviceId) is the entire key. A device id is
+     * attacker-chosen text, NOT an identity: sending someone else's id matches
+     * no row for this actor and auto-registers a fresh row under the ACTOR, so
+     * it can never attach the actor to another learner's device or data.
+     */
+    const owner = requireOwner(userId, "SyncService.requireDevice");
     const [row] = await db
       .select()
       .from(devicesTable)
-      .where(and(eq(devicesTable.userId, userId), eq(devicesTable.deviceId, deviceId)))
+      .where(and(eq(devicesTable.userId, owner), eq(devicesTable.deviceId, deviceId)))
       .limit(1);
 
     if (!row) {
       // Auto-register on first contact so a fresh install can sync immediately.
-      const { device } = await this.registerDevice({ userId, deviceId });
+      const { device } = await this.registerDevice({ userId: owner, deviceId });
       return device;
     }
     if (row.isRevoked) {
@@ -242,10 +256,19 @@ export class SyncService {
    * bypass the registered scheduler. Instead each event is passed
    * through the card's own algorithm, and the card is written once.
    * ============================================================ */
-  static async push(payload: SyncPushPayload): Promise<SyncPushResult> {
+  static async push(
+    payload: SyncPushPayload,
+    actorUserId: string
+  ): Promise<SyncPushResult> {
+    /*
+     * Phase 26F-E4: `userId` was hardcoded to the shared sentinel here, so EVERY
+     * device on the deployment replayed its offline reviews into one shared
+     * account — and any device id would attach to it. The actor is now explicit
+     * and required.
+     */
+    const userId = requireOwner(actorUserId, "SyncService.push");
     await SrsService.ensureSeeded();
 
-    const userId = "anonymous-user";
     const device = await this.requireDevice(userId, payload.deviceId);
 
     if (payload.deviceName || payload.platform || payload.appVersion) {
@@ -294,13 +317,23 @@ export class SyncService {
       byCard.set(ev.cardId, list);
     }
 
+    /*
+     * Phase 26F-E4: the push used to load cards by PRIMARY KEY ALONE, so an
+     * event naming another learner's card id rewrote that learner's schedule
+     * and appended review rows to their log. Cards are now restricted to the
+     * actor; an event for a foreign card is dropped as "unknown card", which is
+     * the same answer a non-existent card gets (no existence oracle).
+     */
     const cardIds = Array.from(byCard.keys());
     const cardRows = cardIds.length
-      ? await db.select().from(cardsTable).where(inArray(cardsTable.id, cardIds))
+      ? await db
+          .select()
+          .from(cardsTable)
+          .where(and(inArray(cardsTable.id, cardIds), eq(cardsTable.userId, userId)))
       : [];
     const cardMap = new Map(cardRows.map((c) => [c.id, c]));
 
-    const deckRows = await db.select().from(decksTable);
+    const deckRows = await db.select().from(decksTable).where(eq(decksTable.ownerId, userId));
     const deckMap = new Map(deckRows.map((d) => [d.id, d]));
 
     /* ---- Idempotency: which clientIds already exist? ---- */
@@ -310,7 +343,7 @@ export class SyncService {
       const found = await db
         .select({ clientId: reviewsTable.clientId })
         .from(reviewsTable)
-        .where(inArray(reviewsTable.clientId, clientIds));
+        .where(and(inArray(reviewsTable.clientId, clientIds), eq(reviewsTable.userId, userId)));
       for (const f of found) if (f.clientId) existingClientIds.add(f.clientId);
     }
 
@@ -455,7 +488,9 @@ export class SyncService {
           id: `rev-sync-${ev.clientId}`,
           cardId,
           deckId: cardRow.deckId,
-          userId: cardRow.userId,
+          /* The verified actor. `cardRow.userId` equals it by construction now,
+           * but the identity used must be the one that was proven. */
+          userId,
           rating: ev.rating,
           wasCorrect: outcome.wasCorrect,
           timeSpentMs: clampInt(ev.timeSpentMs, 0, 3600000, 0),
@@ -515,7 +550,7 @@ export class SyncService {
           schedulerKey: scheduler.key,
           updatedAt: new Date(),
         })
-        .where(eq(cardsTable.id, cardId));
+        .where(and(eq(cardsTable.id, cardId), eq(cardsTable.userId, userId)));
 
       acceptedTotal += fresh.length;
 
@@ -579,12 +614,13 @@ export class SyncService {
     deviceId: string;
     cursor?: string | null;
     limit?: number;
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     includeReviews?: boolean;
   }): Promise<SyncPullResult> {
+    const userId = requireOwner(params.userId, "SyncService.pull");
     await SrsService.ensureSeeded();
 
-    const userId = params.userId || "anonymous-user";
     const device = await this.requireDevice(userId, params.deviceId);
     const limit = clampInt(params.limit, 1, 2000, SYNC_PAGE_LIMIT);
     const registry = getRegistryStatus(device.lastRegistryFingerprint);
@@ -652,6 +688,9 @@ export class SyncService {
       if (params.includeReviews !== false && deckIds.length > 0) {
         const rBase = [
           inArray(reviewsTable.deckId, deckIds),
+          /* Phase 26F-E4: the review log is the actor's, even if a legacy row
+           * were ever to name one of their decks. */
+          eq(reviewsTable.userId, userId),
           ...(validCursor ? [gt(reviewsTable.reviewedAt, validCursor)] : []),
         ];
         const rRows = await db
@@ -739,14 +778,18 @@ export class SyncService {
   /* ============================================================
    * SNAPSHOT — full state for a fresh device or a wipe/restore
    * ============================================================ */
-  static async snapshot(params: { deviceId: string; userId?: string }): Promise<SyncPullResult> {
-    return this.pull({ ...params, cursor: null, limit: 2000 });
+  static async snapshot(params: { deviceId: string; userId: string }): Promise<SyncPullResult> {
+    /* Phase 26F-E4: REQUIRED — a snapshot is one learner's full export. */
+    const userId = requireOwner(params.userId, "SyncService.snapshot");
+    return this.pull({ ...params, userId, cursor: null, limit: 2000 });
   }
 
   /* ============================================================
    * STATUS — devices, log, totals
    * ============================================================ */
-  static async getStatus(userId = "anonymous-user"): Promise<SyncStatusResponse> {
+  static async getStatus(userId: string): Promise<SyncStatusResponse> {
+    /* Phase 26F-E4: REQUIRED — device roster and sync log are per learner. */
+    const owner = requireOwner(userId, "SyncService.getStatus");
     await SrsService.ensureSeeded();
 
     const registry = getRegistryStatus();
@@ -813,16 +856,18 @@ export class SyncService {
   }
 
   static async revokeDevice(userId: string, deviceId: string): Promise<SyncDevice | null> {
+    /* Phase 26F-E4: revoking is scoped to the actor's own roster. */
+    const owner = requireOwner(userId, "SyncService.revokeDevice");
     const [row] = await db
       .update(devicesTable)
       .set({ isRevoked: true, lastSeenAt: new Date() })
-      .where(and(eq(devicesTable.userId, userId), eq(devicesTable.deviceId, deviceId)))
+      .where(and(eq(devicesTable.userId, owner), eq(devicesTable.deviceId, deviceId)))
       .returning();
 
     if (row) {
       await this.writeLog({
         deviceId,
-        userId,
+        userId: owner,
         operation: "register",
         status: "ok",
         message: "Device revoked",

@@ -13,6 +13,15 @@ import {
 import { PersonalizationService } from "@/services/srs/personalizationService";
 import { getScheduler, resolveParams } from "@/services/srs/scheduler";
 import { describeInterval } from "@/services/srs/strategies/shared";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +59,15 @@ function buildStage(stage: LifecycleStep["stage"], detail: string, at: string | 
  *   new card → due → review → rating → reschedule → next due
  */
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: this trace reads a card's scheduling state and full review
+   * history, so it is scoped to the actor's own card. */
+  const auth = await authenticateActor("Failed to build lifecycle trace");
+  if (!auth.ok) return auth.response;
+
   try {
     const sp = request.nextUrl.searchParams;
     const cardId = sp.get("cardId");
@@ -58,19 +76,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ success: false, error: "cardId is required" }, { status: 400 });
     }
 
-    const [card] = await db.select().from(cardsTable).where(eq(cardsTable.id, cardId)).limit(1);
+    /* Ownership predicate in the read: a foreign card id is a 404, exactly like
+     * a card that does not exist. */
+    const [card] = await db
+      .select()
+      .from(cardsTable)
+      .where(and(eq(cardsTable.id, cardId), eq(cardsTable.userId, auth.actor.id)))
+      .limit(1);
     if (!card) {
       return NextResponse.json({ success: false, error: "Card not found" }, { status: 404 });
     }
 
-    const [deck] = await db.select().from(decksTable).where(eq(decksTable.id, card.deckId)).limit(1);
+    const [deck] = await db
+      .select()
+      .from(decksTable)
+      .where(and(eq(decksTable.id, card.deckId), eq(decksTable.ownerId, auth.actor.id)))
+      .limit(1);
     const scheduler = getScheduler(deck?.schedulerKey || card.schedulerKey);
     const params = resolveParams(scheduler, (deck?.schedulerParams ?? {}) as Record<string, unknown>);
 
     const reviews = await db
       .select()
       .from(reviewsTable)
-      .where(eq(reviewsTable.cardId, cardId))
+      .where(and(eq(reviewsTable.cardId, cardId), eq(reviewsTable.userId, auth.actor.id)))
       .orderBy(asc(reviewsTable.reviewedAt));
 
     const now = new Date();
@@ -180,7 +208,9 @@ export async function GET(request: NextRequest) {
     });
 
     /* ---------------- Personal context ---------------- */
-    const profile = await PersonalizationService.buildProfile("anonymous-user");
+    /* Phase 26F-E4: was the shared sentinel — the trace leaked its weak-card
+     * statistics into another learner's response. */
+    const profile = await PersonalizationService.buildProfile(auth.actor.id);
     const personalStat = profile.weakCards.find((w) => w.cardId === cardId) ?? null;
 
     return NextResponse.json({
@@ -217,9 +247,20 @@ export async function GET(request: NextRequest) {
  *   new card → due → review → rating → reschedule → next due
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: the gate plans a session, answers a card and reads its
+   * schedule, so it runs entirely as the verified actor. */
+  const auth = await authenticateActor("Failed to run lifecycle gate");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json().catch(() => ({}));
-    const userId = body?.userId || "anonymous-user";
+    const identity = resolveSelfIdentity(auth.actor, body?.userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
+    const userId = identity.userId;
     const rating: SrsRating = SRS_RATINGS.includes(body?.rating) ? body.rating : "good";
 
     /* ---------- 1. NEW CARD ---------- */
@@ -253,7 +294,7 @@ export async function POST(request: NextRequest) {
       dueHorizon: "day",
     });
 
-    const sessionRow = await SessionService.getSessionRow(session.id);
+    const sessionRow = await SessionService.getSessionRow(session.id, userId);
     const planned = (sessionRow?.queue ?? []) as Array<{ cardId: string; kind: string }>;
 
     if (planned.length === 0) {
@@ -266,7 +307,7 @@ export async function POST(request: NextRequest) {
     const [probe] = await db
       .select()
       .from(cardsTable)
-      .where(eq(cardsTable.id, planned[0].cardId))
+      .where(and(eq(cardsTable.id, planned[0].cardId), eq(cardsTable.userId, userId)))
       .limit(1);
 
     if (!probe) {
@@ -278,7 +319,11 @@ export async function POST(request: NextRequest) {
 
     const gateStartedAsNew = probe.totalReviews === 0;
 
-    const [deck] = await db.select().from(decksTable).where(eq(decksTable.id, probe.deckId)).limit(1);
+    const [deck] = await db
+      .select()
+      .from(decksTable)
+      .where(and(eq(decksTable.id, probe.deckId), eq(decksTable.ownerId, userId)))
+      .limit(1);
     const scheduler = getScheduler(deck?.schedulerKey || probe.schedulerKey);
     const params = resolveParams(scheduler, (deck?.schedulerParams ?? {}) as Record<string, unknown>);
 
@@ -314,7 +359,9 @@ export async function POST(request: NextRequest) {
     const dueCheck = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(cardsTable)
-      .where(and(eq(cardsTable.id, probe.id), lte(cardsTable.dueAt, now)));
+      .where(
+        and(eq(cardsTable.id, probe.id), eq(cardsTable.userId, userId), lte(cardsTable.dueAt, now))
+      );
 
     const appearedInQueue = (dueCheck[0]?.count ?? 0) > 0;
 
@@ -379,6 +426,7 @@ export async function POST(request: NextRequest) {
         cardId: probe.id,
         rating,
         timeSpentMs: 4200,
+        actorUserId: userId,
       });
       ratingAccepted = Boolean(graded);
     }
@@ -406,7 +454,11 @@ export async function POST(request: NextRequest) {
     });
 
     /* ---------- 6. NEXT DUE ---------- */
-    const [afterRow] = await db.select().from(cardsTable).where(eq(cardsTable.id, probe.id)).limit(1);
+    const [afterRow] = await db
+      .select()
+      .from(cardsTable)
+      .where(and(eq(cardsTable.id, probe.id), eq(cardsTable.userId, userId)))
+      .limit(1);
     const nextDue = afterRow ? new Date(afterRow.dueAt) : outcome.dueAt;
     const nextDueInFuture = nextDue.getTime() > now.getTime();
     /** Day-scale interval means the scheduler graduated the card. */
@@ -416,7 +468,9 @@ export async function POST(request: NextRequest) {
     const stillDue = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(cardsTable)
-      .where(and(eq(cardsTable.id, probe.id), lte(cardsTable.dueAt, now)));
+      .where(
+        and(eq(cardsTable.id, probe.id), eq(cardsTable.userId, userId), lte(cardsTable.dueAt, now))
+      );
     const leftQueue = (stillDue[0]?.count ?? 0) === 0;
 
     steps.push({

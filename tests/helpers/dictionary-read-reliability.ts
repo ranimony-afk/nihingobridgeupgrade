@@ -246,7 +246,10 @@ describe("dictionary reads: isolated database and visitor reliability", () => {
 
   it("leaves an empty database's schema, sequences, and every table unchanged across GETs", async () => {
     const before = await snapshotDatabase(database);
-    expect(Object.keys(before.rows)).toHaveLength(30);
+    // 32 = the pre-26F-B 30 tables plus srs_system_decks and srs_card_templates
+    // (Phase 26F-B catalogue separation); the fingerprint comparison below is
+    // the substantive no-mutation assertion.
+    expect(Object.keys(before.rows)).toHaveLength(32);
     expect(Object.values(before.rows).every((rows) => rows.length === 0)).toBe(true);
 
     const browse = await webGET(request("/api/dictionary"));

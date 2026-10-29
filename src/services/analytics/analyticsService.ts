@@ -10,6 +10,7 @@ import {
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { XpService } from "../gamification/xpService";
 import { TestService } from "../jlpt/testService";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 
 export interface UserLearningSummary {
   userId: string;
@@ -56,14 +57,21 @@ export class AnalyticsService {
    * Automatically awards XP via the idempotent ledger with dedupeKey.
    */
   static async trackStudyEvent(params: {
-    userId?: string;
+    /*
+     * Phase 26F-E3: REQUIRED. This was `userId?: string` with a
+     * `|| "anonymous-user"` fallback below, so a study event with no identity
+     * was awarded to the shared legacy account — and the dedupe key was built
+     * from the same value, making two different learners' identical study
+     * events collide there.
+     */
+    userId: string;
     itemType: "vocabulary" | "kanji" | "grammar" | "example";
     itemId: string;
     jlptLevel?: string;
     timeSpentMs?: number;
   }): Promise<{ awarded: boolean; points: number }> {
+    const userId = requireOwner(params.userId, "AnalyticsService.trackStudyEvent");
     await this.ensureInitialized();
-    const userId = params.userId || "anonymous-user";
     const dedupeKey = `study:${params.itemType}:${userId}:${params.itemId}`;
 
     // NOT `awardSafe`: for this route the award IS the mutation, so a failed
@@ -90,11 +98,17 @@ export class AnalyticsService {
   /**
    * Compute comprehensive, aggregated learning progress without leaking private internals.
    */
-  static async getUserProgressSummary(userId = "anonymous-user"): Promise<UserLearningSummary> {
+  static async getUserProgressSummary(userId: string): Promise<UserLearningSummary> {
+    /*
+     * Phase 26F-E3: REQUIRED and validated before the first query. The old
+     * `= "anonymous-user"` default aggregated the shared legacy account for any
+     * caller that omitted the id.
+     */
+    const owner = requireOwner(userId, "AnalyticsService.getUserProgressSummary");
     await this.ensureInitialized();
 
     // 1. Live XP & Level derivation
-    const xpSummary = await XpService.getSummary(userId);
+    const xpSummary = await XpService.getSummary(owner);
 
     // 2. SRS Review metrics
     const [reviewStats] = await db
@@ -104,7 +118,7 @@ export class AnalyticsService {
         totalTimeMs: sql<number>`cast(coalesce(sum(${srsReviews.timeSpentMs}), 0) as int)`,
       })
       .from(srsReviews)
-      .where(eq(srsReviews.userId, userId));
+      .where(eq(srsReviews.userId, owner));
 
     // 3. Studied items by source_type from xp_events ledger
     const studiedRows = await db
@@ -113,7 +127,7 @@ export class AnalyticsService {
         count: sql<number>`cast(count(distinct ${xpEvents.sourceId}) as int)`,
       })
       .from(xpEvents)
-      .where(and(eq(xpEvents.userId, userId), sql`${xpEvents.revokedAt} is null`))
+      .where(and(eq(xpEvents.userId, owner), sql`${xpEvents.revokedAt} is null`))
       .groupBy(xpEvents.sourceType);
 
     const countsByType: Record<string, number> = {};
@@ -130,7 +144,7 @@ export class AnalyticsService {
         totalTimeSeconds: sql<number>`cast(coalesce(sum(${testSessions.totalTimeSpentSeconds}), 0) as int)`,
       })
       .from(testSessions)
-      .where(eq(testSessions.userId, userId));
+      .where(eq(testSessions.userId, owner));
 
     // 5. Test Answer Accuracy
     const [answerStats] = await db
@@ -140,7 +154,7 @@ export class AnalyticsService {
       })
       .from(testAnswers)
       .innerJoin(testSessions, eq(testAnswers.sessionId, testSessions.id))
-      .where(eq(testSessions.userId, userId));
+      .where(eq(testSessions.userId, owner));
 
     // Combine accuracies
     const totalReviewAttempts = reviewStats?.totalReviews ?? 0;
@@ -166,12 +180,12 @@ export class AnalyticsService {
         occurredAt: xpEvents.occurredAt,
       })
       .from(xpEvents)
-      .where(and(eq(xpEvents.userId, userId), sql`${xpEvents.revokedAt} is null`))
+      .where(and(eq(xpEvents.userId, owner), sql`${xpEvents.revokedAt} is null`))
       .orderBy(desc(xpEvents.occurredAt))
       .limit(8);
 
     return {
-      userId,
+      userId: owner,
       xp: {
         totalPoints: xpSummary.totalXp,
         level: xpSummary.level.level,

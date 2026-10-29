@@ -188,17 +188,20 @@ export async function DELETE(request: NextRequest) {
     if (owner !== null && owner !== auth.actor.id) {
       return authorizationFailureResponse(new AuthorizationError(403));
     }
-    if (owner === null && (await XpService.findEventOwner(dedupeKey)) !== null) {
+    /* Phase 26F-E3: the unscoped probe has its own name now, so it cannot be
+     * mistaken for an ownership check. Its result is compared to null and never
+     * leaves this block — returning it would name another learner. */
+    if (owner === null && (await XpService.findEventOwnerUnscoped(dedupeKey)) !== null) {
       return authorizationFailureResponse(new AuthorizationError(403));
     }
 
     // Scoped to the caller: revoking one user's key must not revoke another
     // user's identically-keyed event.
-    const result = await XpService.revokeByDedupeKey(
+    const result = await XpService.revokeByDedupeKey({
       dedupeKey,
-      request.nextUrl.searchParams.get("reason") || "manual-revoke",
-      auth.actor.id
-    );
+      ownerUserId: auth.actor.id,
+      reason: request.nextUrl.searchParams.get("reason") || "manual-revoke",
+    });
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {

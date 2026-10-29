@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SessionService } from "@/services/srs/sessionService";
 import { SRS_RATINGS, SrsRating } from "@/types/srs";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
+import { authenticateActor } from "@/app/api/_shared/authorizationResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +17,14 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: answering writes schedule, review and XP rows. */
+  const auth = await authenticateActor("Failed to record answer");
+  if (!auth.ok) return auth.response;
+
   try {
     const { id: sessionId } = await params;
     const body = await request.json();
@@ -32,6 +45,7 @@ export async function POST(
       cardId,
       rating: rating as SrsRating,
       timeSpentMs,
+      actorUserId: auth.actor.id,
     });
 
     if (!result) {

@@ -156,7 +156,12 @@ jobs:
             tests/xp-analytics-write-authorization.test.ts \
             tests/xp-dedupe-isolation.test.ts \
             tests/xp-analytics-read-authorization.test.ts \
-            tests/xp-ledger-read-authorization.test.ts
+            tests/xp-ledger-read-authorization.test.ts \
+            tests/srs-catalogue-materialization.test.ts \
+            tests/srs-containment.test.ts \
+            tests/jlpt-ownership.test.ts \
+            tests/xp-service-ownership.test.ts \
+            tests/srs-ownership.test.ts
 
       - name: Remove temporary JMdict XML
         if: always()

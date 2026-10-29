@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SrsService } from "@/services/srs/srsService";
 import { SRS_RATINGS, SrsRating } from "@/types/srs";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  queryIdentityFailureResponse,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveQueryIdentity, resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -10,9 +20,22 @@ export const dynamic = "force-dynamic";
  * at request time, so swapping algorithms requires no code path changes.
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: grading writes scheduling state, a review row and XP, so the
+   * actor is resolved before the body is parsed. */
+  const auth = await authenticateActor("Failed to grade card");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { cardId, rating, timeSpentMs, userId } = body;
+
+    /* A body `userId` may only ever restate the actor; anything else is 403. */
+    const identity = resolveSelfIdentity(auth.actor, userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
 
     if (!cardId) {
       return NextResponse.json({ success: false, error: "cardId is required" }, { status: 400 });
@@ -29,7 +52,7 @@ export async function POST(request: NextRequest) {
       cardId,
       rating: rating as SrsRating,
       timeSpentMs,
-      userId,
+      actorUserId: identity.userId,
     });
 
     if (!result) {

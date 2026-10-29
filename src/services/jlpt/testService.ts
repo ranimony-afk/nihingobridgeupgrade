@@ -228,7 +228,17 @@ export class TestService {
    * Start a new test session (timed or untimed, full or custom drill)
    */
   static async startSession(params: {
-    userId?: string;
+    /*
+     * Phase 26F-E2 — owner is REQUIRED and must be the verified actor's id.
+     *
+     * This was `userId?: string` with `params.userId || "anonymous-user"`
+     * below, so an unauthenticated caller chose whose session it created and a
+     * missing id silently wrote to the shared sentinel. There is no safe
+     * default for an owner: the only correct value is the identity the server
+     * verified, so the parameter is mandatory and its absence is a programmer
+     * error, not a fallback.
+     */
+    userId: string;
     testId?: string;
     quizType: "jlpt_mock" | "quick_drill" | "section_practice" | "weakness_drill" | "custom_quiz";
     jlptLevel: JLPTLevel;
@@ -241,7 +251,11 @@ export class TestService {
     await this.ensureSeeded();
 
     const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-    const userId = params.userId || "anonymous-user";
+    /* No `|| "anonymous-user"`: an empty owner is refused, never defaulted. */
+    if (typeof params.userId !== "string" || params.userId.trim() === "") {
+      throw new Error("TestService.startSession requires an owned userId");
+    }
+    const userId = params.userId;
     const isTimed = params.isTimed ?? true;
 
     let targetQuestions: Question[] = [];
@@ -312,20 +326,62 @@ export class TestService {
   }
 
   /**
-   * Retrieve active session state and saved answers
+   * A session row whose owner has been proven to be the caller.
+   *
+   * `userId` is narrowed to `string` because ownership was decided by equality
+   * with the actor's id, so downstream code cannot re-introduce an
+   * `|| "anonymous-user"` fallback for a NULL-owner legacy row.
    */
-  static async getSessionState(sessionId: string): Promise<{
+  private static async findOwnedSession(
+    sessionId: string,
+    actorUserId: string
+  ): Promise<(typeof testSessionsTable.$inferSelect & { userId: string }) | null> {
+    /*
+     * Phase 26F-E2 — ownership is part of the query, not a post-hoc check.
+     *
+     * Before this, `getSessionState(sessionId)` selected on the primary key
+     * alone, so any caller who knew/guessed a session id could read the exam,
+     * write answers into it, submit it, and cause XP and analytics writes
+     * attributed to that session's owner. The predicate below is the
+     * authorization decision; the equality re-check afterwards is defence in
+     * depth against a future edit dropping the predicate while leaving this
+     * function's contract intact.
+     *
+     * An empty actor is refused outright: `""` must never match a row.
+     */
+    if (typeof actorUserId !== "string" || actorUserId.trim() === "") return null;
+
+    const [session] = await db
+      .select()
+      .from(testSessionsTable)
+      .where(
+        and(
+          eq(testSessionsTable.id, sessionId),
+          eq(testSessionsTable.userId, actorUserId)
+        )
+      )
+      .limit(1);
+
+    if (!session || session.userId !== actorUserId) return null;
+    return session as typeof testSessionsTable.$inferSelect & { userId: string };
+  }
+
+  /**
+   * Retrieve active session state and saved answers.
+   *
+   * Phase 26F-E2: the actor's id is REQUIRED. A session belonging to another
+   * learner — or to no learner at all (the legacy NULL-owner rows) — returns
+   * `null`, identically to a session that does not exist, so the response
+   * cannot be used as an existence oracle.
+   */
+  static async getSessionState(sessionId: string, actorUserId: string): Promise<{
     session: typeof testSessionsTable.$inferSelect;
     answers: Array<typeof testAnswersTable.$inferSelect>;
     questions: Question[];
   } | null> {
     await this.ensureSeeded();
 
-    const [session] = await db
-      .select()
-      .from(testSessionsTable)
-      .where(eq(testSessionsTable.id, sessionId))
-      .limit(1);
+    const session = await this.findOwnedSession(sessionId, actorUserId);
 
     if (!session) return null;
 
@@ -363,7 +419,35 @@ export class TestService {
   /**
    * Save a single question answer in session
    */
+  /**
+   * Persist one answer into a session the caller owns.
+   *
+   * Phase 26F-E2: ownership is verified BEFORE the write. Returns `false` when
+   * the session is not the actor's own (or does not exist), and in that case
+   * performs no insert and no update — the previous version wrote straight into
+   * whatever session id it was handed.
+   */
   static async saveAnswer(
+    sessionId: string,
+    actorUserId: string,
+    submission: TestAnswerSubmission
+  ): Promise<boolean> {
+    const owned = await this.findOwnedSession(sessionId, actorUserId);
+    if (!owned) return false;
+
+    await this.writeAnswer(sessionId, submission);
+    return true;
+  }
+
+  /**
+   * The unscoped answer write.
+   *
+   * Private, and reachable only from `saveAnswer` (after an ownership check) or
+   * from `submitSession` (after the same check). It deliberately performs no
+   * authorization of its own so the check cannot be forgotten by being
+   * duplicated — callers must go through an owned-session decision first.
+   */
+  private static async writeAnswer(
     sessionId: string,
     submission: TestAnswerSubmission
   ): Promise<void> {
@@ -413,18 +497,37 @@ export class TestService {
   /**
    * Submit test session, grade everything, and generate deep diagnostics
    */
+  /**
+   * Submit test session, grade everything, and generate deep diagnostics.
+   *
+   * Phase 26F-E2: the actor's id is REQUIRED and ownership is proven before any
+   * grading write, analytics update or XP award. A foreign or NULL-owner
+   * session returns `null` before the first mutation, so this can no longer be
+   * used to grade another learner's exam or to mint XP into their ledger.
+   */
   static async submitSession(
     sessionId: string,
+    actorUserId: string,
     finalAnswers?: TestAnswerSubmission[]
   ): Promise<DetailedTestResult | null> {
-    const sessionState = await this.getSessionState(sessionId);
+    const sessionState = await this.getSessionState(sessionId, actorUserId);
     if (!sessionState) return null;
 
     const { session, questions } = sessionState;
 
+    /*
+     * The verified actor id, established by the owned-session predicate above
+     * (`test_sessions.id = :id AND test_sessions.user_id = :actor`). Using the
+     * actor rather than `session.userId` removes the nullable column from the
+     * expression, so no `|| "anonymous-user"` fallback can reappear here and
+     * credit an unowned session's XP to the shared sentinel.
+     */
+    const ownedUserId = actorUserId;
+
     if (finalAnswers && finalAnswers.length > 0) {
       for (const ans of finalAnswers) {
-        await this.saveAnswer(sessionId, ans);
+        /* Unscoped write: ownership was decided once, above. */
+        await this.writeAnswer(sessionId, ans);
       }
     }
 
@@ -480,7 +583,7 @@ export class TestService {
 
     // Update user analytics
     try {
-      const userId = session.userId || "anonymous-user";
+      const userId = ownedUserId;
       await this.updateUserAnalytics(userId, session.jlptLevel as JLPTLevel, result);
     } catch (e) {
       // Same rule as ensureSeeded: never serialize the driver error.
@@ -488,7 +591,7 @@ export class TestService {
     }
 
     /* ---- Phase 12.1: XP for the exam, plus per-question XP ---- */
-    const xpUserId = session.userId || "anonymous-user";
+    const xpUserId = ownedUserId;
     await XpService.awardSafe({
       payload: {
         eventType: "quiz.test_completed",

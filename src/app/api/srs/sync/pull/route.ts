@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SyncService } from "@/services/srs/syncService";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
+import { authenticateActor } from "@/app/api/_shared/authorizationResponse";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +17,15 @@ export const dynamic = "force-dynamic";
  * algorithm code is stale.
  */
 export async function GET(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: a pull reads one learner's cards, reviews and device row.
+   * `deviceId` identifies a device WITHIN that learner; it is never identity. */
+  const auth = await authenticateActor("Sync pull failed");
+  if (!auth.ok) return auth.response;
+
   try {
     const sp = request.nextUrl.searchParams;
     const deviceId = sp.get("deviceId");
@@ -24,9 +38,10 @@ export async function GET(request: NextRequest) {
     const cursor = wantsSnapshot ? null : sp.get("cursor");
 
     const result = wantsSnapshot
-      ? await SyncService.snapshot({ deviceId })
+      ? await SyncService.snapshot({ deviceId, userId: auth.actor.id })
       : await SyncService.pull({
           deviceId,
+          userId: auth.actor.id,
           cursor,
           limit: sp.get("limit") ? parseInt(sp.get("limit")!, 10) : undefined,
           includeReviews: sp.get("includeReviews") !== "0",

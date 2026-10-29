@@ -150,10 +150,23 @@ export class JLPTKnowledgeService {
   /**
    * Retrieves user JLPT test history, pass rate, and section progress.
    */
+  /**
+   * One learner's JLPT progress.
+   *
+   * Phase 26F-E2: the owner is REQUIRED and must be the verified actor's id.
+   * The parameter previously defaulted to `"anonymous-user"`, which meant a
+   * caller who omitted it read the shared sentinel's records, and a caller who
+   * supplied one read anybody's. There is no defensible default for an owner,
+   * so omission is now a programmer error instead of a silent fallback.
+   */
   static async getUserProgress(
-    userId = "anonymous-user",
+    userId: string,
     level: JLPTLevel = "N5"
   ): Promise<JLPTUserProgress> {
+    if (typeof userId !== "string" || userId.trim() === "") {
+      throw new Error("JLPTKnowledgeService.getUserProgress requires an owned userId");
+    }
+
     await this.ensureInitialized();
 
     const sessions = await db

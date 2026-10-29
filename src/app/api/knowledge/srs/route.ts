@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { KnowledgeService } from "@/services/knowledge/knowledgeService";
 import { db } from "@/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { srsDecks as decksTable } from "@/db/schema";
 import { getScheduler, resolveParams } from "@/services/srs/scheduler";
 import { XpService } from "@/services/gamification/xpService";
+import {
+  srsContainmentActive,
+  srsContainmentResponse,
+} from "@/app/api/_shared/srsContainment";
+import {
+  authenticateActor,
+  selfIdentityFailureResponse,
+} from "@/app/api/_shared/authorizationResponse";
+import { resolveSelfIdentity } from "@/lib/auth/learningIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -28,8 +37,21 @@ export async function GET() {
  * knowledge layer and the SRS stay one system rather than two.
  */
 export async function POST(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: adding a card to SRS writes learner-owned rows and awards XP,
+   * so the actor is resolved before the body is inspected. There is no
+   * "anonymous-user" fallback left on this path. */
+  const auth = await authenticateActor("Failed to add to SRS");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
+    const identity = resolveSelfIdentity(auth.actor, body?.userId);
+    if (!identity.ok) return selfIdentityFailureResponse(identity.reason);
+    const userId = identity.userId;
     const target = body?.target;
 
     if (target === "kana") {
@@ -38,7 +60,7 @@ export async function POST(request: NextRequest) {
       }
       const result = await KnowledgeService.addKanaToSrs({
         kanaId: body.kanaId,
-        userId: body.userId,
+        userId,
       });
       if (!result) {
         return NextResponse.json({ success: false, error: "Kana not found" }, { status: 404 });
@@ -47,7 +69,7 @@ export async function POST(request: NextRequest) {
         ? await XpService.awardSafe({
             payload: {
               eventType: "knowledge.card_added",
-              userId: body.userId || "anonymous-user",
+              userId,
               sourceType: "kana_chart",
               sourceId: result.cardId,
               knowledgeKind: "kana",
@@ -69,13 +91,13 @@ export async function POST(request: NextRequest) {
       const result = await KnowledgeService.addKanaRowToSrs({
         rowKey: body.rowKey,
         script: body.script,
-        userId: body.userId,
+        userId,
       });
       const xp = result.created > 0
         ? await XpService.awardSafe({
             payload: {
               eventType: "knowledge.card_added",
-              userId: body.userId || "anonymous-user",
+              userId,
               sourceType: "kana_chart_row",
               sourceId: `${body.script}:${body.rowKey}`,
               knowledgeKind: "kana",
@@ -93,7 +115,7 @@ export async function POST(request: NextRequest) {
       }
       const result = await KnowledgeService.addKanjiToSrs({
         character: body.character,
-        userId: body.userId,
+        userId,
       });
       if (!result) {
         return NextResponse.json({ success: false, error: "Kanji not found" }, { status: 404 });
@@ -102,7 +124,7 @@ export async function POST(request: NextRequest) {
         ? await XpService.awardSafe({
             payload: {
               eventType: "knowledge.card_added",
-              userId: body.userId || "anonymous-user",
+              userId,
               sourceType: "kanji_mindtree",
               sourceId: result.cardId,
               knowledgeKind: "kanji",
@@ -127,6 +149,16 @@ export async function POST(request: NextRequest) {
 
 /** PATCH — retune the algorithm binding on a knowledge-generated deck. */
 export async function PATCH(request: NextRequest) {
+  /* Phase 26F-E1 containment — see src/app/api/_shared/srsContainment.ts.
+   * Denies before request parsing, service calls, DB access and XP awards. */
+  if (srsContainmentActive()) return srsContainmentResponse();
+
+  /* Phase 26F-E4: this route re-bound ANY deck by primary key, bypassing the
+   * ownership predicate added to `SrsService.updateDeck`. It is now scoped to
+   * the actor's own deck. */
+  const auth = await authenticateActor("Failed to rebind deck");
+  if (!auth.ok) return auth.response;
+
   try {
     const body = await request.json();
     const { deckId, schedulerKey } = body;
@@ -146,7 +178,7 @@ export async function PATCH(request: NextRequest) {
         schedulerParams: resolveParams(scheduler, null) as unknown as Record<string, unknown>,
         updatedAt: new Date(),
       })
-      .where(eq(decksTable.id, deckId))
+      .where(and(eq(decksTable.id, deckId), eq(decksTable.ownerId, auth.actor.id)))
       .returning();
 
     if (!row) {

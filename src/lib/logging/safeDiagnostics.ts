@@ -35,7 +35,14 @@ export type DiagnosticOperation =
   | "auth.requireActor"
   | "XpService.findEventOwner"
   /* Phase 26C — XP ledger read authorization. */
-  | "XpService.getLedger";
+  | "XpService.getLedger"
+  /* Phase 26F-E2 — JLPT/quiz learner-data ownership. */
+  | "TestService.startSession"
+  | "TestService.getSessionState"
+  | "TestService.saveAnswer"
+  | "TestService.submitSession"
+  | "JLPTKnowledgeService.getUserProgress"
+  | "QuizAnalytics.read";
 
 /**
  * Closed set of failure categories. Deliberately coarse: enough to triage

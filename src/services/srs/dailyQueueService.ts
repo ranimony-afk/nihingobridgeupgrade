@@ -14,6 +14,7 @@ import {
   DayWindow,
   SessionQueueOrder,
 } from "@/types/srs";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 
 export const DEFAULT_DAILY_SETTINGS: DailySettings = {
   timezone: "UTC",
@@ -140,11 +141,20 @@ export class DailyQueueService {
   /* ============================================================
    * SETTINGS
    * ============================================================ */
-  static async getSettings(userId = "anonymous-user"): Promise<DailySettings> {
+  /**
+   * Phase 26F-E3: the owner is REQUIRED and validated before the read.
+   *
+   * This is a learner-owned read (timezone, cutoff hour and daily targets drive
+   * both the queue and the XP day window), yet it defaulted to the shared
+   * legacy sentinel when called without an id — so `XpService.dayWindow()`
+   * could resolve "today" from the wrong learner's timezone.
+   */
+  static async getSettings(userId: string): Promise<DailySettings> {
+    const owner = requireOwner(userId, "DailyQueueService.getSettings");
     const [row] = await db
       .select()
       .from(settingsTable)
-      .where(eq(settingsTable.userId, userId))
+      .where(eq(settingsTable.userId, owner))
       .limit(1);
 
     if (!row) return { ...DEFAULT_DAILY_SETTINGS };
@@ -165,7 +175,9 @@ export class DailyQueueService {
     userId: string,
     patch: Partial<DailySettings>
   ): Promise<DailySettings> {
-    const current = await this.getSettings(userId);
+    /* `getSettings` rejects a missing/blank/sentinel owner before the write. */
+    const owner = requireOwner(userId, "DailyQueueService.updateSettings");
+    const current = await this.getSettings(owner);
 
     const next: DailySettings = {
       timezone: patch.timezone ?? current.timezone,
@@ -186,7 +198,7 @@ export class DailyQueueService {
 
     await db
       .insert(settingsTable)
-      .values({ userId, ...next, updatedAt: new Date() })
+      .values({ userId: owner, ...next, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: settingsTable.userId,
         set: { ...next, updatedAt: new Date() },
@@ -199,7 +211,8 @@ export class DailyQueueService {
    * DUE BUCKETS
    * ============================================================ */
   private static async loadDeckScope(userId: string, deckId?: string | null) {
-    const rows = await db.select().from(decksTable).where(eq(decksTable.ownerId, userId));
+    const owner = requireOwner(userId, "DailyQueueService.loadDeckScope");
+    const rows = await db.select().from(decksTable).where(eq(decksTable.ownerId, owner));
     return rows.filter((d) => !d.isArchived && (!deckId || d.id === deckId));
   }
 
@@ -230,10 +243,19 @@ export class DailyQueueService {
 
   private static async buildBuckets(
     deckIds: string[],
+    actorUserId: string,
     day: DayWindow,
     now: Date
   ): Promise<DailyBuckets> {
-    const inDecks = inArray(cardsTable.deckId, deckIds);
+    /*
+     * Phase 26F-E4: the card predicate is applied in addition to the deck
+     * predicate. A pre-E4 row can sit in one learner's deck while being owned by
+     * another, so deck scoping alone would count and serve a foreign card.
+     */
+    const inDecks = and(
+      inArray(cardsTable.deckId, deckIds),
+      eq(cardsTable.userId, requireOwner(actorUserId, "DailyQueueService.buildBuckets"))
+    );
 
     const [overdueRows, todayRows, laterRows, newRows] = await Promise.all([
       // Overdue: due strictly before today's cutoff, excluding learning-phase cards
@@ -352,14 +374,27 @@ export class DailyQueueService {
     day: DayWindow,
     settings: DailySettings
   ): Promise<DailyStreak> {
+    /*
+     * Phase 26F — a review belongs to the study day that began at the learner's
+     * cutoff hour, so the bucket is shifted by the cutoff as well as by the
+     * timezone. Shifting by the offset alone labelled every review by its
+     * calendar date, which disagrees with the cutoff-aware `todayKey` below for
+     * every instant between local midnight and the cutoff: this response then
+     * reported a broken streak for a review that its own `progress` block
+     * counted, while `XpService` awarded the streak. `cutoffHour = 0` reduces
+     * to the previous offset-only expression.
+     */
+    const studyDayShift =
+      Math.round(day.offsetMinutes) - Math.round(day.cutoffHour) * 60;
+
     const rows = await db
       .select({
-        localDate: sql<string>`to_char((${reviewsTable.reviewedAt} + ${tzShift(day.offsetMinutes)})::date, 'YYYY-MM-DD')`,
+        localDate: sql<string>`to_char((${reviewsTable.reviewedAt} + ${tzShift(studyDayShift)})::date, 'YYYY-MM-DD')`,
         reviews: sql<number>`cast(count(*) as int)`,
       })
       .from(reviewsTable)
       .where(eq(reviewsTable.userId, userId))
-      .groupBy(sql`(${reviewsTable.reviewedAt} + ${tzShift(day.offsetMinutes)})::date`);
+      .groupBy(sql`(${reviewsTable.reviewedAt} + ${tzShift(studyDayShift)})::date`);
 
     const activeMap = new Map(rows.map((r) => [r.localDate, r.reviews]));
     const todayKey = toLocalKey(new Date(day.start), day.offsetMinutes);
@@ -414,6 +449,7 @@ export class DailyQueueService {
    * ============================================================ */
   private static async buildForecast(
     deckIds: string[],
+    actorUserId: string,
     day: DayWindow,
     settings: DailySettings,
     now: Date
@@ -433,6 +469,7 @@ export class DailyQueueService {
       .where(
         and(
           inArray(cardsTable.deckId, deckIds),
+          eq(cardsTable.userId, requireOwner(actorUserId, "DailyQueueService.buildForecast")),
           eq(cardsTable.isSuspended, false),
           gte(cardsTable.dueAt, horizonStart),
           lt(cardsTable.dueAt, horizonEnd)
@@ -664,11 +701,17 @@ export class DailyQueueService {
    * MAIN ENTRY — assemble the full daily queue view
    * ============================================================ */
   static async getDailyQueue(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED verified owner. */
+    userId: string;
     deckId?: string | null;
     historyDays?: number;
   }): Promise<DailyQueueResponse> {
-    const userId = params.userId || "anonymous-user";
+    /*
+     * Phase 26F-E4: the daily view aggregates one learner's schedule, streak,
+     * progress and forecast. The `|| "anonymous-user"` fallback meant an
+     * identity-less call produced the legacy shared account's day.
+     */
+    const userId = requireOwner(params.userId, "DailyQueueService.getDailyQueue");
     const settings = await this.getSettings(userId);
     const now = new Date();
 
@@ -742,10 +785,10 @@ export class DailyQueueService {
     }
 
     const [buckets, progress, streak, forecast] = await Promise.all([
-      this.buildBuckets(deckIds, day, now),
+      this.buildBuckets(deckIds, userId, day, now),
       this.buildProgress(userId, day, settings),
       this.buildStreak(userId, day, settings),
-      this.buildForecast(deckIds, day, settings, now),
+      this.buildForecast(deckIds, userId, day, settings, now),
     ]);
 
     /* ---- Portfolio maturity totals ---- */
@@ -757,7 +800,13 @@ export class DailyQueueService {
         mature: sql<number>`cast(count(*) filter (where ${cardsTable.isLearning} = false and ${cardsTable.intervalDays} >= 21) as int)`,
       })
       .from(cardsTable)
-      .where(and(inArray(cardsTable.deckId, deckIds), eq(cardsTable.isSuspended, false)));
+      .where(
+        and(
+          inArray(cardsTable.deckId, deckIds),
+          eq(cardsTable.userId, requireOwner(userId, "DailyQueueService.getDailyQueue")),
+          eq(cardsTable.isSuspended, false)
+        )
+      );
 
     const totals: DailyTotals = {
       totalDueToday: buckets.overdue.count + buckets.dueToday.count,
