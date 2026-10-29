@@ -20,7 +20,7 @@
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.45.0",
-    "next": "16.3.6",
+    "next": "16.4.3",
     "pg": "8.20.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -35,12 +35,12 @@
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
+    "eslint-config-next": "16.4.3",
     "pglite-server": "^0.1.5",
-    "postcss": "8.5.8",
+    "postcss": "8.5.32",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
-    "vitest": "^5.0.0"
+    "vitest": "5.0.5"
   },
   "//overrides": "Gate Zero: eslint-config-next floats 'eslint-plugin-react-hooks: ^7.0.0'. 7.1.0 promoted React-Compiler rules (set-state-in-effect, immutability, purity, preserve-manual-memoization) to error, so the lint verdict depended on install date. Pinned to 7.0.1 — the newest release with a deterministic 0-error/3-warning result — to freeze the toolchain, NOT to suppress findings. See reports/gates/PHASE-13-GATE-ZERO-REMEDIATION.md §6; remove once the client components are actually corrected in a later bounded prompt.",
   "overrides": {

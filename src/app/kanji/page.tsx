@@ -167,6 +167,12 @@ export default function KanjiPage() {
             >
               Kana Chart
             </Link>
+            <Link
+              href="/mindtree"
+              className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-800 shadow-sm hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+            >
+              Source-backed visual pilot
+            </Link>
           </div>
         </div>
 
