@@ -359,7 +359,7 @@ export default function KanjiPage() {
           <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
               <Network className="h-4 w-4 text-indigo-600" />
-              <h3 className="text-sm font-bold text-slate-900">Elements</h3>
+              <h2 className="text-sm font-bold text-slate-900">Elements</h2>
               <span className="text-[10px] text-slate-400">
                 the badge is the number of catalog kanji you will see when you click it with the
                 current level/search filters
