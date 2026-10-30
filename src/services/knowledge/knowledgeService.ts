@@ -16,6 +16,14 @@ import {
   KANJI,
   KANJI_SOURCE_REF,
 } from "@/data/kanji";
+import {
+  filterKanjiCatalog,
+  normalizeKanjiFilterState,
+  type ElementFilterCompositionEdge,
+  type ElementFilterKanjiRecord,
+  type KanjiCatalogFilterResult,
+  type SelectedElementAnalysis,
+} from "@/lib/kanji/elementFilterContract";
 
 export interface KanaEntry {
   id: string;
@@ -105,8 +113,17 @@ export interface ElementSummary {
   category: string;
   typicalRole: string;
   mnemonic: string | null;
-  /** Kanji that use this element. */
+  /**
+   * M9A counting contract: distinct supported catalog characters that use
+   * this element (each counted once, integrity-filtered), NOT the raw number
+   * of composition relationships. `visibleKanjiCount` is the palette badge.
+   */
   usedInCount: number;
+  /** All composition relationships referencing this element (graph stat). */
+  relationshipCount: number;
+  /** Characters that also match the active level/keyword facets (M9A badge:
+   * always equal to the result set clicking this element produces). */
+  visibleKanjiCount: number;
 }
 
 /** Row labels live in the dataset definition, not the DB, so derive them. */
@@ -273,73 +290,104 @@ export class KnowledgeService {
   /* ============================================================
    * KANJI LIST
    * ============================================================ */
+  /**
+   * M9A: load the lightweight catalog projection + relationship edges that
+   * the pure element-filter contract operates on. One canonical filter
+   * implementation serves the list query, the palette counts, and the
+   * zero-result explanations (see src/lib/kanji/elementFilterContract.ts).
+   */
+  private static async loadKanjiFilterSnapshot(): Promise<{
+    kanji: ElementFilterKanjiRecord[];
+    composition: ElementFilterCompositionEdge[];
+    elements: { id: string; character: string }[];
+  }> {
+    const [kanjiRows, compositionRows, elementRows] = await Promise.all([
+      db
+        .select({
+          id: kanjiTable.id,
+          character: kanjiTable.character,
+          meaning: kanjiTable.meaning,
+          readingsKun: kanjiTable.readingsKun,
+          readingsOn: kanjiTable.readingsOn,
+          strokeCount: kanjiTable.strokeCount,
+          jlptLevel: kanjiTable.jlptLevel,
+          gradeLevel: kanjiTable.gradeLevel,
+        })
+        .from(kanjiTable),
+      db
+        .select({ kanjiId: compositionTable.kanjiId, elementId: compositionTable.elementId })
+        .from(compositionTable),
+      db.select({ id: radicalsTable.id, character: radicalsTable.character }).from(radicalsTable),
+    ]);
+    return { kanji: kanjiRows, composition: compositionRows, elements: elementRows };
+  }
+
   static async listKanji(params: {
     level?: string;
     elementId?: string;
     keyword?: string;
     limit?: number;
     offset?: number;
-  }): Promise<{ kanji: KanjiSummary[]; total: number }> {
+  }): Promise<{
+    kanji: KanjiSummary[];
+    total: number;
+    /** Characters before any filter facet is applied (M9A contract). */
+    catalogTotal?: number;
+    /** Selected-element analysis (M9A contract); null when no element facet. */
+    elementFilter?: SelectedElementAnalysis | null;
+    /** Zero-result classification when no element facet is active. */
+    emptyKind?: KanjiCatalogFilterResult<ElementFilterKanjiRecord>["emptyKind"];
+  }> {
     await this.ensureSeeded();
 
-    let ids: string[] | null = null;
+    const state = normalizeKanjiFilterState({
+      level: params.level,
+      elementId: params.elementId,
+      keyword: params.keyword,
+    });
+    const snapshot = await this.loadKanjiFilterSnapshot();
+    const result = filterKanjiCatalog({ ...snapshot, state });
 
-    if (params.elementId) {
-      const rows = await db
-        .select({ kanjiId: compositionTable.kanjiId })
-        .from(compositionTable)
-        .where(eq(compositionTable.elementId, params.elementId));
-      ids = rows.map((r) => r.kanjiId);
-      if (ids.length === 0) return { kanji: [], total: 0 };
-    }
+    const page = result.matches.slice(params.offset ?? 0, (params.offset ?? 0) + (params.limit ?? 200));
 
-    const conditions = [];
-    if (params.level) conditions.push(eq(kanjiTable.jlptLevel, params.level));
-    if (ids) conditions.push(inArray(kanjiTable.id, ids));
-    if (params.keyword) {
-      conditions.push(
-        or(
-          like(kanjiTable.character, `%${params.keyword}%`),
-          like(kanjiTable.meaning, `%${params.keyword}%`)
-        )!
-      );
-    }
-
-    const where = conditions.length ? and(...conditions) : undefined;
-
-    const countBase = db.select({ count: sql<number>`cast(count(*) as int)` }).from(kanjiTable);
-    const [countRow] = where ? await countBase.where(where) : await countBase;
-
-    let rowsQuery = db.select().from(kanjiTable);
-    if (where) rowsQuery = rowsQuery.where(where) as typeof rowsQuery;
-
-    const rows = await rowsQuery
-      .orderBy(asc(kanjiTable.jlptLevel), asc(kanjiTable.strokeCount))
-      .limit(params.limit ?? 200)
-      .offset(params.offset ?? 0);
+    // Primary radical ids / vocab / mnemonic are not part of the lightweight
+    // filter projection; re-read them for the visible page only.
+    const pageIds = page.map((r) => r.id);
+    const pageRows = pageIds.length
+      ? await db
+          .select({
+            id: kanjiTable.id,
+            primaryRadicalId: kanjiTable.primaryRadicalId,
+            mnemonic: kanjiTable.mnemonic,
+            vocabulary: kanjiTable.vocabulary,
+          })
+          .from(kanjiTable)
+          .where(inArray(kanjiTable.id, pageIds))
+      : [];
+    const pageMeta = new Map(pageRows.map((r) => [r.id, r]));
 
     /* Attach primary radical + component counts in bulk. */
     const elementIds = Array.from(
-      new Set(rows.map((r) => r.primaryRadicalId).filter((v): v is string => Boolean(v)))
+      new Set(pageRows.map((r) => r.primaryRadicalId).filter((v): v is string => Boolean(v)))
     );
     const elementRows = elementIds.length
       ? await db.select().from(radicalsTable).where(inArray(radicalsTable.id, elementIds))
       : [];
     const elementMap = new Map(elementRows.map((e) => [e.id, e]));
 
-    const kanjiIds = rows.map((r) => r.id);
-    const compCounts = kanjiIds.length
+    const compCounts = pageIds.length
       ? await db
           .select({ kanjiId: compositionTable.kanjiId, count: sql<number>`cast(count(*) as int)` })
           .from(compositionTable)
-          .where(inArray(compositionTable.kanjiId, kanjiIds))
+          .where(inArray(compositionTable.kanjiId, pageIds))
           .groupBy(compositionTable.kanjiId)
       : [];
     const compMap = new Map(compCounts.map((c) => [c.kanjiId, c.count]));
 
     return {
-      kanji: rows.map((r) => {
-        const el = r.primaryRadicalId ? elementMap.get(r.primaryRadicalId) : null;
+      kanji: page.map((r) => {
+        const meta = pageMeta.get(r.id);
+        const el = meta?.primaryRadicalId ? elementMap.get(meta.primaryRadicalId) : null;
         return {
           id: r.id,
           character: r.character,
@@ -348,22 +396,30 @@ export class KnowledgeService {
           readingsOn: r.readingsOn,
           strokeCount: r.strokeCount,
           jlptLevel: r.jlptLevel,
-          gradeLevel: r.gradeLevel,
-          primaryRadicalId: r.primaryRadicalId,
+          gradeLevel: r.gradeLevel ?? null,
+          primaryRadicalId: meta?.primaryRadicalId ?? null,
           primaryRadical: el ? { character: el.character, meaning: el.meaning } : null,
           componentCount: compMap.get(r.id) ?? 0,
-          vocabulary: r.vocabulary,
-          mnemonic: r.mnemonic,
+          vocabulary: meta?.vocabulary ?? [],
+          mnemonic: meta?.mnemonic ?? null,
         };
       }),
-      total: countRow?.count ?? 0,
+      total: result.filteredTotal,
+      catalogTotal: result.catalogTotal,
+      elementFilter: result.selectedElement,
+      emptyKind: result.emptyKind,
     };
   }
 
   /* ============================================================
    * ELEMENTS (radicals + primitives)
    * ============================================================ */
-  static async listElements(category?: string): Promise<ElementSummary[]> {
+  static async listElements(
+    category?: string,
+    /** M9A: when supplied, `visibleKanjiCount` previews what clicking the
+     * element will show under these level/keyword facets. */
+    facets?: { level?: string; keyword?: string },
+  ): Promise<ElementSummary[]> {
     await this.ensureSeeded();
 
     const rows = category
@@ -377,29 +433,39 @@ export class KnowledgeService {
           .from(radicalsTable)
           .orderBy(asc(radicalsTable.strokeCount), asc(radicalsTable.character));
 
-    const usage = await db
-      .select({
-        elementId: compositionTable.elementId,
-        count: sql<number>`cast(count(*) as int)`,
-      })
-      .from(compositionTable)
-      .groupBy(compositionTable.elementId);
-    const usageMap = new Map(usage.map((u) => [u.elementId, u.count]));
+    const state = normalizeKanjiFilterState({
+      level: facets?.level,
+      keyword: facets?.keyword,
+    });
+    const snapshot = await this.loadKanjiFilterSnapshot();
+    const contract = filterKanjiCatalog({ ...snapshot, state: { ...state, elementId: null } });
+    const usageByElement = new Map(contract.elementUsage.map((usage) => [usage.elementId, usage]));
 
-    return rows.map((r) => ({
-      id: r.id,
-      character: r.character,
-      altForms: r.altForms,
-      meaning: r.meaning,
-      readingKun: r.readingKun,
-      readingOn: r.readingOn,
-      strokeCount: r.strokeCount,
-      kangxiNumber: r.kangxiNumber,
-      category: r.category,
-      typicalRole: r.typicalRole,
-      mnemonic: r.mnemonic,
-      usedInCount: usageMap.get(r.id) ?? 0,
-    }));
+    return rows.map((r) => {
+      const usage = usageByElement.get(r.id);
+      return {
+        id: r.id,
+        character: r.character,
+        altForms: r.altForms,
+        meaning: r.meaning,
+        readingKun: r.readingKun,
+        readingOn: r.readingOn,
+        strokeCount: r.strokeCount,
+        kangxiNumber: r.kangxiNumber,
+        category: r.category,
+        typicalRole: r.typicalRole,
+        mnemonic: r.mnemonic,
+        /**
+         * M9A contract: distinct supported catalog characters that use this
+         * element (integrity-filtered) — no longer a raw relationship count.
+         */
+        usedInCount: usage?.catalogKanjiCount ?? 0,
+        /** All composition relationships referencing the element (graph stat). */
+        relationshipCount: usage?.relationshipCount ?? 0,
+        /** Characters that also match the active level/keyword facets (badge). */
+        visibleKanjiCount: usage?.visibleKanjiCount ?? 0,
+      };
+    });
   }
 
   /* ============================================================

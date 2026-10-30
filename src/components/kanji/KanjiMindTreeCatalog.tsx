@@ -78,7 +78,7 @@ export function KanjiMindTreeCatalog({ items, showStudio = false }: { items: Min
           </p>
 
           {filteredItems.length > 0 ? (
-            <ul className="mt-3 grid list-none gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3">
+            <ul className="mt-3 grid list-none gap-3 p-0 grid-cols-[minmax(0,1fr)] sm:grid-cols-2 lg:grid-cols-3">
               {filteredItems.map((item) => (
                 <li key={item.character}>
                   <Link

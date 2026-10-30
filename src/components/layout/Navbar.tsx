@@ -140,7 +140,7 @@ export function Navbar() {
         </div>
       </div>
       <div className="mx-auto max-w-7xl px-4 pb-2 sm:px-6 lg:px-8 xl:hidden">
-        <div className="-mx-4 flex items-center gap-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+        <div className="relative -mx-4 flex items-center gap-3 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <nav aria-label="Primary navigation" className="flex shrink-0 items-center gap-1">
             {navItems.filter((item) => mobileNavHrefs.has(item.href)).map((item) => {
               const isActive = isActiveNavItem(item.href);
