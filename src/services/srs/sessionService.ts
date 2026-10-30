@@ -26,6 +26,7 @@ import {
   SchedulerParams,
 } from "@/types/srs";
 import { SrsService } from "./srsService";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 import { getScheduler, resolveParams } from "./scheduler";
 import { describeInterval } from "./strategies/shared";
 import { DailyQueueService, resolveDayWindow } from "./dailyQueueService";
@@ -63,6 +64,8 @@ export class SessionService {
    * so the metric can never drift from the review log.
    * ============================================================ */
   static async getDailyNewUsed(userId: string): Promise<number> {
+    /* Phase 26F-E4: reads one learner's new-card budget usage. */
+    requireOwner(userId, "SessionService.getDailyNewUsed");
     const [row] = await db
       .select({
         count: sql<number>`cast(count(*) as int)`,
@@ -82,7 +85,14 @@ export class SessionService {
    * PLANNER — builds the queue and persists the session.
    * ============================================================ */
   static async planSession(input: {
-    userId?: string;
+    /**
+     * Phase 26F-E4: REQUIRED verified learner.
+     *
+     * Previously optional and defaulted to the shared sentinel, so a session
+     * with no identity was planned from — and written into — the legacy shared
+     * account.
+     */
+    userId: string;
     deckId?: string | null;
     newLimit?: number;
     reviewLimit?: number;
@@ -96,9 +106,9 @@ export class SessionService {
      */
     dueHorizon?: "now" | "day";
   }): Promise<{ session: SrsReviewSession; skipped: string }> {
+    const userId = requireOwner(input.userId, "SessionService.planSession");
     await SrsService.ensureSeeded();
 
-    const userId = input.userId || "anonymous-user";
     const deckId = input.deckId || null;
 
     /* ---- Learner day settings govern the optional day horizon ---- */
@@ -130,6 +140,8 @@ export class SessionService {
       .where(
         and(
           inArray(cardsTable.deckId, scopedDeckIds),
+          /* Phase 26F-E4: card predicate independent of the deck predicate. */
+          eq(cardsTable.userId, userId),
           eq(cardsTable.isSuspended, false),
           lte(cardsTable.dueAt, horizonEnd)
         )
@@ -216,7 +228,7 @@ export class SessionService {
       queue: entries,
     });
 
-    const session = await this.getSession(sessionId);
+    const session = await this.getSession(sessionId, userId);
     if (!session) throw new Error("Failed to create session");
 
     let skipped = "";
@@ -305,17 +317,37 @@ export class SessionService {
   /* ============================================================
    * SESSION READ MODEL
    * ============================================================ */
-  static async getSessionRow(sessionId: string): Promise<SessionRow | null> {
+  /**
+   * Phase 26F-E4: the ONE place a session row is loaded.
+   *
+   * Every read and write in this service goes through here or applies the same
+   * predicate, so a session id on its own is never sufficient. A foreign id
+   * resolves to `null` — indistinguishable from a session that does not exist,
+   * so the id cannot be used to probe for another learner's sessions. Legacy
+   * rows owned by the shared sentinel are therefore unreachable (fail closed)
+   * and are never reassigned.
+   */
+  static async getSessionRow(
+    sessionId: string,
+    actorUserId: string
+  ): Promise<SessionRow | null> {
+    const owner = requireOwner(actorUserId, "SessionService.getSessionRow");
     const [row] = await db
       .select()
       .from(sessionsTable)
-      .where(eq(sessionsTable.id, sessionId))
+      .where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.userId, owner)))
       .limit(1);
     return row ?? null;
   }
 
-  /** All reviews belonging to this session, oldest first. */
-  static async getSessionReviews(sessionId: string): Promise<ReviewRow[]> {
+  /**
+   * All reviews belonging to this session, oldest first.
+   *
+   * Private by design (Phase 26F-E4): the session id is not an ownership token,
+   * so this may only run on a row that `getSessionRow` has already proven the
+   * actor owns.
+   */
+  private static async getSessionReviews(sessionId: string): Promise<ReviewRow[]> {
     return db
       .select()
       .from(reviewsTable)
@@ -367,8 +399,11 @@ export class SessionService {
     };
   }
 
-  static async getSession(sessionId: string): Promise<SrsReviewSession | null> {
-    const row = await this.getSessionRow(sessionId);
+  static async getSession(
+    sessionId: string,
+    actorUserId: string
+  ): Promise<SrsReviewSession | null> {
+    const row = await this.getSessionRow(sessionId, actorUserId);
     if (!row) return null;
 
     const reviews = await this.getSessionReviews(sessionId);
@@ -392,11 +427,23 @@ export class SessionService {
   /* ============================================================
    * CARD HYDRATION + RATING PREVIEWS
    * ============================================================ */
-  private static async hydrateCards(cardIds: string[]): Promise<Map<string, SrsCard>> {
+  private static async hydrateCards(
+    cardIds: string[],
+    actorUserId: string
+  ): Promise<Map<string, SrsCard>> {
     if (cardIds.length === 0) return new Map();
 
-    const rows = await db.select().from(cardsTable).where(inArray(cardsTable.id, cardIds));
-    const deckRows = await db.select().from(decksTable);
+    /*
+     * Phase 26F-E4: cards are read for the actor only, and deck metadata is
+     * scoped to the actor's own decks instead of selecting every deck in the
+     * database.
+     */
+    const owner = requireOwner(actorUserId, "SessionService.hydrateCards");
+    const rows = await db
+      .select()
+      .from(cardsTable)
+      .where(and(inArray(cardsTable.id, cardIds), eq(cardsTable.userId, owner)));
+    const deckRows = await db.select().from(decksTable).where(eq(decksTable.ownerId, owner));
     const deckMap = new Map(deckRows.map((d) => [d.id, d]));
 
     // Reuse SrsService mapping by delegating through a tiny local mapper to
@@ -468,9 +515,10 @@ export class SessionService {
 
   private static async buildSessionCard(
     cardId: string,
-    kind: "new" | "review"
+    kind: "new" | "review",
+    actorUserId: string
   ): Promise<SessionCard | null> {
-    const cards = await this.hydrateCards([cardId]);
+    const cards = await this.hydrateCards([cardId], actorUserId);
     const card = cards.get(cardId);
     if (!card) return null;
     return { card, kind, ratingPreviews: this.buildRatingPreviews(card) };
@@ -479,8 +527,11 @@ export class SessionService {
   /* ============================================================
    * STATE — current card + progress + recent answers
    * ============================================================ */
-  static async getSessionState(sessionId: string): Promise<SessionStateResponse | null> {
-    const row = await this.getSessionRow(sessionId);
+  static async getSessionState(
+    sessionId: string,
+    actorUserId: string
+  ): Promise<SessionStateResponse | null> {
+    const row = await this.getSessionRow(sessionId, actorUserId);
     if (!row) return null;
 
     const queue = row.queue as SessionQueueEntry[];
@@ -490,11 +541,13 @@ export class SessionService {
     const isActive = row.status === "active";
     const nextEntry = isActive ? queue[progress.cursor] : undefined;
 
-    const currentCard = nextEntry ? await this.buildSessionCard(nextEntry.cardId, nextEntry.kind) : null;
+    const currentCard = nextEntry
+      ? await this.buildSessionCard(nextEntry.cardId, nextEntry.kind, actorUserId)
+      : null;
 
     // Hydrate the last few answered cards for the in-session feedback strip.
     const recentSlice = reviews.slice(-5).reverse();
-    const recentCards = await this.hydrateCards(recentSlice.map((r) => r.cardId));
+    const recentCards = await this.hydrateCards(recentSlice.map((r) => r.cardId), actorUserId);
 
     return {
       session: {
@@ -537,8 +590,18 @@ export class SessionService {
     cardId: string;
     rating: SrsRating;
     timeSpentMs?: number;
+    /**
+     * Phase 26F-E4: REQUIRED verified actor.
+     *
+     * Previously absent: answering resolved the session by primary key alone
+     * and then graded the card and awarded XP as *that row's* owner, so any
+     * caller holding a session id could write into another learner's schedule,
+     * ledger and streak.
+     */
+    actorUserId: string;
   }): Promise<SessionAnswerResult | null> {
-    const row = await this.getSessionRow(input.sessionId);
+    const owner = requireOwner(input.actorUserId, "SessionService.answer");
+    const row = await this.getSessionRow(input.sessionId, owner);
     if (!row) return null;
     if (row.status !== "active") {
       throw new Error(`Session is ${row.status}; answers are no longer accepted`);
@@ -559,7 +622,8 @@ export class SessionService {
       cardId: input.cardId,
       rating: input.rating,
       timeSpentMs: input.timeSpentMs,
-      userId: row.userId,
+      /* The verified actor, not a value read back out of the row. */
+      actorUserId: owner,
       sessionId: input.sessionId,
     });
 
@@ -568,7 +632,7 @@ export class SessionService {
     await db
       .update(sessionsTable)
       .set({ lastActivityAt: new Date() })
-      .where(eq(sessionsTable.id, input.sessionId));
+      .where(and(eq(sessionsTable.id, input.sessionId), eq(sessionsTable.userId, owner)));
 
     /* Auto-complete when the queue is drained. */
     const isComplete = cursor + 1 >= queue.length;
@@ -576,10 +640,10 @@ export class SessionService {
       await db
         .update(sessionsTable)
         .set({ status: "completed", completedAt: new Date(), lastActivityAt: new Date() })
-        .where(eq(sessionsTable.id, input.sessionId));
+        .where(and(eq(sessionsTable.id, input.sessionId), eq(sessionsTable.userId, owner)));
     }
 
-    const freshRow = await this.getSessionRow(input.sessionId);
+    const freshRow = await this.getSessionRow(input.sessionId, owner);
     const freshReviews = await this.getSessionReviews(input.sessionId);
     const freshQueue = (freshRow?.queue as SessionQueueEntry[]) ?? queue;
     const progress = this.buildProgress(
@@ -594,7 +658,7 @@ export class SessionService {
       await XpService.awardSafe({
         payload: {
           eventType: "review.session_completed",
-          userId: row.userId,
+          userId: owner,
           sourceType: "srs_session",
           sourceId: input.sessionId,
           cardsAnswered: progress.answered,
@@ -606,9 +670,11 @@ export class SessionService {
     }
 
     const nextEntry = isComplete ? undefined : freshQueue[cursor + 1];
-    const nextCard = nextEntry ? await this.buildSessionCard(nextEntry.cardId, nextEntry.kind) : null;
+    const nextCard = nextEntry
+      ? await this.buildSessionCard(nextEntry.cardId, nextEntry.kind, owner)
+      : null;
 
-    const hydrated = await this.hydrateCards([input.cardId]);
+    const hydrated = await this.hydrateCards([input.cardId], owner);
 
     return {
       reviewId: graded.reviewId,
@@ -632,8 +698,17 @@ export class SessionService {
   /* ============================================================
    * UNDO — restores the card from the review's state_before snapshot.
    * ============================================================ */
-  static async undo(input: { sessionId: string }): Promise<SessionUndoResult | null> {
-    const row = await this.getSessionRow(input.sessionId);
+  static async undo(input: {
+    sessionId: string;
+    /**
+     * Phase 26F-E4: REQUIRED verified actor. Undo rewrites card scheduling
+     * state, revokes XP and deletes a review row, all of which were previously
+     * reachable from a session id alone.
+     */
+    actorUserId: string;
+  }): Promise<SessionUndoResult | null> {
+    const owner = requireOwner(input.actorUserId, "SessionService.undo");
+    const row = await this.getSessionRow(input.sessionId, owner);
     if (!row) return null;
 
     const reviews = await this.getSessionReviews(input.sessionId);
@@ -666,11 +741,20 @@ export class SessionService {
         correctReviews: Math.max(0, stateBefore.correctReviews),
         updatedAt: new Date(),
       })
-      .where(eq(cardsTable.id, last.cardId));
+      .where(and(eq(cardsTable.id, last.cardId), eq(cardsTable.userId, owner)));
 
     /* Phase 12.1: revoke the XP this review earned before deleting it, so the
-     * ledger stays consistent and undo cannot be used to farm XP. */
-    await XpService.revokeByDedupeKey(`review:${last.id}`, "review-undone");
+     * ledger stays consistent and undo cannot be used to farm XP.
+     *
+     * Phase 26F-E3: the revoke is scoped to the SESSION'S owner, read from the
+     * stored row — not to "whoever holds this key". Previously this call passed
+     * no user id at all and relied on the review id being unique; omitting an
+     * argument is no longer a way to reach every learner's ledger. */
+    await XpService.revokeByDedupeKey({
+      dedupeKey: `review:${last.id}`,
+      ownerUserId: owner,
+      reason: "review-undone",
+    });
 
     /* Remove the review so cursor + counts revert automatically. */
     await db.delete(reviewsTable).where(eq(reviewsTable.id, last.id));
@@ -680,11 +764,11 @@ export class SessionService {
       await db
         .update(sessionsTable)
         .set({ status: "active", completedAt: null, lastActivityAt: new Date() })
-        .where(eq(sessionsTable.id, input.sessionId));
-      await this.getSessionRow(input.sessionId);
+        .where(and(eq(sessionsTable.id, input.sessionId), eq(sessionsTable.userId, owner)));
+      await this.getSessionRow(input.sessionId, owner);
     }
 
-    const freshRow = await this.getSessionRow(input.sessionId);
+    const freshRow = await this.getSessionRow(input.sessionId, owner);
     const freshReviews = await this.getSessionReviews(input.sessionId);
     const freshQueue = (freshRow?.queue as SessionQueueEntry[]) ?? [];
     const progress = this.buildProgress(
@@ -695,9 +779,11 @@ export class SessionService {
     );
 
     const entry = freshQueue[progress.cursor];
-    const currentCard = entry ? await this.buildSessionCard(entry.cardId, entry.kind) : null;
+    const currentCard = entry
+      ? await this.buildSessionCard(entry.cardId, entry.kind, owner)
+      : null;
 
-    const undoneCards = await this.hydrateCards([last.cardId]);
+    const undoneCards = await this.hydrateCards([last.cardId], owner);
 
     return {
       undone: {
@@ -715,16 +801,32 @@ export class SessionService {
   /* ============================================================
    * LIFECYCLE
    * ============================================================ */
-  static async completeSession(sessionId: string): Promise<SrsReviewSession | null> {
-    await db
+  /*
+   * Phase 26F-E4: both lifecycle writers carry the ownership predicate in the
+   * UPDATE itself, not merely in a preceding read. A foreign session id matches
+   * zero rows and the actor gets `null`.
+   */
+  static async completeSession(
+    sessionId: string,
+    actorUserId: string
+  ): Promise<SrsReviewSession | null> {
+    const owner = requireOwner(actorUserId, "SessionService.completeSession");
+    const updated = await db
       .update(sessionsTable)
       .set({ status: "completed", completedAt: new Date(), lastActivityAt: new Date() })
-      .where(eq(sessionsTable.id, sessionId));
-    return this.getSession(sessionId);
+      .where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.userId, owner)))
+      .returning({ id: sessionsTable.id });
+    if (updated.length === 0) return null;
+    return this.getSession(sessionId, owner);
   }
 
-  static async abandonSession(sessionId: string, reason?: string): Promise<SrsReviewSession | null> {
-    await db
+  static async abandonSession(
+    sessionId: string,
+    actorUserId: string,
+    reason?: string
+  ): Promise<SrsReviewSession | null> {
+    const owner = requireOwner(actorUserId, "SessionService.abandonSession");
+    const updated = await db
       .update(sessionsTable)
       .set({
         status: "abandoned",
@@ -732,21 +834,25 @@ export class SessionService {
         lastActivityAt: new Date(),
         cancelledReason: reason || "user-exit",
       })
-      .where(eq(sessionsTable.id, sessionId));
-    return this.getSession(sessionId);
+      .where(and(eq(sessionsTable.id, sessionId), eq(sessionsTable.userId, owner)))
+      .returning({ id: sessionsTable.id });
+    if (updated.length === 0) return null;
+    return this.getSession(sessionId, owner);
   }
 
   /* ============================================================
    * HISTORY
    * ============================================================ */
   static async listSessions(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED — history is one learner's own. */
+    userId: string;
     limit?: number;
     status?: SessionStatus;
   }): Promise<SrsReviewSession[]> {
+    const owner = requireOwner(params.userId, "SessionService.listSessions");
     await SrsService.ensureSeeded();
 
-    const conditions = [eq(sessionsTable.userId, params.userId || "anonymous-user")];
+    const conditions = [eq(sessionsTable.userId, owner)];
     if (params.status) conditions.push(eq(sessionsTable.status, params.status));
 
     const rows = await db
@@ -777,11 +883,13 @@ export class SessionService {
   }
 
   /** Newest still-active session, used by the dashboard "Resume" affordance. */
-  static async getResumableSession(userId = "anonymous-user"): Promise<SrsReviewSession | null> {
+  static async getResumableSession(userId: string): Promise<SrsReviewSession | null> {
+    /* Phase 26F-E4: REQUIRED — previously defaulted to the shared sentinel. */
+    const owner = requireOwner(userId, "SessionService.getResumableSession");
     const [row] = await db
       .select()
       .from(sessionsTable)
-      .where(and(eq(sessionsTable.userId, userId), eq(sessionsTable.status, "active")))
+      .where(and(eq(sessionsTable.userId, owner), eq(sessionsTable.status, "active")))
       .orderBy(desc(sessionsTable.startedAt))
       .limit(1);
 
@@ -806,8 +914,12 @@ export class SessionService {
   /* ============================================================
    * SUMMARY — post-session report
    * ============================================================ */
-  static async getSummary(sessionId: string): Promise<SessionSummary | null> {
-    const row = await this.getSessionRow(sessionId);
+  static async getSummary(
+    sessionId: string,
+    actorUserId: string
+  ): Promise<SessionSummary | null> {
+    const owner = requireOwner(actorUserId, "SessionService.getSummary");
+    const row = await this.getSessionRow(sessionId, owner);
     if (!row) return null;
 
     const queue = row.queue as SessionQueueEntry[];
@@ -815,7 +927,7 @@ export class SessionService {
     const progress = this.buildProgress(reviews, queue.length, row.startedAt, row.completedAt);
 
     const cardIds = reviews.map((r) => r.cardId);
-    const cards = await this.hydrateCards(cardIds);
+    const cards = await this.hydrateCards(cardIds, owner);
 
     const durationMs =
       row.completedAt

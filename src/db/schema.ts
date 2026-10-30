@@ -1,4 +1,5 @@
 import { pgTable, text, timestamp, boolean, integer, jsonb, real, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { SessionQueueOrder } from "@/types/srs";
 
 export const users = pgTable(
@@ -233,12 +234,81 @@ export const srsSchedulers = pgTable("srs_schedulers", {
   syncedAt: timestamp("synced_at").defaultNow().notNull(),
 });
 
+/**
+ * Phase 26F-B — canonical SYSTEM CATALOGUE deck definitions.
+ *
+ * Immutable, shared content identity. These rows carry NO learner state and are
+ * never graded. A learner who studies a system deck gets their own `srs_decks`
+ * row (with `system_deck_id` pointing here) plus their own `srs_cards` rows, so
+ * scheduling state is never shared between learners.
+ */
+export const srsSystemDecks = pgTable("srs_system_decks", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  jlptLevel: text("jlpt_level").default("N5").notNull(),
+  schedulerKey: text("scheduler_key").notNull(),
+  schedulerParams: jsonb("scheduler_params")
+    .default({})
+    .notNull()
+    .$type<Record<string, unknown>>(),
+  /** Bumped when catalogue content changes, so copies can be reconciled. */
+  catalogueVersion: integer("catalogue_version").default(1).notNull(),
+  isPublished: boolean("is_published").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+/**
+ * Phase 26F-B — canonical card CONTENT (templates) belonging to a system deck.
+ *
+ * Carries prompt/answer text and provenance only. Scheduling columns live
+ * exclusively on the learner-owned `srs_cards` row materialized from this
+ * template, so two learners studying the same template advance independently.
+ */
+export const srsCardTemplates = pgTable("srs_card_templates", {
+  id: text("id").primaryKey(),
+  systemDeckId: text("system_deck_id")
+    .notNull()
+    .references(() => srsSystemDecks.id),
+  cardType: text("card_type").notNull(),
+  front: text("front").notNull(),
+  back: text("back").notNull(),
+  reading: text("reading"),
+  meaning: text("meaning"),
+  hint: text("hint"),
+  sourceType: text("source_type").default("manual").notNull(),
+  sourceRef: text("source_ref"),
+  sourceQuestionId: text("source_question_id"),
+  contentVersion: integer("content_version").default(1).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+},
+  (table) => [
+    // The catalogue's content identity: one template per deck/type/prompt.
+    uniqueIndex("idx_srs_card_templates_deck_content_unique").on(
+      table.systemDeckId,
+      table.cardType,
+      table.front
+    ),
+    index("idx_srs_card_templates_deck").on(table.systemDeckId),
+  ]
+);
+
 export const srsDecks = pgTable("srs_decks", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description").default("").notNull(),
   jlptLevel: text("jlpt_level").default("N5").notNull(),
   ownerId: text("owner_id").default("anonymous-user").notNull(),
+
+  /**
+   * Phase 26F-B — set when this deck is a LEARNER-OWNED materialization of a
+   * system catalogue deck. NULL for learner-authored decks and for every
+   * pre-existing (legacy) row. Ownership stays on `owner_id`; this column
+   * records provenance only, never ownership.
+   */
+  systemDeckId: text("system_deck_id").references(() => srsSystemDecks.id),
 
   // Pluggable algorithm binding — the ONLY algorithm reference stored.
   schedulerKey: text("scheduler_key").notNull(),
@@ -250,12 +320,27 @@ export const srsDecks = pgTable("srs_decks", {
   isArchived: boolean("is_archived").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+},
+  // Phase 26F-B: at most one materialized copy of a system deck per learner.
+  (table) => [
+    uniqueIndex("idx_srs_decks_owner_system_unique")
+      .on(table.ownerId, table.systemDeckId)
+      .where(sql`"system_deck_id" IS NOT NULL`),
+  ]
+);
 
 export const srsCards = pgTable("srs_cards", {
   id: text("id").primaryKey(),
   deckId: text("deck_id").notNull(),
   userId: text("user_id").default("anonymous-user").notNull(),
+
+  /**
+   * Phase 26F-B — the catalogue template this learner card was materialized
+   * from. NULL for learner-authored cards and for every pre-existing (legacy)
+   * row. The learner keeps its own id, its own row and its own scheduling
+   * state; the template carries content only.
+   */
+  templateId: text("template_id").references(() => srsCardTemplates.id),
 
   cardType: text("card_type").notNull(), // 'vocabulary' | 'kanji' | 'grammar' | 'question'
   front: text("front").notNull(),
@@ -295,7 +380,16 @@ export const srsCards = pgTable("srs_cards", {
   isSuspended: boolean("is_suspended").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+},
+  (table) => [
+    // Phase 26F-B: one materialized card per (learner, template). Partial, so
+    // template-less legacy and learner-authored rows stay unconstrained.
+    uniqueIndex("idx_srs_cards_user_template_unique")
+      .on(table.userId, table.templateId)
+      .where(sql`"template_id" IS NOT NULL`),
+    index("idx_srs_cards_user_deck").on(table.userId, table.deckId),
+  ]
+);
 
 export const srsReviews = pgTable("srs_reviews", {
   id: text("id").primaryKey(),
@@ -584,9 +678,11 @@ export const kanjiComposition = pgTable("kanji_composition", {
  *
  * XP is an APPEND-ONLY LEDGER, never a mutable counter.
  *   - Totals, levels and streak bonuses are DERIVED by summing events.
- *   - `dedupeKey` carries a UNIQUE constraint, so replaying the same
- *     domain event (e.g. a synced review from Phase 11.4) can never
- *     award XP twice.
+ *   - `dedupeKey` is UNIQUE **per user** (`user_id`, `dedupe_key`), so
+ *     replaying the same domain event (e.g. a synced review from Phase 11.4)
+ *     can never award XP twice — while the same logical key used by a
+ *     different learner is an independent event (Phase 26A: a global unique
+ *     key let one user's row suppress, and disclose, another user's award).
  *   - Reversals are recorded via `revokedAt`, not by deleting rows,
  *     so the ledger stays auditable.
  *
@@ -615,7 +711,13 @@ export const xpEvents = pgTable("xp_events", {
    * Idempotency key derived from the source entity,
    * e.g. "review:rev-123" or "jlpt:session-9".
    */
-  dedupeKey: text("dedupe_key").unique(),
+  /**
+   * Idempotency key, scoped to `user_id` by
+   * `idx_xp_events_user_dedupe_key_unique` below. Deliberately NOT globally
+   * unique: keys such as `content.read:<sourceId>` and `knowledge:<cardId>`
+   * are identical for every learner studying the same item.
+   */
+  dedupeKey: text("dedupe_key"),
 
   /** Provenance back into the originating domain. */
   sourceType: text("source_type").notNull(),
@@ -633,7 +735,16 @@ export const xpEvents = pgTable("xp_events", {
 
   occurredAt: timestamp("occurred_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+},
+  // Phase 26A: deduplication is per user. PostgreSQL treats NULLs as distinct,
+  // so keyless events remain unconstrained exactly as before.
+  (table) => [
+    uniqueIndex("idx_xp_events_user_dedupe_key_unique").on(
+      table.userId,
+      table.dedupeKey
+    ),
+  ]
+);
 
 /**
  * Mirror of the in-code XP rule registry — provenance and admin

@@ -4,6 +4,7 @@ import {
   srsCards as srsCardsTable,
   srsReviews as srsReviewsTable,
   srsSchedulers as srsSchedulersTable,
+  srsReviewSessions as sessionsTable,
 } from "@/db/schema";
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import {
@@ -28,7 +29,9 @@ import {
   SchedulerParams,
 } from "@/types/srs";
 import { describeInterval } from "./strategies/shared";
+import { requireOwner } from "@/lib/auth/serviceIdentity";
 import { XpService } from "@/services/gamification/xpService";
+import { seedCatalogue } from "./srsCatalogueService";
 
 type DeckRow = typeof srsDecksTable.$inferSelect;
 type CardRow = typeof srsCardsTable.$inferSelect;
@@ -140,6 +143,16 @@ export class SrsService {
    * ============================================================ */
   static async ensureSeeded(): Promise<void> {
     await this.syncSchedulerRegistry();
+
+    /* Phase 26F-B — the SYSTEM CATALOGUE is seeded unconditionally and repairs
+     * itself, because its completeness is a property of this code version, not
+     * of how many learner decks happen to exist. (The legacy deck-count early
+     * return below is exactly the pattern that made partial seeding permanent.)
+     *
+     * This writes only to srs_system_decks / srs_card_templates. It never
+     * touches srs_decks or srs_cards, so the legacy demo rows and every current
+     * read path behave exactly as before. */
+    await seedCatalogue();
 
     const [deckCountRow] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
@@ -327,13 +340,20 @@ export class SrsService {
   /* ============================================================
    * DECKS
    * ============================================================ */
-  static async listDecks(userId = "anonymous-user"): Promise<SrsDeck[]> {
+  /**
+   * Phase 26F-E4: the owner is REQUIRED.
+   *
+   * This defaulted to `"anonymous-user"`, so an omitted id silently listed the
+   * shared legacy bucket instead of failing.
+   */
+  static async listDecks(userId: string): Promise<SrsDeck[]> {
+    const owner = requireOwner(userId, "SrsService.listDecks");
     await this.ensureSeeded();
 
     const rows = await db
       .select()
       .from(srsDecksTable)
-      .where(eq(srsDecksTable.ownerId, userId))
+      .where(eq(srsDecksTable.ownerId, owner))
       .orderBy(asc(srsDecksTable.createdAt));
 
     const counts = await db
@@ -344,6 +364,13 @@ export class SrsService {
         fresh: sql<number>`cast(count(*) filter (where ${srsCardsTable.totalReviews} = 0) as int)`,
       })
       .from(srsCardsTable)
+      .where(
+        and(
+          inArray(srsCardsTable.deckId, rows.map((r) => r.id)),
+          /* Phase 26F-E4: counts are the actor's cards only. */
+          eq(srsCardsTable.userId, owner)
+        )
+      )
       .groupBy(srsCardsTable.deckId);
 
     const countMap = new Map(counts.map((c) => [c.deckId, c]));
@@ -365,8 +392,10 @@ export class SrsService {
     jlptLevel?: string;
     schedulerKey?: string;
     schedulerParams?: Record<string, unknown>;
-    ownerId?: string;
+    /** Phase 26F-E4: REQUIRED — a deck is created for one verified learner. */
+    ownerId: string;
   }): Promise<SrsDeck> {
+    const owner = requireOwner(input.ownerId, "SrsService.createDeck");
     await this.ensureSeeded();
 
     const scheduler = getScheduler(input.schedulerKey);
@@ -380,7 +409,7 @@ export class SrsService {
         name: input.name,
         description: input.description || "",
         jlptLevel: input.jlptLevel || "N5",
-        ownerId: input.ownerId || "anonymous-user",
+        ownerId: owner,
         schedulerKey: scheduler.key,
         schedulerParams: params as Record<string, unknown>,
       })
@@ -400,12 +429,23 @@ export class SrsService {
       description?: string;
       schedulerKey?: string;
       schedulerParams?: Record<string, unknown>;
-    }
+    },
+    actorUserId: string
   ): Promise<SrsDeck | null> {
+    /*
+     * Phase 26F-E4: ownership is part of both statements.
+     *
+     * The lookup and the UPDATE were keyed on the primary key alone, so any
+     * caller holding a deck id could re-bind another learner's scheduling
+     * algorithm. A foreign deck now resolves to `null` — the same answer as a
+     * deck that does not exist — so the endpoint is not an existence oracle.
+     */
+    const owner = requireOwner(actorUserId, "SrsService.updateDeck");
+
     const [existing] = await db
       .select()
       .from(srsDecksTable)
-      .where(eq(srsDecksTable.id, deckId))
+      .where(and(eq(srsDecksTable.id, deckId), eq(srsDecksTable.ownerId, owner)))
       .limit(1);
 
     if (!existing) return null;
@@ -432,7 +472,7 @@ export class SrsService {
     const [row] = await db
       .update(srsDecksTable)
       .set(set)
-      .where(eq(srsDecksTable.id, deckId))
+      .where(and(eq(srsDecksTable.id, deckId), eq(srsDecksTable.ownerId, owner)))
       .returning();
 
     return row ? mapDeck(row) : null;
@@ -452,13 +492,22 @@ export class SrsService {
     sourceType?: string;
     sourceRef?: string;
     sourceQuestionId?: string;
+    /** Phase 26F-E4: REQUIRED — the card is created inside the actor's deck. */
+    actorUserId: string;
   }): Promise<SrsCard | null> {
+    /*
+     * Phase 26F-E4: the target deck must belong to the actor, and the card is
+     * stamped with the ACTOR's id rather than `deck.ownerId`. Previously any
+     * deck id was accepted and the card inherited that deck's owner, which let
+     * a caller plant cards in another learner's collection.
+     */
+    const owner = requireOwner(input.actorUserId, "SrsService.createCard");
     await this.ensureSeeded();
 
     const [deck] = await db
       .select()
       .from(srsDecksTable)
-      .where(eq(srsDecksTable.id, input.deckId))
+      .where(and(eq(srsDecksTable.id, input.deckId), eq(srsDecksTable.ownerId, owner)))
       .limit(1);
 
     if (!deck) return null;
@@ -470,7 +519,7 @@ export class SrsService {
       .values({
         id,
         deckId: deck.id,
-        userId: deck.ownerId,
+        userId: owner,
         cardType: input.cardType || "vocabulary",
         front: input.front,
         back: input.back,
@@ -492,19 +541,39 @@ export class SrsService {
 
   static async queryCards(params: {
     deckId?: string;
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED — cards are read for one verified learner. */
+    userId: string;
     limit?: number;
     offset?: number;
   }): Promise<{ cards: SrsCard[]; total: number }> {
+    /*
+     * Phase 26F-E4: the deck scope is the INTERSECTION of the requested deck
+     * and the actor's own decks. Previously a supplied `deckId` was used
+     * verbatim, so any deck id returned its cards without an ownership check.
+     */
+    const owner = requireOwner(params.userId, "SrsService.queryCards");
     await this.ensureSeeded();
 
+    const ownedDeckIds = (
+      await db
+        .select({ id: srsDecksTable.id })
+        .from(srsDecksTable)
+        .where(eq(srsDecksTable.ownerId, owner))
+    ).map((d) => d.id);
+
     const deckIds = params.deckId
-      ? [params.deckId]
-      : (await db.select({ id: srsDecksTable.id }).from(srsDecksTable).where(eq(srsDecksTable.ownerId, params.userId || "anonymous-user"))).map((d) => d.id);
+      ? ownedDeckIds.filter((id) => id === params.deckId)
+      : ownedDeckIds;
 
     if (deckIds.length === 0) return { cards: [], total: 0 };
 
-    const where = inArray(srsCardsTable.deckId, deckIds);
+    /*
+     * The card predicate is INDEPENDENT of the deck predicate on purpose. A
+     * pre-E4 row could sit in one learner's deck while being owned by someone
+     * else (the shared `deck-kana-*` decks did exactly that), so scoping by
+     * deck alone would still return another learner's card.
+     */
+    const where = and(inArray(srsCardsTable.deckId, deckIds), eq(srsCardsTable.userId, owner));
 
     const [countRow] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
@@ -519,7 +588,7 @@ export class SrsService {
       .limit(params.limit ?? 50)
       .offset(params.offset ?? 0);
 
-    const deckRows = await db.select().from(srsDecksTable);
+    const deckRows = await db.select().from(srsDecksTable).where(eq(srsDecksTable.ownerId, owner));
     const deckMap = new Map(deckRows.map((d) => [d.id, d]));
 
     return {
@@ -532,22 +601,32 @@ export class SrsService {
    * DUE QUEUE
    * ============================================================ */
   static async getDueQueue(params: {
-    userId?: string;
+    /** Phase 26F-E4: REQUIRED — the due queue is one verified learner's. */
+    userId: string;
     deckId?: string;
     limit?: number;
   }): Promise<{ queue: SrsCard[]; totalDue: number }> {
+    const userId = requireOwner(params.userId, "SrsService.getDueQueue");
     await this.ensureSeeded();
 
-    const userId = params.userId || "anonymous-user";
+    const ownedDeckIds = (
+      await db
+        .select({ id: srsDecksTable.id })
+        .from(srsDecksTable)
+        .where(eq(srsDecksTable.ownerId, userId))
+    ).map((d) => d.id);
 
+    /* Intersection, not substitution: a foreign deckId yields no cards. */
     const deckIds = params.deckId
-      ? [params.deckId]
-      : (await db.select({ id: srsDecksTable.id }).from(srsDecksTable).where(eq(srsDecksTable.ownerId, userId))).map((d) => d.id);
+      ? ownedDeckIds.filter((id) => id === params.deckId)
+      : ownedDeckIds;
 
     if (deckIds.length === 0) return { queue: [], totalDue: 0 };
 
+    /* Card predicate independent of the deck predicate — see `queryCards`. */
     const baseWhere = and(
       inArray(srsCardsTable.deckId, deckIds),
+      eq(srsCardsTable.userId, userId),
       eq(srsCardsTable.isSuspended, false),
       lte(srsCardsTable.dueAt, new Date())
     );
@@ -564,7 +643,7 @@ export class SrsService {
       .orderBy(asc(srsCardsTable.dueAt))
       .limit(params.limit ?? 20);
 
-    const deckRows = await db.select().from(srsDecksTable);
+    const deckRows = await db.select().from(srsDecksTable).where(eq(srsDecksTable.ownerId, userId));
     const deckMap = new Map(deckRows.map((d) => [d.id, d]));
 
     return {
@@ -580,24 +659,52 @@ export class SrsService {
     cardId: string;
     rating: SrsRating;
     timeSpentMs?: number;
-    userId?: string;
+    /**
+     * Phase 26F-E4: REQUIRED verified actor.
+     *
+     * `userId` used to be an optional, unused field while the card was looked
+     * up by primary key alone — so grading wrote scheduling state, a review row
+     * AND an XP award against whoever owned the card id, for any caller. The
+     * card's owner is now derived from a query the caller cannot influence.
+     */
+    actorUserId: string;
     /** Prompt 11.2 — optional owning review session. */
     sessionId?: string;
   }): Promise<GradedCardPayload | null> {
+    const owner = requireOwner(input.actorUserId, "SrsService.gradeCard");
     await this.ensureSeeded();
 
+    /*
+     * Ownership predicate in the read itself: the card must be the actor's own.
+     * A foreign card id resolves to `null`, identical to a card that does not
+     * exist, so grading cannot be used to probe for another learner's cards.
+     *
+     * Legacy rows owned by the shared sentinel are therefore not gradeable by
+     * any caller (fail closed); they are never reassigned here.
+     */
     const [cardRow] = await db
       .select()
       .from(srsCardsTable)
-      .where(eq(srsCardsTable.id, input.cardId))
+      .where(and(eq(srsCardsTable.id, input.cardId), eq(srsCardsTable.userId, owner)))
       .limit(1);
 
     if (!cardRow) return null;
 
+    /* A named session must belong to the same actor, or the review row would
+     * attach this learner's grading to another learner's session. */
+    if (input.sessionId) {
+      const [sessionRow] = await db
+        .select({ id: sessionsTable.id })
+        .from(sessionsTable)
+        .where(and(eq(sessionsTable.id, input.sessionId), eq(sessionsTable.userId, owner)))
+        .limit(1);
+      if (!sessionRow) return null;
+    }
+
     const [deckRow] = await db
       .select()
       .from(srsDecksTable)
-      .where(eq(srsDecksTable.id, cardRow.deckId))
+      .where(and(eq(srsDecksTable.id, cardRow.deckId), eq(srsDecksTable.ownerId, owner)))
       .limit(1);
 
     if (!deckRow) return null;
@@ -637,7 +744,7 @@ export class SrsService {
         schedulerKey: scheduler.key,
         updatedAt: now,
       })
-      .where(eq(srsCardsTable.id, cardRow.id));
+      .where(and(eq(srsCardsTable.id, cardRow.id), eq(srsCardsTable.userId, owner)));
 
     const reviewId = `rev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -645,7 +752,8 @@ export class SrsService {
       id: reviewId,
       cardId: cardRow.id,
       deckId: cardRow.deckId,
-      userId: cardRow.userId,
+      /* The verified actor — `cardRow.userId` equals it by construction. */
+      userId: owner,
       rating: input.rating,
       wasCorrect: outcome.wasCorrect,
       timeSpentMs: input.timeSpentMs ?? 0,
@@ -674,7 +782,7 @@ export class SrsService {
     await XpService.awardSafe({
       payload: {
         eventType: "review.graded",
-        userId: cardRow.userId,
+        userId: owner,
         sourceType: "srs_review",
         sourceId: reviewId,
         rating: input.rating,
@@ -687,7 +795,7 @@ export class SrsService {
       },
       dedupeKey: `review:${reviewId}`,
     });
-    await XpService.awardDailyStreak(cardRow.userId);
+    await XpService.awardDailyStreak(owner);
 
     return {
       reviewId,
@@ -707,11 +815,13 @@ export class SrsService {
   /* ============================================================
    * ANALYTICS
    * ============================================================ */
-  static async getStats(userId = "anonymous-user"): Promise<SrsStats> {
+  static async getStats(userId: string): Promise<SrsStats> {
+    /* Phase 26F-E4: REQUIRED — previously defaulted to the shared sentinel. */
+    const owner = requireOwner(userId, "SrsService.getStats");
     await this.ensureSeeded();
 
     const deckIds = (
-      await db.select({ id: srsDecksTable.id }).from(srsDecksTable).where(eq(srsDecksTable.ownerId, userId))
+      await db.select({ id: srsDecksTable.id }).from(srsDecksTable).where(eq(srsDecksTable.ownerId, owner))
     ).map((d) => d.id);
 
     const empty: SrsStats = {
@@ -733,7 +843,8 @@ export class SrsService {
 
     if (deckIds.length === 0) return empty;
 
-    const where = inArray(srsCardsTable.deckId, deckIds);
+    /* Phase 26F-E4: card predicate independent of the deck predicate. */
+    const where = and(inArray(srsCardsTable.deckId, deckIds), eq(srsCardsTable.userId, owner));
 
     const [bucketRow] = await db
       .select({
@@ -786,8 +897,14 @@ export class SrsService {
         reviewedAt: srsReviewsTable.reviewedAt,
       })
       .from(srsReviewsTable)
-      .innerJoin(srsCardsTable, eq(srsCardsTable.id, srsReviewsTable.cardId))
-      .where(eq(srsReviewsTable.userId, userId))
+      .innerJoin(
+        srsCardsTable,
+        and(
+          eq(srsCardsTable.id, srsReviewsTable.cardId),
+          eq(srsCardsTable.userId, owner)
+        )
+      )
+      .where(eq(srsReviewsTable.userId, owner))
       .orderBy(desc(srsReviewsTable.reviewedAt))
       .limit(12);
 
@@ -834,8 +951,21 @@ export class SrsService {
   /* ============================================================
    * PREVIEW — hypothetical grade, no persistence (used by UI labs)
    * ============================================================ */
-  static async previewDeckScheduler(deckId: string, rating: SrsRating = "good") {
-    const [deck] = await db.select().from(srsDecksTable).where(eq(srsDecksTable.id, deckId)).limit(1);
+  static async previewDeckScheduler(
+    deckId: string,
+    actorUserId: string,
+    rating: SrsRating = "good"
+  ) {
+    /*
+     * Phase 26F-E4: the preview discloses a deck's scheduling parameters, so it
+     * is scoped to the actor's own deck. Previously any deck id worked.
+     */
+    const owner = requireOwner(actorUserId, "SrsService.previewDeckScheduler");
+    const [deck] = await db
+      .select()
+      .from(srsDecksTable)
+      .where(and(eq(srsDecksTable.id, deckId), eq(srsDecksTable.ownerId, owner)))
+      .limit(1);
     if (!deck) return null;
 
     const scheduler = getScheduler(deck.schedulerKey);

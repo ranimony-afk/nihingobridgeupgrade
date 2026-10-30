@@ -93,7 +93,11 @@ afterAll(async () => {
 describe("general search on an empty database", () => {
   it("does not seed, initialize, or change any schema, sequence, or row", async () => {
     const before = await snapshotDatabase(database);
-    expect(Object.keys(before.rows)).toHaveLength(30);
+    // 32 = the pre-26F-B 30 tables plus srs_system_decks and srs_card_templates
+    // (Phase 26F-B catalogue separation). This is a "the schema really was
+    // created" sanity guard; the substantive assertion is the fingerprint
+    // comparison further down.
+    expect(Object.keys(before.rows)).toHaveLength(32);
     expect(Object.values(before.rows).every((rows) => rows.length === 0)).toBe(true);
     const { KnowledgeCorpusService } = await import("@/services/knowledge/corpusService");
     const { KnowledgeService } = await import("@/services/knowledge/knowledgeService");
@@ -123,7 +127,7 @@ describe("general search on an empty database", () => {
     }
     const after = await snapshotDatabase(database);
     expect(after).toEqual(before);
-    console.log(`[unified-search] empty: 30 tables, 0 rows; unchanged SHA-256 ${fingerprint(after)}`);
+    console.log(`[unified-search] empty: 32 tables, 0 rows; unchanged SHA-256 ${fingerprint(after)}`);
   }, 120_000);
 });
 

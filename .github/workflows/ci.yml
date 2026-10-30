@@ -147,7 +147,21 @@ jobs:
             tests/unified-search.test.ts \
             tests/pilot-jmdict-db.test.ts \
             tests/provenance-foundation.test.ts \
-            tests/questions-post-authorization.test.ts
+            tests/questions-post-authorization.test.ts \
+            tests/questions-get-error-sanitization.test.ts \
+            tests/seeding-log-sanitization.test.ts \
+            tests/xp-read-path-write-isolation.test.ts \
+            tests/xp-analytics-error-sanitization.test.ts \
+            tests/xp-analytics-write-route-sanitization.test.ts \
+            tests/xp-analytics-write-authorization.test.ts \
+            tests/xp-dedupe-isolation.test.ts \
+            tests/xp-analytics-read-authorization.test.ts \
+            tests/xp-ledger-read-authorization.test.ts \
+            tests/srs-catalogue-materialization.test.ts \
+            tests/srs-containment.test.ts \
+            tests/jlpt-ownership.test.ts \
+            tests/xp-service-ownership.test.ts \
+            tests/srs-ownership.test.ts
 
       - name: Remove temporary JMdict XML
         if: always()

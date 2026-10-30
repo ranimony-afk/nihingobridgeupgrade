@@ -93,14 +93,15 @@ describe("Phase 9: JLPT Knowledge Integration & Test Lifecycle", () => {
       const firstQ = questionsList[0];
       expect(firstQ).toBeDefined();
 
-      // Submit correct answer
-      await TestService.saveAnswer(activeSessionId, {
+      // Submit correct answer. Phase 26F-E2: the owning actor id is required
+      // and is part of the write's predicate, so the caller must name itself.
+      await TestService.saveAnswer(activeSessionId, testUserId, {
         questionId: firstQ.id,
         selectedAnswer: firstQ.correctAnswer,
         timeSpentSeconds: 15,
       });
 
-      const sessionState = await TestService.getSessionState(activeSessionId);
+      const sessionState = await TestService.getSessionState(activeSessionId, testUserId);
       expect(sessionState).not.toBeNull();
       expect(sessionState?.answers.length).toBe(1);
 
@@ -118,7 +119,11 @@ describe("Phase 9: JLPT Knowledge Integration & Test Lifecycle", () => {
         timeSpentSeconds: 10,
       }));
 
-      const finalResult = await TestService.submitSession(activeSessionId, submissions);
+      const finalResult = await TestService.submitSession(
+        activeSessionId,
+        testUserId,
+        submissions
+      );
       expect(finalResult).not.toBeNull();
       expect(finalResult?.sessionId).toBe(activeSessionId);
       expect(finalResult?.score).toBeGreaterThan(0);
