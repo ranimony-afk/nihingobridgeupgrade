@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Loader2, RefreshCw, Network, Plus, Check, Layers } from "lucide-react";
+import { Loader2, RefreshCw, Network, Plus, Layers } from "lucide-react";
+import {
+  buildKanjiListSearchParams,
+  createRequestSequencer,
+  describeKanjiFilterEmptyState,
+  normalizeKanjiFilterState,
+  type ElementFilterState,
+  type KanjiFilterLevel,
+  type KanjiFilterResetAction,
+  type SelectedElementAnalysis,
+} from "@/lib/kanji/elementFilterContract";
 
 interface KanjiSummary {
   id: string;
@@ -18,6 +28,7 @@ interface KanjiSummary {
   mnemonic: string | null;
 }
 
+/** M9A counting contract — see src/lib/kanji/elementFilterContract.ts. */
 interface ElementSummary {
   id: string;
   character: string;
@@ -25,7 +36,12 @@ interface ElementSummary {
   category: string;
   strokeCount: number;
   altForms: string[];
+  /** Distinct supported catalog characters that use this element. */
   usedInCount: number;
+  /** All composition relationships referencing this element (graph stat). */
+  relationshipCount: number;
+  /** Characters visible under the active level/keyword facets (badge number). */
+  visibleKanjiCount: number;
 }
 
 const LEVEL_TONE: Record<string, string> = {
@@ -36,44 +52,76 @@ const LEVEL_TONE: Record<string, string> = {
   N1: "bg-rose-100 text-rose-700",
 };
 
+const RESET_ACTION_LABEL: Record<KanjiFilterResetAction, string> = {
+  level: "Clear level filter",
+  keyword: "Clear search",
+  element: "Clear element filter",
+  all: "Clear all filters",
+};
+
 export default function KanjiPage() {
   const [kanji, setKanji] = useState<KanjiSummary[]>([]);
   const [elements, setElements] = useState<ElementSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
+  const [elementAnalysis, setElementAnalysis] = useState<SelectedElementAnalysis | null>(null);
+  const [emptyKind, setEmptyKind] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  /* Three independent filter facets; conflicts are explained, never dropped. */
   const [level, setLevel] = useState<string>("all");
   const [elementFilter, setElementFilter] = useState<string | null>(null);
-  const [keyword, setKeyword] = useState("");
+  const [keywordInput, setKeywordInput] = useState("");
+  const keyword = keywordInput.trim();
+
+  const filterState: ElementFilterState = useMemo(
+    () => normalizeKanjiFilterState({ level, elementId: elementFilter, keyword }),
+    [level, elementFilter, keyword],
+  );
+
+  /* M9A: sequence async loads so an older response can never overwrite a
+   * newer one when the user switches elements or types quickly. */
+  const sequencer = useRef(createRequestSequencer());
 
   const load = useCallback(async () => {
+    const token = sequencer.current.begin();
+    setRefreshing(true);
     try {
-      setLoading(true);
-      const params = new URLSearchParams();
-      if (level !== "all") params.set("level", level);
-      if (elementFilter) params.set("elementId", elementFilter);
-      if (keyword.trim()) params.set("q", keyword.trim());
-      params.set("includeElements", "1");
-
-      const res = await fetch(`/api/kanji?${params.toString()}`);
+      const res = await fetch(`/api/kanji?${buildKanjiListSearchParams(filterState)}`);
       const json = await res.json();
+      if (!sequencer.current.isCurrent(token)) return; // stale response — drop
       if (json.success) {
         setKanji(json.kanji);
         setTotal(json.total);
+        setCatalogTotal(typeof json.catalogTotal === "number" ? json.catalogTotal : null);
         setElements(json.elements ?? []);
+        setElementAnalysis(json.elementFilter ?? null);
+        setEmptyKind(json.emptyKind ?? null);
       }
     } catch (e) {
-      console.error(e);
+      if (sequencer.current.isCurrent(token)) console.error(e);
     } finally {
-      setLoading(false);
+      if (sequencer.current.isCurrent(token)) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [level, elementFilter, keyword]);
+  }, [filterState]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  /** Clears only the facets named by an empty-state explanation. */
+  const applyResetAction = useCallback((action: KanjiFilterResetAction | null) => {
+    if (!action) return;
+    if (action === "level" || action === "all") setLevel("all");
+    if (action === "keyword" || action === "all") setKeywordInput("");
+    if (action === "element" || action === "all") setElementFilter(null);
+  }, []);
 
   const addToSrs = async (character: string) => {
     setBusy(character);
@@ -117,6 +165,22 @@ export default function KanjiPage() {
     }
   };
 
+  /* M9A: one documented explanation connects the displayed counts to the
+   * (possibly empty) result set; it is computed from the same pure contract
+   * the server used, so the numbers can never drift apart. */
+  const emptyDescription =
+    total === 0
+      ? describeKanjiFilterEmptyState(
+          {
+            selectedElement: elementAnalysis,
+            emptyKind: (emptyKind as "filters-no-match" | "catalog-empty" | null) ?? null,
+            filteredTotal: total,
+            catalogTotal: catalogTotal ?? kanji.length,
+          },
+          filterState,
+        )
+      : null;
+
   if (loading) {
     return (
       <div className="flex min-h-[70vh] flex-col items-center justify-center gap-4">
@@ -144,15 +208,15 @@ export default function KanjiPage() {
               漢字マインドツリー — Component Mind Tree
             </h1>
             <p className="mt-1 text-xs text-slate-500">
-              {total} kanji · {elements.length} elements · decompose any kanji into parts, then jump to
-              the family of kanji sharing them
+              {total} of {catalogTotal ?? total} catalog kanji shown · {elements.length} elements ·
+              decompose any kanji into parts, then jump to the family of kanji sharing them
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={addToSrsBulk}
               disabled={busy !== null || kanji.length === 0}
-              className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-red-500/20 hover:bg-red-700 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-red-500/20 hover:bg-red-700 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
             >
               {busy === "__bulk__" ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -163,7 +227,7 @@ export default function KanjiPage() {
             </button>
             <Link
               href="/kana"
-              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50"
+              className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
             >
               Kana Chart
             </Link>
@@ -184,19 +248,17 @@ export default function KanjiPage() {
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-3 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-1.5">
-            {["all", "N5", "N4", "N3", "N2", "N1"].map((l) => (
+          <div className="flex items-center gap-1.5" role="group" aria-label="Filter by JLPT level">
+            {(["all", "N5", "N4", "N3", "N2", "N1"] as const).map((l) => (
               <button
                 key={l}
-                onClick={() => {
-                  setLevel(l);
-                  setElementFilter(null);
-                }}
+                onClick={() => setLevel(l as KanjiFilterLevel)}
+                aria-pressed={level === l}
                 className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
                   level === l
                     ? "bg-slate-900 text-white"
                     : "border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                }`}
+                } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2`}
               >
                 {l === "all" ? "All levels" : l}
               </button>
@@ -210,34 +272,87 @@ export default function KanjiPage() {
             }}
             className="ml-auto"
           >
+            <label className="sr-only" htmlFor="kanji-keyword-filter">
+              Search kanji or meaning
+            </label>
             <input
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
+              id="kanji-keyword-filter"
+              value={keywordInput}
+              onChange={(e) => setKeywordInput(e.target.value)}
               placeholder="Search kanji or meaning…"
-              className="w-52 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium focus:border-red-500 focus:bg-white focus:outline-none"
+              className="w-52 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium focus:border-red-500 focus:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
             />
           </form>
 
           <button
             onClick={load}
-            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
           >
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
+
+          {filterState.level !== "all" || filterState.keyword || filterState.elementId ? (
+            <button
+              onClick={() => applyResetAction("all")}
+              className="rounded-xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+            >
+              Reset all filters
+            </button>
+          ) : null}
         </div>
 
-        {elementFilter && (
-          <div className="flex items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 p-3.5 text-xs font-semibold text-indigo-900">
-            <Network className="h-4 w-4" />
-            Filtered to kanji containing the selected element.
-            <button
-              onClick={() => setElementFilter(null)}
-              className="ml-auto rounded-lg bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200"
-            >
-              Clear
-            </button>
+        {elementFilter && elementAnalysis ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-indigo-200 bg-indigo-50 p-3.5 text-xs font-semibold text-indigo-900">
+            <Network className="h-4 w-4 shrink-0" />
+            <span aria-live="polite">
+              {elementAnalysis.visibleKanjiCount > 0 ? (
+                <>
+                  Filtered to kanji containing{" "}
+                  <span className="font-japanese font-bold" lang="ja">
+                    {elementAnalysis.elementCharacter ?? elementAnalysis.elementId}
+                  </span>{" "}
+                  — {elementAnalysis.visibleKanjiCount} of {elementAnalysis.catalogKanjiCount}{" "}
+                  catalog character{elementAnalysis.catalogKanjiCount === 1 ? "" : "s"} shown
+                  {filterState.level !== "all" || filterState.keyword
+                    ? ` under the active ${[
+                        filterState.level !== "all" ? `level ${filterState.level}` : null,
+                        filterState.keyword ? `search “${filterState.keyword}”` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")} filter${filterState.level !== "all" && !filterState.keyword ? "" : "s"}`
+                    : ""}
+                  .
+                </>
+              ) : (
+                <>
+              {elementAnalysis.catalogKanjiCount > 0
+                ? `${elementAnalysis.catalogKanjiCount} catalog character${elementAnalysis.catalogKanjiCount === 1 ? " contains" : "s contain"} the selected element, but the other active filters hide all of them.`
+                : `The selected element has 0 supported catalog matches.`}
+                </>
+              )}
+            </span>
+            <div className="ml-auto flex gap-1.5">
+              {elementAnalysis.catalogKanjiCount > 0 && elementAnalysis.visibleKanjiCount === 0 ? (
+                <button
+                  onClick={() => applyResetAction(filterState.level !== "all" && filterState.keyword ? "all" : filterState.level !== "all" ? "level" : "keyword")}
+                  className="rounded-lg bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+                >
+                  {filterState.level !== "all" && filterState.keyword
+                    ? "Clear level & search"
+                    : filterState.level !== "all"
+                      ? `Clear level ${filterState.level}`
+                      : "Clear search"}
+                </button>
+              ) : null}
+              <button
+                onClick={() => setElementFilter(null)}
+                className="rounded-lg bg-white px-2.5 py-1 text-[10px] font-bold text-indigo-700 ring-1 ring-indigo-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+              >
+                Clear
+              </button>
+            </div>
           </div>
-        )}
+        ) : null}
 
         {/* Element palette — the entry point into the tree */}
         {elements.length > 0 && (
@@ -246,34 +361,50 @@ export default function KanjiPage() {
               <Network className="h-4 w-4 text-indigo-600" />
               <h3 className="text-sm font-bold text-slate-900">Elements</h3>
               <span className="text-[10px] text-slate-400">
-                click one to see every kanji built from it
+                the badge is the number of catalog kanji you will see when you click it with the
+                current level/search filters
               </span>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {elements.map((el) => (
-                <button
-                  key={el.id}
-                  onClick={() => setElementFilter(elementFilter === el.id ? null : el.id)}
-                  title={`${el.meaning} · ${el.strokeCount} strokes · used in ${el.usedInCount} kanji`}
-                  className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 transition-all ${
-                    elementFilter === el.id
-                      ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
-                      : "border-slate-200 bg-white hover:border-slate-400"
-                  }`}
-                >
-                  <span className="font-japanese text-lg font-bold text-slate-900">{el.character}</span>
-                  {el.altForms.length > 0 && (
-                    <span className="font-japanese text-[10px] text-slate-400">{el.altForms[0]}</span>
-                  )}
-                  <span className="text-[9px] font-semibold text-slate-500">{el.usedInCount}</span>
-                </button>
-              ))}
+              {elements.map((el) => {
+                const badge = el.visibleKanjiCount;
+                const hidden = el.usedInCount - el.visibleKanjiCount;
+                const label = `${el.character}, ${el.meaning}: ${badge} of ${el.usedInCount} catalog kanji visible with current filters; ${el.relationshipCount} composition relationship${el.relationshipCount === 1 ? "" : "s"} in the graph${
+                  hidden > 0 ? `; ${hidden} hidden by the active level/search filters` : ""
+                }`;
+                return (
+                  <button
+                    key={el.id}
+                    onClick={() => setElementFilter(elementFilter === el.id ? null : el.id)}
+                    aria-pressed={elementFilter === el.id}
+                    aria-label={label}
+                    title={label}
+                    className={`flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 transition-all ${
+                      elementFilter === el.id
+                        ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-200"
+                        : "border-slate-200 bg-white hover:border-slate-400"
+                    } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2`}
+                  >
+                    <span className="font-japanese text-lg font-bold text-slate-900">{el.character}</span>
+                    {el.altForms.length > 0 && (
+                      <span className="font-japanese text-[10px] text-slate-400">{el.altForms[0]}</span>
+                    )}
+                    <span className="text-[9px] font-semibold text-slate-500">
+                      {badge}
+                      {hidden > 0 ? `/${el.usedInCount}` : ""}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
         {/* Kanji grid */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div
+          className={`grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 ${refreshing ? "opacity-70" : ""}`}
+          aria-busy={refreshing || undefined}
+        >
           {kanji.map((k) => (
             <div
               key={k.id}
@@ -283,7 +414,7 @@ export default function KanjiPage() {
                 <div className="flex items-start justify-between gap-2">
                   <Link
                     href={`/kanji/${encodeURIComponent(k.character)}`}
-                    className="font-japanese text-5xl font-bold leading-none text-slate-900 transition-colors hover:text-red-700"
+                    className="font-japanese text-5xl font-bold leading-none text-slate-900 transition-colors hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
                   >
                     {k.character}
                   </Link>
@@ -324,7 +455,7 @@ export default function KanjiPage() {
                   </span>
                   <Link
                     href={`/kanji/${encodeURIComponent(k.character)}`}
-                    className="flex items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-700 hover:bg-indigo-100"
+                    className="flex items-center gap-0.5 rounded bg-indigo-50 px-1.5 py-0.5 font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
                   >
                     <Network className="h-2.5 w-2.5" /> {k.componentCount} parts
                   </Link>
@@ -345,7 +476,7 @@ export default function KanjiPage() {
               <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
                 <Link
                   href={`/kanji/${encodeURIComponent(k.character)}`}
-                  className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-slate-900 py-2 text-[11px] font-bold text-white hover:bg-slate-800"
+                  className="flex flex-1 items-center justify-center gap-1 rounded-xl bg-slate-900 py-2 text-[11px] font-bold text-white hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
                 >
                   <Network className="h-3 w-3" /> Mind Tree
                 </Link>
@@ -353,7 +484,8 @@ export default function KanjiPage() {
                   onClick={() => addToSrs(k.character)}
                   disabled={busy !== null}
                   title="Add to SRS"
-                  className="flex items-center justify-center rounded-xl border border-slate-200 px-2.5 py-2 text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  aria-label={`Add ${k.character} to SRS`}
+                  className="flex items-center justify-center rounded-xl border border-slate-200 px-2.5 py-2 text-slate-600 hover:bg-slate-50 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
                 >
                   {busy === k.character ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -366,10 +498,35 @@ export default function KanjiPage() {
           ))}
         </div>
 
-        {kanji.length === 0 && (
+        {total === 0 && kanji.length === 0 && (
           <div className="rounded-3xl border border-dashed border-slate-200 bg-white p-12 text-center">
             <Layers className="mx-auto mb-2 h-9 w-9 text-slate-300" />
-            <p className="text-sm font-bold text-slate-800">No kanji match this filter</p>
+            <p className="text-sm font-bold text-slate-800" aria-live="polite">
+              {emptyDescription?.title ?? "No kanji match this filter"}
+            </p>
+            {emptyDescription ? (
+              <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                {emptyDescription.detail}
+              </p>
+            ) : null}
+            {emptyDescription?.resetAction ? (
+              <button
+                onClick={() => applyResetAction(emptyDescription.resetAction)}
+                className="mt-3 min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+              >
+                {RESET_ACTION_LABEL[emptyDescription.resetAction]}
+              </button>
+            ) : null}
+            {filterState.level !== "all" || filterState.keyword || filterState.elementId ? (
+              <div className="mt-2">
+                <button
+                  onClick={() => applyResetAction("all")}
+                  className="min-h-10 rounded-lg bg-slate-900 px-3 text-sm font-bold text-white hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2"
+                >
+                  Clear search and filters
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </div>

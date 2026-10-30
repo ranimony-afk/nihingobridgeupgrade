@@ -1,0 +1,485 @@
+{
+  "reportVersion": "nihongobridge-m9a-browser-acceptance@1",
+  "baseUrl": "http://127.0.0.1:3100",
+  "executedAt": "2026-10-29T15:44:52.095Z",
+  "headless": "chromium via @sparticuz/chromium + puppeteer-core (real browser, JS executed)",
+  "environment": "local production build (next build && next start), disposable PostgreSQL",
+  "totals": {
+    "pass": 49,
+    "fail": 0,
+    "skip": 0
+  },
+  "results": [
+    {
+      "group": "api",
+      "id": "element 丁 default filter",
+      "status": "PASS",
+      "detail": "total=1 灯; badge=1; relationships=1; catalogTotal=33"
+    },
+    {
+      "group": "api",
+      "id": "element 丁 + level N5 explains the exclusion",
+      "status": "PASS",
+      "detail": "total=0; zeroKind=element-excluded-by-level; 1 hidden by N5; badge 0/1"
+    },
+    {
+      "group": "api",
+      "id": "element 木 relationship-vs-kanji counts",
+      "status": "PASS",
+      "detail": "total=5 distinct kanji; 8 relationships"
+    },
+    {
+      "group": "api",
+      "id": "zero-count element 金",
+      "status": "PASS",
+      "detail": "0 matches; zeroKind=element-no-relationships"
+    },
+    {
+      "group": "api",
+      "id": "keyword is literal (no SQL LIKE wildcard)",
+      "status": "PASS",
+      "detail": "q=% → 0 matches, filters-no-match"
+    },
+    {
+      "group": "navigation",
+      "id": "/kanji loads with filter UI",
+      "status": "PASS",
+      "detail": "catalog 33 shown 33"
+    },
+    {
+      "group": "navigation",
+      "id": "link to source-backed MindTree catalog",
+      "status": "PASS",
+      "detail": "100 catalog cards"
+    },
+    {
+      "group": "navigation",
+      "id": "MindTree catalog ↔ existing kanji tools round trip",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "navigation",
+      "id": "navbar MindTree entry present (desktop + mobile lists)",
+      "status": "PASS",
+      "detail": "19 nav links"
+    },
+    {
+      "group": "element-filter",
+      "id": "select 丁 → 1 result (灯), banner count matches",
+      "status": "PASS",
+      "detail": "banner 1 of 1; grid=灯"
+    },
+    {
+      "group": "element-filter",
+      "id": "level N5 + selected 丁 → explanatory empty state",
+      "status": "PASS",
+      "detail": "empty state names the level facet"
+    },
+    {
+      "group": "element-filter",
+      "id": "empty-state action clears ONLY the level facet",
+      "status": "PASS",
+      "detail": "灯 restored; element selection preserved"
+    },
+    {
+      "group": "element-filter",
+      "id": "palette badges equal click results under N5",
+      "status": "PASS",
+      "detail": "木 3/5 (2 hidden); 丁 0/1 (1 hidden)"
+    },
+    {
+      "group": "element-filter",
+      "id": "badge promise holds when clicking 木 under N5",
+      "status": "PASS",
+      "detail": "3 results = badge"
+    },
+    {
+      "group": "element-filter",
+      "id": "Reset all filters restores the catalog",
+      "status": "PASS",
+      "detail": "all 33 shown"
+    },
+    {
+      "group": "element-filter",
+      "id": "keyword miss → explained empty state + reset works",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "element-filter",
+      "id": "zero-count element 金 → accurate zero",
+      "status": "PASS",
+      "detail": "0 relationships disclosed"
+    },
+    {
+      "group": "element-filter",
+      "id": "stale-response guard: rapid typing settles on final query",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "grade-filter",
+      "id": "/mindtree Grade 1 shows count == rendered results",
+      "status": "PASS",
+      "detail": "73 of 100 rendered"
+    },
+    {
+      "group": "grade-filter",
+      "id": "Grade 1 + query combination stays consistent",
+      "status": "PASS",
+      "detail": "1 shown with 木"
+    },
+    {
+      "group": "grade-filter",
+      "id": "empty result shows reset affordance",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "routes",
+      "id": "/mindtree/明 (percent-encoded) loads",
+      "status": "PASS",
+      "detail": "h1=明"
+    },
+    {
+      "group": "routes",
+      "id": "unsupported character shows coverage notice, not a guess",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "routes",
+      "id": "/kanji/灯 (existing detail route) loads",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "routes",
+      "id": "multi-character MindTree route rejects decomposition gracefully",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "learning-journey",
+      "id": "all six stages reachable and marked",
+      "status": "PASS",
+      "detail": "6/6 stages; step labels verified"
+    },
+    {
+      "group": "learning-journey",
+      "id": "Recall reveal/hide toggles the answer",
+      "status": "PASS",
+      "detail": "meaning + component recall verified"
+    },
+    {
+      "group": "learning-journey",
+      "id": "ephemeral self-check stores nothing (no persistence calls)",
+      "status": "PASS",
+      "detail": "no network calls fired"
+    },
+    {
+      "group": "learning-journey",
+      "id": "hidden mnemonic states stay hidden (no story text rendered)",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "explore-context",
+      "id": "neighbor link carries from/via and breadcrumb shows it",
+      "status": "PASS",
+      "detail": "明 → 日 via “component 日…”"
+    },
+    {
+      "group": "explore-context",
+      "id": "component Open link switches character",
+      "status": "PASS",
+      "detail": "opened /mindtree/%E6%97%A5?from=%E6%98%8E&via=component+%E6%97%A5"
+    },
+    {
+      "group": "browser-history",
+      "id": "back returns to the previous character, forward re-enters",
+      "status": "PASS",
+      "detail": "back → 明; forward → context link restored"
+    },
+    {
+      "group": "browser-history",
+      "id": "/kanji list → detail → back keeps history intact",
+      "status": "PASS",
+      "detail": "list ⇄ detail history OK"
+    },
+    {
+      "group": "routes",
+      "id": "stroke-order API fails honestly when local KanjiVG corpus is absent",
+      "status": "PASS",
+      "detail": "404 STROKE_ORDER_UNAVAILABLE (local data/kanjivg corpus not provisioned)"
+    },
+    {
+      "group": "responsive",
+      "id": "/kanji @ mobile-375",
+      "status": "PASS",
+      "detail": "scrollWidth=375 ≤ 375"
+    },
+    {
+      "group": "responsive",
+      "id": "/kanji @ tablet-768",
+      "status": "PASS",
+      "detail": "scrollWidth=768 ≤ 768"
+    },
+    {
+      "group": "responsive",
+      "id": "/kanji @ desktop-1280",
+      "status": "PASS",
+      "detail": "scrollWidth=1280 ≤ 1280"
+    },
+    {
+      "group": "responsive",
+      "id": "mobile nav exposes the MindTree entry",
+      "status": "PASS",
+      "detail": "visible mobile nav: /, /dictionary, /kanji, /mindtree, /review/today"
+    },
+    {
+      "group": "responsive",
+      "id": "/mindtree catalog @ mobile-375 has no overflow",
+      "status": "PASS",
+      "detail": "scrollWidth=375 ≤ 375"
+    },
+    {
+      "group": "responsive",
+      "id": "/mindtree/明 @ mobile has no overflow",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "keyboard",
+      "id": "Tab traversal reaches filters, element palette and cards",
+      "status": "PASS",
+      "detail": "filters + palette + cards keyboard-reachable"
+    },
+    {
+      "group": "keyboard",
+      "id": "Enter activates a focused element button (aria-pressed toggles)",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "keyboard",
+      "id": "focus-visible ring classes present on interactive controls",
+      "status": "PASS",
+      "detail": "0 missing"
+    },
+    {
+      "group": "production-boundary",
+      "id": "/mindtree/studio returns 404 in production",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "production-boundary",
+      "id": "studio preview API returns 404 in production",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "group": "production-boundary",
+      "id": "AI candidate overlay text absent from learner HTML",
+      "status": "PASS",
+      "detail": "一 page clean"
+    },
+    {
+      "group": "production-boundary",
+      "id": "legacy AI-revised stories absent from /kanji detail",
+      "status": "PASS",
+      "detail": "男 + 箸 routes 200, candidate absent"
+    },
+    {
+      "group": "production-boundary",
+      "id": "no DB write attempted during acceptance",
+      "status": "PASS",
+      "detail": "GET-only script"
+    },
+    {
+      "group": "console-network",
+      "id": "no unexpected page errors, console errors or failed requests",
+      "status": "PASS",
+      "detail": "clean (environment:16, prefetch-abort:127, local-corpus:2)"
+    }
+  ],
+  "consoleAndNetwork": {
+    "consoleErrors": [
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED",
+      "Failed to load resource: net::ERR_CONNECTION_CLOSED"
+    ],
+    "pageErrors": [],
+    "failedRequests": [
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%8F%96?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B4%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%93%A1?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%80?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%83?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%89?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%8A?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%A3%AE?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E4%BC%91?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%9E%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%80?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%83?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%89?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%8A?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%80?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%83?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%89?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%8A?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%8B?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%AD?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B9%9D?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%BA%8C?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%BA%94?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%BA%BA?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%BC%91?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%85%88?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%85%A5?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%85%AB?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%87%BA?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%8A%9B?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%B7%9D?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E6%9C%A8?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E5%85%AD?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E6%97%A5?from=%E6%98%8E&via=component+%E6%97%A5&_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=WghBdO6aKCUCxFQr — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=KQ-7l1dckzNK5aV8 — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=OTkWjLINbtTfLcdt — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=zZVyn7fHyYWGlpZj — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E7%81%AF?_rsc=OTkWjLINbtTfLcdt — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E7%81%AF?_rsc=zZVyn7fHyYWGlpZj — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=T-gmGvd2764LGhgm — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=0rlDNw08SGBHycij — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E6%97%A5?from=%E6%98%8E&via=component+%E6%97%A5&_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E6%99%82?from=%E6%98%8E&via=shared+learning+relation+from+%E6%98%8E&_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E7%99%BD?from=%E6%98%8E&via=shared+learning+relation+from+%E6%98%8E&_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E7%99%BE?from=%E6%98%8E&via=shared+learning+relation+from+%E6%98%8E&_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E6%97%A5?from=%E6%98%8E&via=component+%E6%97%A5&_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%8F%96?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B4%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%93%A1?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E6%8B%9B?_rsc=AapjHq_ryhFv9Ijk — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%8F%96?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B4%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%93%A1?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%80?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%83?_rsc=3yMH9nZF0lzTwoly — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/mindtree/%E4%B8%83?_rsc=Z54fP1_KBd4RAZVp — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=9xnW0A4stLf_8fQA — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%98%8E?_rsc=x4_0caH2MKX6vlPs — net::ERR_ABORTED",
+      "GET https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+JP:wght@400;500;700;900&family=Noto+Serif+JP:wght@600;900&display=swap — net::ERR_CONNECTION_CLOSED",
+      "GET http://127.0.0.1:3100/?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=rOS0dG8rsj4pU_cW — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%8B%9B?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%B3%A0?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B1%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E7%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%8F%96?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%B4%97?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E5%93%A1?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED",
+      "GET http://127.0.0.1:3100/kanji/%E6%81%AF?_rsc=MvfhZqvkeNtt76P3 — net::ERR_ABORTED"
+    ],
+    "badResponses": [
+      "404 http://127.0.0.1:3100/api/kanji/%E7%81%AF/stroke-order",
+      "404 http://127.0.0.1:3100/api/kanji/%E6%8B%9B/stroke-order"
+    ]
+  },
+  "classifiedFailureBuckets": {
+    "environmentBlockedBySandboxEgress": 16,
+    "benignPrefetchCancellation": 127,
+    "localDataNotProvisioned": 2
+  }
+}
