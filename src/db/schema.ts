@@ -584,9 +584,11 @@ export const kanjiComposition = pgTable("kanji_composition", {
  *
  * XP is an APPEND-ONLY LEDGER, never a mutable counter.
  *   - Totals, levels and streak bonuses are DERIVED by summing events.
- *   - `dedupeKey` carries a UNIQUE constraint, so replaying the same
- *     domain event (e.g. a synced review from Phase 11.4) can never
- *     award XP twice.
+ *   - `dedupeKey` is UNIQUE **per user** (`user_id`, `dedupe_key`), so
+ *     replaying the same domain event (e.g. a synced review from Phase 11.4)
+ *     can never award XP twice — while the same logical key used by a
+ *     different learner is an independent event (Phase 26A: a global unique
+ *     key let one user's row suppress, and disclose, another user's award).
  *   - Reversals are recorded via `revokedAt`, not by deleting rows,
  *     so the ledger stays auditable.
  *
@@ -615,7 +617,13 @@ export const xpEvents = pgTable("xp_events", {
    * Idempotency key derived from the source entity,
    * e.g. "review:rev-123" or "jlpt:session-9".
    */
-  dedupeKey: text("dedupe_key").unique(),
+  /**
+   * Idempotency key, scoped to `user_id` by
+   * `idx_xp_events_user_dedupe_key_unique` below. Deliberately NOT globally
+   * unique: keys such as `content.read:<sourceId>` and `knowledge:<cardId>`
+   * are identical for every learner studying the same item.
+   */
+  dedupeKey: text("dedupe_key"),
 
   /** Provenance back into the originating domain. */
   sourceType: text("source_type").notNull(),
@@ -633,7 +641,16 @@ export const xpEvents = pgTable("xp_events", {
 
   occurredAt: timestamp("occurred_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+},
+  // Phase 26A: deduplication is per user. PostgreSQL treats NULLs as distinct,
+  // so keyless events remain unconstrained exactly as before.
+  (table) => [
+    uniqueIndex("idx_xp_events_user_dedupe_key_unique").on(
+      table.userId,
+      table.dedupeKey
+    ),
+  ]
+);
 
 /**
  * Mirror of the in-code XP rule registry — provenance and admin

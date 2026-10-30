@@ -41,11 +41,22 @@ export async function GET(request: NextRequest) {
       total: data.total,
       questions: data.questions,
     });
-  } catch (error: any) {
-    console.error("GET /api/questions error:", error);
+  } catch (error) {
+    // A failing query's message carries the SQL text and its bound parameters
+    // (e.g. `Failed query: select ... params: ...`). Neither the response nor
+    // the log may echo it: clients get a stable message, operators get the
+    // error class only. Same convention as GET /api/search (PR #19).
+    console.error(
+      "GET /api/questions failed:",
+      error instanceof Error ? error.name : "unknown error"
+    );
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch questions" },
-      { status: 500 }
+      {
+        success: false,
+        error: "Failed to fetch questions",
+        code: "INTERNAL_ERROR",
+      },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

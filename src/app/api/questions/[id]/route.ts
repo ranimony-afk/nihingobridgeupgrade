@@ -22,11 +22,20 @@ export async function GET(
       success: true,
       question,
     });
-  } catch (error: any) {
-    console.error("GET /api/questions/[id] error:", error);
+  } catch (error) {
+    // Never surface driver text: a failed query message includes the SQL and
+    // its bound parameters. Clients get a stable message, operators the class.
+    console.error(
+      "GET /api/questions/[id] failed:",
+      error instanceof Error ? error.name : "unknown error"
+    );
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch question" },
-      { status: 500 }
+      {
+        success: false,
+        error: "Failed to fetch question",
+        code: "INTERNAL_ERROR",
+      },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }
