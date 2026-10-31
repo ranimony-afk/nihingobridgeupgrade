@@ -24,15 +24,22 @@
  * 20. Compounds linked via dictionary_entries.kanji_characters without duplicating dictionary rows
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { db } from "@/db";
 import { kanjiEntries, dictionaryEntries } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { AUTHORITATIVE_SOURCE_REGISTRY } from "@/services/knowledge/provenance";
 import { KanjiReadingService } from "@/services/knowledge/kanjiReadingService";
 import { assertSafeDatabaseUrl, executeKanjidicIngestion } from "../scripts/ingest-kanjidic2";
+import { requireTrustedDatabaseExecutor } from "./helpers/trustedDatabaseExecutor";
 
 describe("Phase 14.4C: Controlled KANJIDIC2 Canonical Ingestion", () => {
+  beforeAll(() => {
+    // R1S: blocked before any database access. The suite ingests the canonical
+    // KANJIDIC2 corpus, and no trusted runner-to-executor adapter exists.
+    requireTrustedDatabaseExecutor("tests/kanjidic2-canonical-ingestion.test.ts");
+  });
+
   it("1. validates local PostgreSQL safety (127.0.0.1 loopback only)", () => {
     const dbUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/app_db";
     const res = assertSafeDatabaseUrl(dbUrl);
