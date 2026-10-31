@@ -134,6 +134,7 @@ jobs:
             tests/kanji-detail-learning-experience.test.ts \
             tests/kanji-stroke-order-panel.test.ts \
             tests/kanji-stroke-order-route.test.ts \
+            tests/kanji-canonical-write-denial.test.ts \
             tests/dictionary-etl-foundation.test.ts \
             tests/dry-run-jmdict.test.ts \
             tests/full-jmdict-ingestion.test.ts \
