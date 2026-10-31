@@ -143,8 +143,28 @@ type SeedExecutor = Pick<typeof db, "select" | "insert">;
 
 export class KnowledgeService {
   /* ============================================================
-   * SEEDING
+   * SEEDING — first-party bootstrap ONLY
    * ============================================================ */
+  /**
+   * First-party knowledge bootstrap. Writes `kana_entries`, `kanji_radicals`,
+   * `kanji_entries` and `kanji_composition` from the static datasets.
+   *
+   * SECURITY INVARIANT (R1S follow-up): this is a **bootstrap operation**, not
+   * a read helper. It must never be invoked from a request path.
+   *
+   * `kanji_radicals`, `kanji_entries` and `kanji_composition` are canonical
+   * Kanji tables. A `GET` is not authorization to write them, and the sole
+   * previous precondition here — "`kana_entries` is empty" — was database
+   * state, not an authority decision. Every read method in this class used to
+   * call this before querying, which let an anonymous request seed canonical
+   * rows into whatever database `DATABASE_URL` named.
+   *
+   * The only remaining production caller is the explicit, target-classified
+   * `seedDictionaryFixturesForDisposableDatabase()` operation
+   * (`src/services/dictionary/fixtureSetup.ts`), which refuses production and
+   * requires an explicitly classified disposable database.
+   * `tests/kanji-read-path-write-isolation.test.ts` enforces this invariant.
+   */
   static async ensureSeeded(executor: SeedExecutor = db): Promise<void> {
     const [row] = await executor
       .select({ count: sql<number>`cast(count(*) as int)` })
@@ -225,8 +245,6 @@ export class KnowledgeService {
     script?: "hiragana" | "katakana";
     category?: string;
   }): Promise<{ groups: KanaChartGroup[]; total: number; sourceRef: string }> {
-    await this.ensureSeeded();
-
     const conditions = [];
     if (params.script) conditions.push(eq(kanaTable.script, params.script));
     if (params.category) conditions.push(eq(kanaTable.category, params.category));
@@ -271,7 +289,6 @@ export class KnowledgeService {
   }
 
   static async searchKana(keyword: string): Promise<KanaEntry[]> {
-    await this.ensureSeeded();
     const rows = await db
       .select()
       .from(kanaTable)
@@ -282,7 +299,6 @@ export class KnowledgeService {
   }
 
   static async getKanaById(id: string): Promise<KanaEntry | null> {
-    await this.ensureSeeded();
     const [row] = await db.select().from(kanaTable).where(eq(kanaTable.id, id)).limit(1);
     return row ? toKanaEntry(row) : null;
   }
@@ -338,8 +354,6 @@ export class KnowledgeService {
     /** Zero-result classification when no element facet is active. */
     emptyKind?: KanjiCatalogFilterResult<ElementFilterKanjiRecord>["emptyKind"];
   }> {
-    await this.ensureSeeded();
-
     const state = normalizeKanjiFilterState({
       level: params.level,
       elementId: params.elementId,
@@ -420,8 +434,6 @@ export class KnowledgeService {
      * element will show under these level/keyword facets. */
     facets?: { level?: string; keyword?: string },
   ): Promise<ElementSummary[]> {
-    await this.ensureSeeded();
-
     const rows = category
       ? await db
           .select()
@@ -474,8 +486,6 @@ export class KnowledgeService {
    * of other kanji that share those components (BFS to depth 2).
    * ============================================================ */
   static async buildMindTree(character: string): Promise<MindTree | null> {
-    await this.ensureSeeded();
-
     const [centre] = await db
       .select()
       .from(kanjiTable)
@@ -623,8 +633,6 @@ export class KnowledgeService {
   }
 
   static async getKanjiDetail(character: string) {
-    await this.ensureSeeded();
-
     const [row] = await db
       .select()
       .from(kanjiTable)
@@ -688,8 +696,6 @@ export class KnowledgeService {
     front: string;
     back: string;
   } | null> {
-    await this.ensureSeeded();
-
     const [kanaRow] = await db
       .select()
       .from(kanaTable)
@@ -745,8 +751,6 @@ export class KnowledgeService {
   }
 
   static async addKanjiToSrs(input: { character: string; userId?: string }) {
-    await this.ensureSeeded();
-
     const [kanji] = await db
       .select()
       .from(kanjiTable)
@@ -818,8 +822,6 @@ export class KnowledgeService {
     script: "hiragana" | "katakana";
     userId?: string;
   }): Promise<{ created: number; skipped: number; deckId: string }> {
-    await this.ensureSeeded();
-
     const rows = await db
       .select()
       .from(kanaTable)
@@ -874,8 +876,6 @@ export class KnowledgeService {
    * STATS
    * ============================================================ */
   static async getKnowledgeStats() {
-    await this.ensureSeeded();
-
     const [kana] = await db
       .select({ count: sql<number>`cast(count(*) as int)` })
       .from(kanaTable);

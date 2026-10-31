@@ -5,7 +5,6 @@ import {
   type KnowledgeDomain,
 } from "@/services/ai/knowledgeRetriever";
 import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
-import { KnowledgeService } from "@/services/knowledge/knowledgeService";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +43,15 @@ export async function GET(request: NextRequest) {
 
   try {
     // Knowledge must exist before it can be retrieved.
-    await Promise.all([
-      KnowledgeCorpusService.ensureSeeded(),
-      KnowledgeService.ensureSeeded(),
-    ]);
+    //
+    // R1S follow-up: only the corpus (dictionary / grammar / sentence) tables
+    // are bootstrapped here. Canonical Kanji rows are NOT seeded from a
+    // request — the Kanji knowledge seeder writes `kanji_radicals`,
+    // `kanji_entries` and `kanji_composition`, and an anonymous GET is not
+    // authorization to write canonical tables. First-party knowledge is
+    // bootstrapped by the explicit, target-classified
+    // `seedDictionaryFixturesForDisposableDatabase()` operation instead.
+    await KnowledgeCorpusService.ensureSeeded();
 
     if (entityDomain && entityId) {
       const entityResult = await KnowledgeRetriever.retrieveEntity(entityDomain, entityId);
