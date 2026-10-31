@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { MindTreeCatalogItem } from "@/lib/kanji/kanjiMindtreeCatalog";
-import { filterMindTreeCatalogItems, MINDTREE_CATALOG_FILTERS, type MindTreeCatalogFilter } from "@/lib/kanji/mindtreeCatalogSearch";
+import { pageMindTreeCatalogItems, MINDTREE_CATALOG_FILTERS, type MindTreeCatalogFilter } from "@/lib/kanji/mindtreeCatalogSearch";
 
 export function KanjiMindTreeCatalog({ items, showStudio = false }: { items: MindTreeCatalogItem[]; showStudio?: boolean }) {
   const [query, setQuery] = useState("");
   const [level, setLevel] = useState<MindTreeCatalogFilter>("all");
-  const filteredItems = useMemo(
-    () => filterMindTreeCatalogItems(items, query, level),
-    [items, level, query],
+  const [pageNumber, setPageNumber] = useState(1);
+  const page = useMemo(
+    () => pageMindTreeCatalogItems(items, query, level, pageNumber),
+    [items, level, query, pageNumber],
   );
 
   return (
@@ -50,7 +51,7 @@ export function KanjiMindTreeCatalog({ items, showStudio = false }: { items: Min
               <input
                 type="search"
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => { setQuery(event.target.value); setPageNumber(1); }}
                 placeholder="Search by kanji, meaning, or reading"
                 className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm outline-none placeholder:text-slate-400 focus:border-rose-500 focus:ring-2 focus:ring-rose-200"
               />
@@ -62,7 +63,7 @@ export function KanjiMindTreeCatalog({ items, showStudio = false }: { items: Min
                   key={item}
                   type="button"
                   aria-pressed={level === item}
-                  onClick={() => setLevel(item)}
+                  onClick={() => { setLevel(item); setPageNumber(1); }}
                   className={`min-h-10 rounded-lg px-3 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2 ${
                     level === item ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
@@ -74,12 +75,12 @@ export function KanjiMindTreeCatalog({ items, showStudio = false }: { items: Min
           </div>
 
           <p className="mt-4 text-xs font-medium text-slate-500" aria-live="polite">
-            Showing {filteredItems.length} of {items.length} characters.
+            Showing {page.items.length} on this page · {page.total} matches of {items.length} characters.
           </p>
 
-          {filteredItems.length > 0 ? (
+          {page.total > 0 ? (
             <ul className="mt-3 grid list-none gap-3 p-0 grid-cols-[minmax(0,1fr)] sm:grid-cols-2 lg:grid-cols-3">
-              {filteredItems.map((item) => (
+              {page.items.map((item) => (
                 <li key={item.character}>
                   <Link
                     href={`/mindtree/${encodeURIComponent(item.character)}`}
@@ -109,8 +110,25 @@ export function KanjiMindTreeCatalog({ items, showStudio = false }: { items: Min
             <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
               <p className="font-bold text-slate-800">No supported character matches that search.</p>
               <p className="mt-1 text-sm text-slate-600">Try another kanji, meaning, or reading, or reset the active filter.</p>
-              <button type="button" onClick={() => { setQuery(""); setLevel("all"); }} className="mt-3 min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">Clear search and filters</button>
+              <button type="button" onClick={() => { setQuery(""); setLevel("all"); setPageNumber(1); }} className="mt-3 min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2">Clear search and filters</button>
             </div>
+          )}
+          {page.pageCount > 1 && (
+            <nav aria-label="Catalog pagination" className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={page.page === 1}
+                onClick={() => setPageNumber(page.page - 1)}
+                className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600"
+              >Previous</button>
+              <span className="text-sm text-slate-600" aria-live="polite">Page {page.page} of {page.pageCount}</span>
+              <button
+                type="button"
+                disabled={page.page === page.pageCount}
+                onClick={() => setPageNumber(page.page + 1)}
+                className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600"
+              >Next</button>
+            </nav>
           )}
         </section>
 
