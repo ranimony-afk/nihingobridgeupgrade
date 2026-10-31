@@ -1,19 +1,9 @@
-# Phase 13 Gate Zero — deterministic CI for the canonical NihongoBridge repository.
+# Active GitHub Actions workflow for deterministic CI in the canonical NihongoBridge repository.
 #
-# ACTIVATION REQUIRED (deliberate path, not a mistake):
-#   GitHub forbids a GitHub App installation from creating or updating files
-#   under `.github/workflows/` unless it is granted the `workflows` permission,
-#   and the Arena agent token is not. `git push` is rejected with
-#   "refusing to allow a GitHub App to create or update workflow".
-#   This file is therefore staged at a reviewable, pushable path. A maintainer
-#   enables it with exactly one command (it is otherwise byte-identical):
-#
-#     mkdir -p .github/workflows && git mv infra/github-actions-ci.yml .github/workflows/ci.yml && git commit -m "ci: activate Gate Zero workflow"
-#
-#   Every step in this workflow HAS been executed and passed locally against a
-#   real PostgreSQL 18.4 instance during Gate Zero — see
-#   reports/gates/PHASE-13-GATE-ZERO-REMEDIATION.md §8/§9. What has NOT been
-#   observed is this file being *scheduled* by GitHub Actions.
+# This workflow is scheduled by GitHub Actions for pull requests, pushes to
+# main, and manual workflow_dispatch runs. The CI run associated with PR #27
+# has confirmed that this workflow executes on GitHub, including the canonical
+# Kanji write-denial test file.
 #
 # Purpose (reports/gates/PHASE-13-GATE-ZERO-REMEDIATION.md §8):
 #   prove that `npm ci` and the existing Vitest suite run reproducibly from a
@@ -134,6 +124,7 @@ jobs:
             tests/kanji-detail-learning-experience.test.ts \
             tests/kanji-stroke-order-panel.test.ts \
             tests/kanji-stroke-order-route.test.ts \
+            tests/kanji-canonical-write-denial.test.ts \
             tests/dictionary-etl-foundation.test.ts \
             tests/dry-run-jmdict.test.ts \
             tests/full-jmdict-ingestion.test.ts \

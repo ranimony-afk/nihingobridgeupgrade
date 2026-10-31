@@ -9,9 +9,15 @@ import {
   PILOT_RADICALS,
 } from "@/etl/kanji";
 import { KnowledgeService } from "@/services/knowledge/knowledgeService";
+import { requireTrustedDatabaseExecutor } from "./helpers/trustedDatabaseExecutor";
 
 describe("Phase 6: Kanji Knowledge Expansion ETL", () => {
   beforeAll(async () => {
+    // R1S: this suite seeds canonical rows (KnowledgeService.ensureSeeded) and
+    // formerly ran the shared Kanji ETL loaders for real. It must fail closed
+    // before any database access unless a trusted runner-provided executor
+    // vouches for this run. No such adapter exists, so the suite is blocked.
+    requireTrustedDatabaseExecutor("tests/kanji-expansion.test.ts");
     // Ensure baseline is seeded first
     await KnowledgeService.ensureSeeded();
   });
