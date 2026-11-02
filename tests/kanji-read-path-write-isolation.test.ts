@@ -32,8 +32,8 @@
  * The assertions are deliberately about *absence of a write*, so they hold
  * even on an empty database.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -179,6 +179,32 @@ describe("R1S-follow-up: no request path invokes the canonical Kanji seeder", ()
       expect(code).toContain(token);
       // …and absent from every request-reachable method.
       expect(outsideBootstrap).not.toContain(token);
+    }
+  });
+
+  it("no module under src/app can reach the controlled provisioning writer", () => {
+    // The operator provisioner (scripts/provision-kanji-corpus.ts, SQL boundary
+    // in src/services/knowledge/canonicalStore.ts) is a deliberate write path.
+    // Request handling must never be able to become one: no route or page may
+    // import it, directly or transitively through a re-export.
+    const roots = [resolve(repoRoot, "src/app")];
+    const forbidden = ["canonicalStore", "provision-kanji-corpus"];
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) files.push(full);
+      }
+    };
+    for (const root of roots) walk(root);
+
+    expect(files.length).toBeGreaterThan(20);
+    for (const file of files) {
+      const code = stripComments(readFileSync(file, "utf8"));
+      for (const token of forbidden) {
+        expect(`${file}: ${code}`).not.toContain(token);
+      }
     }
   });
 

@@ -1,4 +1,4 @@
-import { db } from "@/db";
+import { db, pool } from "@/db";
 import {
   kanaEntries as kanaTable,
   kanjiEntries as kanjiTable,
@@ -16,6 +16,18 @@ import {
   KANJI,
   KANJI_SOURCE_REF,
 } from "@/data/kanji";
+import {
+  BOOTSTRAP_EXPECTATIONS,
+  CanonicalBootstrapStateError,
+  decideKanjiBootstrap,
+  type KanjiBootstrapCounts,
+} from "./canonicalBootstrapGuard";
+import {
+  CORPUS_SOURCE_REF,
+  classifyCanonicalState,
+  type CanonicalStateReport,
+} from "./canonicalDataset";
+import { readCanonicalRows, readKanaCounts, type Queryable } from "./canonicalStore";
 import {
   filterKanjiCatalog,
   normalizeKanjiFilterState,
@@ -166,11 +178,17 @@ export class KnowledgeService {
    * `tests/kanji-read-path-write-isolation.test.ts` enforces this invariant.
    */
   static async ensureSeeded(executor: SeedExecutor = db): Promise<void> {
-    const [row] = await executor
-      .select({ count: sql<number>`cast(count(*) as int)` })
-      .from(kanaTable);
+    // State is evaluated against the canonical Kanji tables, not against
+    // `kana_entries`. A database with 208 kana rows and an incomplete Kanji
+    // foundation is *partially provisioned*, and bootstrap must neither treat
+    // it as done nor repair it: it refuses and reports.
+    const counts = await KnowledgeService.readKanjiBootstrapCounts(executor);
+    const decision = decideKanjiBootstrap(counts);
 
-    if ((row?.count ?? 0) > 0) return;
+    if (decision.action === "skip") return;
+    if (decision.action === "refuse") {
+      throw new CanonicalBootstrapStateError(decision.reason, counts);
+    }
 
     /* ---- Kana ---- */
     const kana = buildKanaDataset();
@@ -235,6 +253,92 @@ export class KnowledgeService {
           orderIndex: c.orderIndex,
         })
         .onConflictDoNothing();
+    }
+
+    /* ---- Post-bootstrap self-check (read-only) ---- */
+    const after = await KnowledgeService.readKanjiBootstrapCounts(executor);
+    if (
+      after.mindtreeKanji !== BOOTSTRAP_EXPECTATIONS.mindtreeKanji ||
+      after.radicals < BOOTSTRAP_EXPECTATIONS.mindtreeRadicals ||
+      after.composition < BOOTSTRAP_EXPECTATIONS.mindtreeComposition
+    ) {
+      throw new CanonicalBootstrapStateError(
+        `bootstrap finished but the Mind Tree dataset is still incomplete ` +
+          `(kanji=${after.mindtreeKanji}/${BOOTSTRAP_EXPECTATIONS.mindtreeKanji}, ` +
+          `elements=${after.radicals}/${BOOTSTRAP_EXPECTATIONS.mindtreeRadicals}, ` +
+          `composition=${after.composition}/${BOOTSTRAP_EXPECTATIONS.mindtreeComposition}); ` +
+          `an existing row likely occupies a canonical character or id. No automatic repair is attempted.`,
+        after
+      );
+    }
+  }
+
+  /**
+   * Canonical Kanji table counts used by the bootstrap decision.
+   *
+   * Read-only. `kana` is reported for diagnostics only: it is not, and must not
+   * become, the condition that decides whether Kanji data is provisioned.
+   */
+  static async readKanjiBootstrapCounts(
+    executor: SeedExecutor = db
+  ): Promise<KanjiBootstrapCounts> {
+    const [kana] = await executor
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(kanaTable);
+    const [kanji] = await executor
+      .select({
+        total: sql<number>`cast(count(*) as int)`,
+        mindtree: sql<number>`cast(count(*) filter (where ${kanjiTable.sourceRef} = ${KANJI_SOURCE_REF}) as int)`,
+        corpus: sql<number>`cast(count(*) filter (where ${kanjiTable.sourceRef} = ${CORPUS_SOURCE_REF}) as int)`,
+      })
+      .from(kanjiTable);
+    const [radicals] = await executor
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(radicalsTable);
+    const [composition] = await executor
+      .select({ count: sql<number>`cast(count(*) as int)` })
+      .from(compositionTable);
+
+    const kanjiTotal = kanji?.total ?? 0;
+    const mindtreeKanji = kanji?.mindtree ?? 0;
+    const corpusKanji = kanji?.corpus ?? 0;
+
+    return {
+      kana: kana?.count ?? 0,
+      kanjiTotal,
+      mindtreeKanji,
+      corpusKanji,
+      otherKanji: Math.max(0, kanjiTotal - mindtreeKanji - corpusKanji),
+      radicals: radicals?.count ?? 0,
+      composition: composition?.count ?? 0,
+    };
+  }
+
+  /**
+   * Read-only classification of the canonical Kanji foundation.
+   *
+   * Returns one of FULLY_PROVISIONED / EMPTY / PARTIALLY_PROVISIONED /
+   * INCONSISTENT / UNKNOWN. It never writes and never seeds: reporting a gap is
+   * an operator decision, not an application action.
+   */
+  static async getCanonicalKanjiState(): Promise<CanonicalStateReport> {
+    const expectedKana = buildKanaDataset().length;
+    const queryable: Queryable = {
+      query: async (text, values) => {
+        const result = await pool.query(text, values as unknown[]);
+        return { rows: result.rows as never[] };
+      },
+    };
+
+    try {
+      const [observed, kana] = await Promise.all([
+        readCanonicalRows(queryable),
+        readKanaCounts(queryable),
+      ]);
+      return classifyCanonicalState({ kana, observed, expectedKana });
+    } catch {
+      // Never echo a driver error here: it can carry the connection string.
+      return classifyCanonicalState({ kana: null, observed: null, expectedKana });
     }
   }
 
