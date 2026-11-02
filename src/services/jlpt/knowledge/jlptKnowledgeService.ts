@@ -11,7 +11,6 @@ import {
 import { eq, sql, desc, and } from "drizzle-orm";
 import type { JLPTLevel } from "@/types/quiz";
 import { KnowledgeCorpusService } from "@/services/knowledge/corpusService";
-import { KnowledgeService } from "@/services/knowledge/knowledgeService";
 import { TestService } from "@/services/jlpt/testService";
 
 export interface JLPTLevelOverview {
@@ -46,10 +45,16 @@ export interface JLPTUserProgress {
 }
 
 export class JLPTKnowledgeService {
+  /**
+   * Bootstraps the corpus and question-bank tables that the JLPT overview
+   * reads. It deliberately does NOT seed canonical Kanji tables: this method
+   * is reached from anonymous GET routes, and the Kanji knowledge seeder
+   * writes `kanji_radicals` / `kanji_entries` / `kanji_composition`.
+   * See `tests/kanji-read-path-write-isolation.test.ts`.
+   */
   static async ensureInitialized(): Promise<void> {
     await Promise.all([
       KnowledgeCorpusService.ensureSeeded(),
-      KnowledgeService.ensureSeeded(),
       TestService.ensureSeeded(),
     ]);
   }
