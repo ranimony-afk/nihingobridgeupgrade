@@ -1,6 +1,8 @@
 # ADR-0002 — Controlled provisioning of first-party canonical Kanji data
 
 - Status: **Accepted for implementation; execution requires operator authorization**
+- Owner-approved acceptance target: **45 Kanji / 63 elements / 90 composition edges**, kana 208
+- Release separation and gates: `reports/release/PR-SEPARATION-AND-RELEASE-PACKAGE.md`
 - Date: 2026-11-02
 - Supersedes: nothing. Complements PR #27 (canonical write denial) and PR #29
   (no request-time lazy seeding).
@@ -108,6 +110,13 @@ The provisioning run is owned by the operator named in `--operator` and the appr
 named in the change record. No automated system (CI, cron, route, deploy hook) triggers
 it. The application's ongoing responsibility is limited to *reporting* state via
 `KnowledgeService.getCanonicalKanjiState()`.
+
+### Release separation
+
+This ADR and its implementation ship as a **stacked PR** on the narrow request-path fix
+(`c52ea82`), not independently on `main`: the bootstrap decision is only safe once request paths stop
+calling `ensureSeeded()`, and the forward guard commit edits the isolation test that PR #29 creates.
+Dependency matrix and exact integration sequence: `reports/release/PR-SEPARATION-AND-RELEASE-PACKAGE.md`.
 
 ### Interaction with PR #27 and PR #29
 

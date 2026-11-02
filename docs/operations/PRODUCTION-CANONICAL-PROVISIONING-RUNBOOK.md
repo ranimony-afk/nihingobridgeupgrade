@@ -3,6 +3,9 @@
 Status: **design + tooling ready; execution is a separately authorized operator action.**
 Nothing in this document authorizes a production write by itself.
 
+Owner-approved acceptance target: **45 Kanji / 63 elements / 90 composition edges**, kana fixed at
+**208**. Expected transition: 33 → 45 headwords, 55 → 63 elements, 71 → 90 edges, kana unchanged.
+
 Scope of the tool: `scripts/provision-kanji-corpus.ts`. It inserts the missing rows of
 one first-party dataset (`kanji-corpus-pilot` by default). It never updates, deletes or
 truncates a row, never runs migrations, and never touches `kana_entries`,
@@ -43,6 +46,12 @@ A fully provisioned first-party foundation is therefore **45 headwords, 63 eleme
    `SELECT` on `kana_entries`; and `SELECT` on `to_regclass` (default for public).
    It must **not** hold `UPDATE`, `DELETE`, `TRUNCATE`, `CREATE`, or ownership of the
    schema. Do **not** use a Supabase `service_role` key or any general admin credential.
+
+   This grant set is **proven sufficient and proven non-mutating** by
+   `tests/kanji-canonical-provisioning.test.ts`: a role with exactly these privileges runs the whole
+   operation successfully, and `UPDATE` / `DELETE` / `TRUNCATE` / `ALTER TABLE` against
+   `kanji_entries` are all denied to it. A `SELECT`-only role fails closed with zero rows written.
+   The tool itself issues no statement capable of changing an existing row.
 4. **Backup / recovery expectation verified by the operator** — see §3. This runbook
    does not assert that a backup exists.
 5. **Read-only preflight passed** (§4) against the exact target, with the flags recorded
@@ -85,6 +94,10 @@ commit and the post-commit verification).
 export DATABASE_URL='<least-privilege DSN — never paste into a ticket or chat>'
 npx tsx scripts/provision-kanji-corpus.ts --mode=verify
 ```
+
+`--mode=verify` first checks that **all four** canonical tables exist (`kana_entries`,
+`kanji_radicals`, `kanji_entries`, `kanji_composition`). A missing table is reported by name and
+exits 4 — no connection-level guesswork, no partial run.
 
 Exit codes: `0` fully provisioned · `3` partially provisioned · `2` inconsistent ·
 `4` undetermined/schema missing · `1` usage or connection error.
@@ -153,8 +166,9 @@ Mechanics, in order, inside one transaction:
 2. `pg_advisory_xact_lock(7416299504429250983)` — serializes concurrent operators.
 3. Re-read all canonical rows and re-plan against live state.
 4. Refuse on any blocker (no writes performed).
-5. Verify the pre-write invariants, including the kana baseline (`--expected-kana`,
-   default 208).
+5. Verify the kana baseline **before the first INSERT** (`--expected-kana`, default 208). A mismatch
+   is `KANA_BASELINE_MISMATCH`: the operator is looking at a database the change record does not
+   describe, and nothing is written.
 6. Insert only the missing rows: 8 elements → 12 headwords → 19 edges.
 7. Re-read and validate: dataset complete, no duplicate ids/characters, no dangling
    composition edge, no dangling `primary_radical_id`, provenance present.
@@ -241,3 +255,29 @@ parameter that permits partial or conflicting provisioning.
 
 No step in this repository runs the provisioner automatically. It is not wired into CI,
 a route handler, a cron job or a deployment hook.
+
+---
+
+## 12. Mapping to the required operator steps
+
+| Required step | Where it is done |
+|---|---|
+| 1. Approved change record | §2.1 — id passed as `--approval-ref` |
+| 2. Verified least-privilege role | §2.3 (proven by `tests/kanji-canonical-provisioning.test.ts`) |
+| 3. Backup and restore readiness | §3 |
+| 4. Read-only preflight | §4 (`--mode=verify`, READ ONLY transaction) |
+| 5. Four canonical table counts | §4 (verify output + SQL console block) |
+| 6. Complete provenance breakdown | §4 (`GROUP BY source_ref` on `kanji_entries`; the tool prints the same) |
+| 7. Target classification | §6 (`target class=… identity=…`, `--accept-target-class`, `--confirm-target`) |
+| 8. Dry-run | §5 |
+| 9. Independent review of planned inserts | §5 — the dry-run lists every id and character |
+| 10. Explicit production approval | §5 approval checkpoint (attach the dry-run audit line) |
+| 11. Controlled transaction | §6 steps 1–9 |
+| 12. Post-execution verification | §7 |
+| 13. Application smoke tests | §7 (kana chart, `/api/kanji/道`, catalogue, Mind Tree decomposition) |
+| 14. Audit evidence retention | §8 |
+| 15. Recovery and escalation | §9; escalate rather than re-run when `--mode=verify` reports a state the planner refuses |
+
+**Stop conditions** (do not proceed, do not improvise): counts differ from the change record;
+`--mode=verify` reports `INCONSISTENT`; the role is not the verified least-privilege role; a backup or
+restore path cannot be confirmed; any audit field in the dry-run differs from the approved plan.

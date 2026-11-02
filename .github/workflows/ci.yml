@@ -159,7 +159,8 @@ jobs:
             tests/xp-ledger-read-authorization.test.ts \
             tests/kanji-read-path-write-isolation.test.ts \
             tests/kanji-canonical-dataset-state.test.ts \
-            tests/kanji-canonical-provisioning.test.ts
+            tests/kanji-canonical-provisioning.test.ts \
+            tests/kanji-provisioning-cli-contract.test.ts
 
       - name: Remove temporary JMdict XML
         if: always()

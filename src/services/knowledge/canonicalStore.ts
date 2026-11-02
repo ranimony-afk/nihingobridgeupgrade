@@ -113,13 +113,34 @@ export const CANONICAL_REQUIRED_TABLES = [
   ...CANONICAL_TABLES,
 ] as const;
 
-/** True when all canonical tables exist; false when the schema is not applied. */
-export async function canonicalSchemaPresent(db: Queryable): Promise<boolean> {
-  const result = await db.query<{ present: string | null }>(
-    `SELECT to_regclass($1) AS present`,
-    ["public.kanji_entries"]
+/**
+ * Which canonical tables the connection can actually see.
+ *
+ * Checks all four: a database where `kanji_entries` exists but `kana_entries`
+ * does not would otherwise fail later, inside a transaction, with a message
+ * that names no table.
+ */
+export async function canonicalSchemaStatus(
+  db: Queryable
+): Promise<{ present: string[]; missing: string[] }> {
+  const result = await db.query<{ name: string; present: string | null }>(
+    `SELECT name, to_regclass('public.' || name) AS present
+       FROM unnest($1::text[]) AS name`,
+    [CANONICAL_REQUIRED_TABLES as unknown as string[]]
   );
-  return Boolean(result.rows[0]?.present);
+  const present: string[] = [];
+  const missing: string[] = [];
+  for (const row of result.rows) {
+    if (row.present) present.push(str(row.name));
+    else missing.push(str(row.name));
+  }
+  return { present, missing };
+}
+
+/** True only when every canonical table exists. */
+export async function canonicalSchemaPresent(db: Queryable): Promise<boolean> {
+  const status = await canonicalSchemaStatus(db);
+  return status.missing.length === 0;
 }
 
 export async function readCanonicalRows(db: Queryable): Promise<CanonicalRows> {
@@ -335,6 +356,18 @@ export async function executeProvisioning(
 
     const before = await readCanonicalRows(db);
     const plan = planProvisioning(dataset, before);
+
+    // Fail before the first INSERT rather than after: the kana baseline is part
+    // of the approved change record, and a mismatch means the operator is
+    // looking at a database they were not authorized for.
+    const kanaBefore = await readKanaCounts(db);
+    if (kanaBefore.total !== options.expectedKana) {
+      throw new CanonicalProvisioningError(
+        "KANA_BASELINE_MISMATCH",
+        `Refusing to provision ${dataset.id}: kana_entries holds ${kanaBefore.total} rows, expected ${options.expectedKana}. No row was written.`,
+        [`kana baseline observed ${kanaBefore.total}, approved ${options.expectedKana}`]
+      );
+    }
 
     if (plan.blockers.length > 0) {
       throw new CanonicalProvisioningError(

@@ -276,6 +276,87 @@ describe("execute", () => {
   });
 });
 
+describe("least-privilege database role", () => {
+  /** The role the runbook prescribes: SELECT + INSERT on the canonical tables only. */
+  async function createProvisioningRole() {
+    await client.exec(`
+      CREATE ROLE nihongo_provisioner LOGIN PASSWORD 'not-a-real-credential';
+      GRANT SELECT, INSERT ON kana_entries, kanji_radicals, kanji_entries, kanji_composition
+        TO nihongo_provisioner;
+    `);
+  }
+
+  it("is sufficient for the whole operation", async () => {
+    await bootstrapMindtree();
+    await createProvisioningRole();
+
+    await client.exec("SET ROLE nihongo_provisioner");
+    try {
+      const result = await executeProvisioning(client, buildCorpusPilotDataset(), {
+        expectedKana: EXPECTED_KANA,
+      });
+      expect(result.outcome).toBe("provisioned");
+      expect(result.inserted).toEqual({ radicals: 8, kanji: 12, composition: 19 });
+
+      const verification = await verifyCanonicalFoundation(client, {
+        expectedKana: EXPECTED_KANA,
+      });
+      expect(verification.status).toEqual([]);
+    } finally {
+      await client.exec("RESET ROLE");
+    }
+  });
+
+  it("cannot update, delete, truncate or alter canonical rows", async () => {
+    await bootstrapMindtree();
+    await createProvisioningRole();
+    await client.exec("SET ROLE nihongo_provisioner");
+    try {
+      await expect(
+        client.query("UPDATE kanji_entries SET meaning = 'tampered' WHERE id = 'kj-mei'")
+      ).rejects.toThrow(/permission denied/i);
+      await expect(
+        client.query("DELETE FROM kanji_entries WHERE id = 'kj-mei'")
+      ).rejects.toThrow(/permission denied/i);
+      await expect(client.query("TRUNCATE kanji_entries")).rejects.toThrow(/permission denied/i);
+      await expect(
+        client.query("ALTER TABLE kanji_entries ADD COLUMN smuggled integer")
+      ).rejects.toThrow(/must be owner|permission denied/i);
+    } finally {
+      await client.exec("RESET ROLE");
+    }
+
+    // Nothing moved: the bootstrap rows are intact.
+    expect(await counts(client)).toEqual({
+      kana_entries: EXPECTED_KANA,
+      kanji_entries: 33,
+      kanji_radicals: 55,
+      kanji_composition: 71,
+    });
+  });
+
+  it("fails closed — with no rows written — when the role can only read", async () => {
+    await bootstrapMindtree();
+    await client.exec(`
+      CREATE ROLE nihongo_reader LOGIN PASSWORD 'not-a-real-credential';
+      GRANT SELECT ON kana_entries, kanji_radicals, kanji_entries, kanji_composition
+        TO nihongo_reader;
+    `);
+    const before = await counts(client);
+
+    await client.exec("SET ROLE nihongo_reader");
+    try {
+      await expect(
+        executeProvisioning(client, buildCorpusPilotDataset(), { expectedKana: EXPECTED_KANA })
+      ).rejects.toThrow(/permission denied/i);
+    } finally {
+      await client.exec("RESET ROLE");
+    }
+
+    expect(await counts(client)).toEqual(before);
+  });
+});
+
 describe("read-only verification", () => {
   it("reports violations on the partial production shape without writing", async () => {
     await bootstrapMindtree();

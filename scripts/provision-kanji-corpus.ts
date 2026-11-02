@@ -34,7 +34,7 @@ import { Client } from "pg";
 import { buildKanaDataset } from "@/data/kana";
 import {
   CanonicalProvisioningError,
-  canonicalSchemaPresent,
+  canonicalSchemaStatus,
   dryRunProvisioning,
   executeProvisioning,
   readCanonicalRows,
@@ -275,10 +275,15 @@ async function run(): Promise<number> {
   }
 
   try {
-    if (!(await canonicalSchemaPresent(client))) {
+    const schemaStatus = await canonicalSchemaStatus(client);
+    if (schemaStatus.missing.length > 0) {
       return emit(
         4,
-        [...header, "schema not found: deploy the Drizzle migrations before provisioning"],
+        [
+          ...header,
+          `schema incomplete — missing canonical table(s): ${schemaStatus.missing.join(", ")}`,
+          "deploy the Drizzle migrations before provisioning; nothing was written",
+        ],
         "schema-missing"
       );
     }
