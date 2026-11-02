@@ -72,11 +72,15 @@ then is an authorized write path the sole remaining way to change canonical Kanj
 
 ## 4. Verified trees (already tested)
 
+Mocks/real-database disclosure: the dataset-state, CLI-contract and isolation suites are database-free
+(the isolation suite mocks `@/db`); the provisioning suite runs against in-process **PGlite**
+(disposable, not PostgreSQL, not production). No test here is production validation.
+
 | Tree | Contents | Commit | Result |
 |---|---|---|---|
-| **T-narrow** | `main + c52ea82` | `c52ea82` | typecheck, lint, build, isolation suite — see §6 |
-| **T-prov** | `main + c52ea82 + 4 provisioning commits` | `bde1811` | full suite + CI run `41385812767` SUCCESS |
-| **T-combined** | `T-prov + PR #27` | merge tree | typecheck, lint, 77 tests |
+| **T-narrow** | `main + c52ea82` | `c52ea82` | typecheck pass, lint 0 errors, isolation suite 11/11; CI run `41186657480` SUCCESS on this exact commit |
+| **T-prov** | `main + c52ea82 + 5 provisioning commits` | `1b6dd9f` | typecheck, lint, build, 59/59 tests; CI on the exact head (see the PR body) |
+| **T-combined** | `T-prov + PR #27` | merge commit `af33f52`, tree `0adbdf6e` (identical in both merge orders) | typecheck pass, lint 0 errors / 3 pre-existing warnings, production build pass, **79/79 tests** (PR #27 denial 20 · dataset-state 22 · provisioning 13 · CLI contract 12 · isolation 12) |
 
 ## 5. Branch/PR creation — blocked here, exact commands provided
 
@@ -115,9 +119,9 @@ Notes:
 |---|---|
 | G1 | PR #27 merged, `main` push CI green |
 | G2 | Narrow #29 merged, `main` push CI green |
-| G3 | Provisioning PR: full CI green on its exact head (currently `bde1811` → run `41385812767` SUCCESS) |
+| G3 | Provisioning PR: full CI green on its exact head (`bde1811` → run `41385812767` SUCCESS; the hardening commit `1b6dd9f` supersedes it and carries its own run) |
 | G4 | Provisioning PR retargeted to `main` after G2 and CI re-run green on the updated head |
-| G5 | Combined tree (#27 + #29 + provisioning) typecheck/lint/test green — verified locally at `3e4b9f1f` (re-verify after any new commit) |
+| G5 | Combined tree (#27 + #29 + provisioning) typecheck/lint/build/test green — verified locally at merge tree `0adbdf6e`, 79/79 tests (re-verify after any new commit) |
 | G6 | Operator preflight: `--mode=verify` on production returns `PARTIALLY_PROVISIONED` at exactly 208 / 33 / 55 / 71 with provenance `first-party:kanji-mindtree:v1 = 33` |
 | G7 | Approved change record + verified least-privilege role + backup/PITR confirmation + dry-run review |
 
