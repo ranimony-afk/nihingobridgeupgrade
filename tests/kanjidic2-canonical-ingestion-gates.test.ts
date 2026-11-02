@@ -37,6 +37,7 @@ import { parseKanjidicCharacterXml } from "../src/etl/kanji/xmlParser";
 import type { RawKanjidicCharacter } from "../src/etl/kanji/types";
 import { KnowledgeService } from "../src/services/knowledge/knowledgeService";
 import { runKanjiETLPipeline } from "../src/etl/kanji/pipeline";
+import { requireTrustedDatabaseExecutor } from "./helpers/trustedDatabaseExecutor";
 
 const UPSTREAM_REF = "upstream:kanjidic2:2023-08";
 const MINDTREE_REF = "first-party:kanji-mindtree:v1";
@@ -119,6 +120,11 @@ let savedExpectedDb: string | undefined;
 let run1Digest = "";
 
 beforeAll(() => {
+  // R1S: refuse before touching the target. This suite runs destructive
+  // fixture SQL (DELETE FROM kanji_entries / kana_entries), seeds canonical
+  // rows, and ingests the canonical corpus. Self-declared disposable markers
+  // below are not proof of a trusted executor, so the suite fails closed.
+  requireTrustedDatabaseExecutor("tests/kanjidic2-canonical-ingestion-gates.test.ts");
   tmpDir = mkdtempSync(join(tmpdir(), "kanjidic2-gates-"));
   savedTargetClass = process.env.NIHONGO_DB_TARGET_CLASS;
   savedExpectedDb = process.env.NIHONGO_DB_EXPECTED_DATABASE;

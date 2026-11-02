@@ -8,6 +8,19 @@ import {
 import { eq } from "drizzle-orm";
 import type { TransformedKanjiData } from "./transformer";
 import type { KanjiETLResult, KanjiRadicalInput, KanjiEntryInput, KanjiCompositionInput } from "./types";
+import { denyCanonicalKanjiWrite } from "./canonicalWriteGate";
+
+/*
+ * R1S — canonical-write denial.
+ *
+ * Every exported loader below is a shared canonical Kanji write boundary.
+ * Each one denies as its FIRST statement: before the Drizzle client is
+ * touched, before any query or transaction, before the caller's array or
+ * `result` object is traversed or mutated, and before any observable effect.
+ *
+ * There is deliberately no approval parameter, environment toggle or
+ * caller-supplied capability. See ./canonicalWriteGate.ts.
+ */
 
 function areStringArraysEqual(a: string[] = [], b: string[] = []): boolean {
   if (a.length !== b.length) return false;
@@ -28,6 +41,7 @@ function areVocabulariesEqual(
 }
 
 export async function ensureKanjiSource(): Promise<void> {
+  denyCanonicalKanjiWrite("ensureKanjiSource");
   const sourceId = "first-party:kanji-corpus:v1";
   const existing = await db
     .select()
@@ -53,6 +67,7 @@ export async function loadKanjiRadicals(
   radicals: KanjiRadicalInput[],
   result: KanjiETLResult
 ): Promise<void> {
+  denyCanonicalKanjiWrite("loadKanjiRadicals");
   for (const rad of radicals) {
     result.radicalsProcessed++;
     // First lookup by ID
@@ -126,6 +141,7 @@ export async function loadKanjiEntries(
   entries: KanjiEntryInput[],
   result: KanjiETLResult
 ): Promise<void> {
+  denyCanonicalKanjiWrite("loadKanjiEntries");
   for (const k of entries) {
     result.kanjiProcessed++;
     // First lookup by ID
@@ -206,6 +222,7 @@ export async function loadKanjiComposition(
   compositions: KanjiCompositionInput[],
   result: KanjiETLResult
 ): Promise<void> {
+  denyCanonicalKanjiWrite("loadKanjiComposition");
   for (const c of compositions) {
     result.compositionProcessed++;
     const compId = `comp-${c.kanjiId}-${c.elementId}-${c.orderIndex}`;
@@ -257,6 +274,8 @@ export async function loadKanjiComposition(
 export async function loadTransformedKanji(
   data: TransformedKanjiData
 ): Promise<KanjiETLResult> {
+  // Aggregate loader: denies independently of any subordinate loader guard.
+  denyCanonicalKanjiWrite("loadTransformedKanji");
   const result: KanjiETLResult = {
     radicalsProcessed: 0,
     radicalsInserted: 0,
