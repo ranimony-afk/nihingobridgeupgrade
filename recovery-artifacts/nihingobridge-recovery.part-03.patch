@@ -1,0 +1,1000 @@
++  expect(response.status).toBe(451);
++  expect(response.headers.get("Cache-Control")).toBe("no-store");
++  const text = await response.text();
++  expect(text).toContain(genericMessage);
++  expect(text).not.toMatch(/KANJIDIC2|KanjiVG|sourceRef|public_distribution|rights policy|restricted/i);
++}
++
++describe("K0.7A adjacent JLPT/SRS public read-path closure", () => {
++  beforeEach(() => resetActorResolver());
++
++  it("returns generic no-store 451 before request parsing, validation, service reads, or DB access on every protected route", async () => {
++    const protectedResponses = await Promise.all([
++      jlptProgress(request("/api/jlpt/progress?level=N5")),
++      jlptTests(request("/api/jlpt/tests?level=N5")),
++      jlptTest(request("/api/jlpt/tests/fixture-id"), ctx),
++      jlptStart(request("/api/jlpt/session/start", "POST")),
++      jlptSession(request("/api/jlpt/session/fixture-id"), ctx),
++      jlptAnswer(request("/api/jlpt/session/fixture-id/answer", "POST"), ctx),
++      jlptSubmit(request("/api/jlpt/session/fixture-id/submit", "POST"), ctx),
++      jlptResults(request("/api/jlpt/session/fixture-id/results"), ctx),
++      srsCards(request("/api/srs/cards")),
++      srsCreateCard(request("/api/srs/cards", "POST")),
++      srsQueue(request("/api/srs/queue")),
++      srsDaily(request("/api/srs/daily")),
++      srsDecks(request("/api/srs/decks")),
++      srsCreateDeck(request("/api/srs/decks", "POST")),
++      srsDeck(request("/api/srs/decks/fixture-id"), ctx),
++      srsUpdateDeck(request("/api/srs/decks/fixture-id", "PATCH"), ctx),
++      srsReview(request("/api/srs/review", "POST")),
++      srsSessions(request("/api/srs/sessions")),
++      srsStartSession(request("/api/srs/sessions", "POST")),
++      srsSession(request("/api/srs/sessions/fixture-id"), ctx),
++      srsAnswer(request("/api/srs/sessions/fixture-id/answer", "POST"), ctx),
++      srsUndo(request("/api/srs/sessions/fixture-id/undo", "POST"), ctx),
++      srsSummary(request("/api/srs/sessions/fixture-id/summary"), ctx),
++      srsStats(request("/api/srs/stats")),
++      srsPull(request("/api/srs/sync/pull")),
++    ]);
++    for (const response of protectedResponses) await expectGeneric451(response);
++  });
++
++  it("keeps SRS sync status outside the Kanji gate because its serializer contains only device, registry, log, and aggregate fields", async () => {
++    const statusFixture = {
++      registry: { fingerprint: "fixture", schedulers: [] },
++      devices: [],
++      recentLog: [{ operation: "pull", payloadCount: 4, message: "Pulled 4 card(s), 0 review(s)." }],
++      totals: { devices: 0, activeDevices: 0, reviewsSynced: 0, conflictsResolved: 0, duplicatesBlocked: 0 },
++      serverTime: "2026-11-02T00:00:00.000Z",
++    };
++    const spy = vi.spyOn(SyncService, "getStatus").mockResolvedValue(statusFixture as never);
++    try {
++      const response = await srsSyncStatus(request("/api/srs/sync"));
++      expect(response.status).toBe(200);
++      const payload = await response.json();
++      expect(payload).toMatchObject({ success: true, devices: [], totals: statusFixture.totals });
++      expect(JSON.stringify(payload)).not.toMatch(/front|back|reading|meaning|character|kanji|cardType|sourceRef/i);
++    } finally {
++      spy.mockRestore();
++    }
++  });
++
++  it("guards direct JLPT/SRS service entry points before their reads and serializers", async () => {
++    const calls = [
++      () => TestService.ensureSeeded(),
++      () => TestService.listTests(),
++      () => TestService.getTestById("fixture"),
++      () => TestService.startSession({ quizType: "quick_drill", jlptLevel: "N5" }),
++      () => TestService.getSessionState("fixture"),
++      () => TestService.saveAnswer("fixture", { questionId: "q", selectedAnswer: "a", timeSpentSeconds: 0 }),
++      () => TestService.submitSession("fixture"),
++      () => TestService.queryQuestions({}),
++      () => TestService.getQuestionById("fixture"),
++      () => JLPTKnowledgeService.ensureInitialized(),
++      () => JLPTKnowledgeService.getUserProgress("fixture", "N5"),
++      () => SrsService.listDecks(),
++      () => SrsService.createDeck({ name: "fixture" }),
++      () => SrsService.updateDeck("fixture", { name: "fixture" }),
++      () => SrsService.createCard({ deckId: "fixture", front: "明", back: "bright" }),
++      () => SrsService.queryCards({}),
++      () => SrsService.getDueQueue({}),
++      () => SrsService.gradeCard({ cardId: "fixture", rating: "good" }),
++      () => SrsService.getStats(),
++      () => SessionService.planSession({ userId: "fixture", deckId: "fixture" }),
++      () => SessionService.getSessionState("fixture"),
++      () => SessionService.answer({ sessionId: "fixture", cardId: "fixture", rating: "good" }),
++      () => SessionService.undo({ sessionId: "fixture" }),
++      () => SessionService.listSessions({ userId: "fixture" }),
++      () => SessionService.getResumableSession("fixture"),
++      () => SessionService.getSummary("fixture"),
++      () => DailyQueueService.getDailyQueue({ userId: "fixture" }),
++      () => SyncService.pull({ deviceId: "fixture" }),
++      () => SyncService.snapshot({ deviceId: "fixture" }),
++    ];
++    for (const call of calls) {
++      await expect(call()).rejects.toBeInstanceOf(KanjiRightsDeliveryDeniedError);
++    }
++  });
++
++  it("requires cms.read at each raw helper boundary, then independently enforces source rights", async () => {
++    const protectedHelpers = [
++      () => listMindTreeCatalog(),
++      () => getMindTreeEntry("明"),
++      () => listMindTreeEditorialContext(),
++    ];
++    for (const call of protectedHelpers) {
++      await expect(call()).rejects.toMatchObject({ name: "AuthorizationError", status: 401 });
++    }
++
++    setActorResolver(() => ({ id: "learner-1", role: "learner" }));
++    for (const call of protectedHelpers) {
++      await expect(call()).rejects.toMatchObject({ name: "AuthorizationError", status: 403 });
++    }
++
++    setActorResolver(() => ({ id: "editor-1", role: "editor" }));
++    // cms.read succeeds, then the independent source-operation gate rejects the
++    // current conditional/unknown source state. Permission is not rights clearance.
++    for (const call of protectedHelpers) {
++      await expect(call()).rejects.toThrow(/^\[RIGHTS_GATE\]/);
++    }
++
++    setActorResolver(() => ({ id: "forged", role: "superadmin" as never }));
++    for (const call of protectedHelpers) {
++      await expect(call()).rejects.toMatchObject({ status: 403 });
++    }
++    setActorResolver(() => ({ id: "", role: "admin" }));
++    for (const call of protectedHelpers) {
++      await expect(call()).rejects.toMatchObject({ status: 401 });
++    }
++  });
++
++  it("keeps public learner serializers distinct and prevents CMS privilege from overriding their rights gate", () => {
++    expect(legacyKanjiApiDeliveryDecision().allowed).toBe(false);
++    expect(mindTreePublicDeliveryDecision().blockers.some((item) => item.sourceRef === "first-party:kanji-mindtree:v1")).toBe(true);
++    expect(mindTreePublicDeliveryDecision().blockers.some((item) => item.sourceRef === "first-party:kanji-corpus:v1")).toBe(true);
++    expect(getMnemonicAvailability("明")).toBe("draft");
++    expect(getPublishedMnemonic("明")).toBeNull();
++    expect(getMnemonicAvailability("龍")).toBe("missing");
++    expect(currentSourceOperationDecision("upstream:kanjidic2:2023-08").allowed).toBe(false);
++    expect(currentSourceOperationDecision("unregistered:provenance").allowed).toBe(false);
++    expect(() => listPublicMindTreeCatalog()).toThrow(KanjiRightsDeliveryDeniedError);
++    expect(() => getPublicMindTreeEntry("明")).toThrow(KanjiRightsDeliveryDeniedError);
++    setActorResolver(() => ({ id: "admin-1", role: "admin" }));
++    expect(() => listPublicMindTreeCatalog()).toThrow(KanjiRightsDeliveryDeniedError);
++    expect(() => getPublicMindTreeEntry("明")).toThrow(KanjiRightsDeliveryDeniedError);
++  });
++});
+diff --git a/tests/kanji-read-path-enforcement-k07.test.ts b/tests/kanji-read-path-enforcement-k07.test.ts
+new file mode 100644
+index 0000000..3d02743
+--- /dev/null
++++ b/tests/kanji-read-path-enforcement-k07.test.ts
+@@ -0,0 +1,142 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++import { createElement } from "react";
++import { renderToStaticMarkup } from "react-dom/server";
++
++vi.mock("server-only", () => ({}));
++
++import { legacyKanjiApiDeliveryDecision, mindTreePublicDeliveryDecision } from "@/lib/kanji/mindtreePublicDelivery";
++import { KanjiRightsPendingNotice } from "@/components/kanji/KanjiRightsPendingNotice";
++import { KanjiVocabularyLinks } from "@/components/kanji/KanjiVocabularyLinks";
++import { KnowledgeService } from "@/services/knowledge/knowledgeService";
++import { KanjiLexicalGraphService } from "@/services/knowledge/kanjiLexicalGraphService";
++import { KanjiReadingService } from "@/services/knowledge/kanjiReadingService";
++import { KanjiVisualService } from "@/services/knowledge/kanjiVisualService";
++import { UnifiedSearchService } from "@/services/search/unifiedSearchService";
++import { KnowledgeRetriever } from "@/services/ai/knowledgeRetriever";
++import { JLPTKnowledgeService } from "@/services/jlpt/knowledge/jlptKnowledgeService";
++import { getMindTreeEditorialVisualPreview } from "@/lib/kanji/kanjiMindtreeCatalog";
++import { SrsCardGenerator } from "@/services/srs/generators/srsCardGenerator";
++import { ReverseSearchService } from "@/services/translation/reverseSearchService";
++import { NextRequest } from "next/server";
++import { GET as kanjiList } from "@/app/api/kanji/route";
++import { GET as kanjiDetail } from "@/app/api/kanji/[character]/route";
++import { GET as kanjiReadings } from "@/app/api/kanji/[character]/readings/route";
++import { GET as kanjiComponents } from "@/app/api/kanji/[character]/components/route";
++import { GET as kanjiVocabulary } from "@/app/api/kanji/[character]/vocabulary/route";
++import { GET as strokeOrder } from "@/app/api/kanji/[character]/stroke-order/route";
++import { GET as unifiedSearch } from "@/app/api/search/route";
++import { GET as aiRetrieve } from "@/app/api/ai/retrieve/route";
++import { GET as jlptOverview } from "@/app/api/jlpt/overview/route";
++import { GET as mindTreeStudioPreview } from "@/app/mindtree/studio/preview/[character]/route";
++
++const fakeDb = { select: vi.fn() };
++const deniedMessage = "Kanji content is temporarily unavailable.";
++
++function request(path: string) {
++  return new NextRequest(`http://localhost${path}`);
++}
++
++async function expectGenericNoStore451(response: Response) {
++  expect(response.status).toBe(451);
++  expect(response.headers.get("Cache-Control")).toBe("no-store");
++  const text = await response.text();
++  expect(text).toContain("temporarily unavailable");
++  expect(text).not.toMatch(/KANJIDIC2|KanjiVG|sourceRef|public_distribution|rights policy/i);
++}
++
++describe("K0.7 Kanji public read boundaries", () => {
++  beforeEach(() => vi.clearAllMocks());
++
++  it("keeps the immutable baseline blocked and fails closed with a generic error", async () => {
++    expect(legacyKanjiApiDeliveryDecision().allowed).toBe(false);
++    expect(mindTreePublicDeliveryDecision().allowed).toBe(false);
++    await expect(KnowledgeService.listKanji({})).rejects.toThrow(deniedMessage);
++  });
++
++  it("blocks direct service methods before touching their database ports and has no unversioned MindTree result cache", async () => {
++    const graph = new KanjiLexicalGraphService({ db: fakeDb as never });
++    expect("mindTreeCache" in graph).toBe(false);
++    const readings = new KanjiReadingService({ db: fakeDb as never });
++    const visual = new KanjiVisualService("/path/that/must/not/be-read");
++
++    await expect(KnowledgeService.listElements()).rejects.toThrow(deniedMessage);
++    await expect(KnowledgeService.buildMindTree("明")).rejects.toThrow(deniedMessage);
++    await expect(KnowledgeService.getKanjiDetail("明")).rejects.toThrow(deniedMessage);
++    await expect(KnowledgeService.getKanjiProfile("kanji-mei")).rejects.toThrow(deniedMessage);
++    await expect(KnowledgeService.getKnowledgeStats()).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiVocabulary("明")).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiReadings("明")).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiComponents("明")).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiRadicals("明")).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiMindTree("明")).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiGraph("明")).rejects.toThrow(deniedMessage);
++    await expect(graph.getKanjiMindTree("明")).rejects.toThrow(deniedMessage);
++    await expect(readings.getOnReadings("明")).rejects.toThrow(deniedMessage);
++    expect(fakeDb.select).not.toHaveBeenCalled();
++    expect(() => visual.getVisualAsset("明")).toThrow(deniedMessage);
++    expect(() => getMindTreeEditorialVisualPreview("明")).toThrow(deniedMessage);
++  });
++
++  it("blocks AI, JLPT, reverse lookup, and SRS Kanji retrieval/generation", async () => {
++    await expect(KnowledgeRetriever.retrieve("明")).rejects.toThrow(deniedMessage);
++    await expect(KnowledgeRetriever.retrieveEntity("kanji", "明")).rejects.toThrow(deniedMessage);
++    await expect(JLPTKnowledgeService.getLevelOverview("N5")).rejects.toThrow(deniedMessage);
++    await expect(ReverseSearchService.reverseLookup("bright", "en", "kanji")).rejects.toThrow(deniedMessage);
++    await expect(SrsCardGenerator.fromKanji({ characters: ["明"] })).rejects.toThrow(deniedMessage);
++  });
++
++  it("keeps empty unified search empty, but denies Kanji targets before database access", async () => {
++    const empty = await UnifiedSearchService.search("");
++    expect(empty.results).toEqual([]);
++    await expect(UnifiedSearchService.search("明", { targets: ["kanji"] })).rejects.toThrow(deniedMessage);
++  });
++
++  it("blocks the development-only source preview before serializing restricted fields", async () => {
++    vi.stubEnv("NODE_ENV", "development");
++    try {
++      const response = await mindTreeStudioPreview(new Request("http://localhost/mindtree/studio/preview/%E6%98%8E"), {
++        params: Promise.resolve({ character: "明" }),
++      });
++      await expectGenericNoStore451(response);
++    } finally {
++      vi.unstubAllEnvs();
++    }
++  });
++
++  it("returns only generic no-store 451 responses from public routes", async () => {
++    await expectGenericNoStore451(await kanjiList(request("/api/kanji")));
++    await expectGenericNoStore451(await kanjiDetail(request("/api/kanji/%E6%98%8E"), { params: Promise.resolve({ character: "明" }) }));
++    await expectGenericNoStore451(await kanjiReadings(request("/api/kanji/%E6%98%8E/readings"), { params: Promise.resolve({ character: "明" }) }));
++    await expectGenericNoStore451(await kanjiComponents(request("/api/kanji/%E6%98%8E/components"), { params: Promise.resolve({ character: "明" }) }));
++    await expectGenericNoStore451(await kanjiVocabulary(request("/api/kanji/%E6%98%8E/vocabulary"), { params: Promise.resolve({ character: "明" }) }));
++    await expectGenericNoStore451(await strokeOrder(request("/api/kanji/%E6%98%8E/stroke-order"), { params: Promise.resolve({ character: "明" }) }));
++    await expectGenericNoStore451(await unifiedSearch(request("/api/search?q=%E6%98%8E&targets=kanji")));
++    await expectGenericNoStore451(await aiRetrieve(request("/api/ai/retrieve?q=%E6%98%8E")));
++    await expectGenericNoStore451(await jlptOverview(request("/api/jlpt/overview?level=N5")));
++  });
++
++  it("renders pending states distinctly from empty results without source or policy internals", () => {
++    const notice = renderToStaticMarkup(createElement(KanjiRightsPendingNotice));
++    const vocabulary = renderToStaticMarkup(
++      createElement(KanjiVocabularyLinks, { character: "明", records: [], status: "pending" }),
++    );
++    const loading = renderToStaticMarkup(
++      createElement(KanjiVocabularyLinks, { character: "明", records: [], status: "loading" }),
++    );
++    const empty = renderToStaticMarkup(
++      createElement(KanjiVocabularyLinks, { character: "明", records: [], status: "loaded" }),
++    );
++    const networkError = renderToStaticMarkup(
++      createElement(KanjiVocabularyLinks, { character: "明", records: [], status: "error" }),
++    );
++    expect(notice).toContain("This learning content is temporarily unavailable.");
++    expect(vocabulary).toContain("This learning content is temporarily unavailable.");
++    expect(vocabulary).not.toContain("No linked dictionary entries are available");
++    expect(vocabulary).toContain("Availability pending");
++    expect(vocabulary).toContain("This is an availability notice, not an empty result.");
++    expect(loading).toContain("Loading linked dictionary entries");
++    expect(empty).toContain("No linked dictionary entries are available");
++    expect(networkError).toContain("temporary error, not an empty result");
++    expect(`${notice} ${vocabulary} ${loading} ${empty} ${networkError}`).not.toMatch(/KANJIDIC2|KanjiVG|sourceRef|public_distribution|rights policy/i);
++  });
++});
+diff --git a/tests/kanji-read-path-write-isolation.test.ts b/tests/kanji-read-path-write-isolation.test.ts
+index 0d390bb..9be07f3 100644
+--- a/tests/kanji-read-path-write-isolation.test.ts
++++ b/tests/kanji-read-path-write-isolation.test.ts
+@@ -234,6 +234,16 @@ describe("R1S-follow-up: read methods never reach a canonical write", () => {
+       ["getKanaChart", () => KnowledgeService.getKanaChart({})],
+       ["searchKana", () => KnowledgeService.searchKana("a")],
+       ["getKanaById", () => KnowledgeService.getKanaById("hira-a")],
++    ];
++
++    for (const [name, read] of reads) {
++      // Non-Kanji reads remain independent of canonical Kanji rights.
++      await expect(read(), `${name} must not throw on an empty database`).resolves.toBeDefined();
++      expect(seed, `${name} must not seed`).not.toHaveBeenCalled();
++      expect(writes, `${name} performed a database write`).toEqual([]);
++    }
++
++    const kanjiReads: Array<[string, () => Promise<unknown>]> = [
+       ["listKanji", () => KnowledgeService.listKanji({})],
+       ["listKanji+filter", () => KnowledgeService.listKanji({ level: "N5", keyword: "water" })],
+       ["listElements", () => KnowledgeService.listElements()],
+@@ -242,14 +252,10 @@ describe("R1S-follow-up: read methods never reach a canonical write", () => {
+       ["getKanjiDetail", () => KnowledgeService.getKanjiDetail("道")],
+       ["getKnowledgeStats", () => KnowledgeService.getKnowledgeStats()],
+     ];
+-
+-    for (const [name, read] of reads) {
+-      // Each read must complete against an unbootstrapped database…
+-      await expect(read(), `${name} must not throw on an empty database`).resolves.toBeDefined();
+-      // …without invoking the canonical writer…
++    for (const [name, read] of kanjiReads) {
++      await expect(read(), `${name} must fail closed`).rejects.toThrow("Kanji content is temporarily unavailable.");
+       expect(seed, `${name} must not seed`).not.toHaveBeenCalled();
+-      // …and without touching any write verb on the shared client.
+-      expect(writes, `${name} performed a database write`).toEqual([]);
++      expect(writes, `${name} reached a database write`).toEqual([]);
+     }
+   });
+ 
+@@ -257,8 +263,8 @@ describe("R1S-follow-up: read methods never reach a canonical write", () => {
+     const { KnowledgeService } = await import("@/services/knowledge/knowledgeService");
+     const seed = vi.spyOn(KnowledgeService, "ensureSeeded");
+ 
+-    // On an unbootstrapped database these resolve to `null` (row not found).
+-    await expect(KnowledgeService.addKanjiToSrs({ character: "道" })).resolves.toBeNull();
++    // Kanji card generation is blocked before read/write; kana remains independent.
++    await expect(KnowledgeService.addKanjiToSrs({ character: "道" })).rejects.toThrow("Kanji content is temporarily unavailable.");
+     await expect(KnowledgeService.addKanaToSrs({ kanaId: "hira-a" })).resolves.toBeNull();
+ 
+     expect(seed).not.toHaveBeenCalled();
+@@ -284,9 +290,9 @@ describe("R1S-follow-up: read methods never reach a canonical write", () => {
+     expect(writes).toEqual([]);
+   });
+ 
+-  it("GET /api/ai/retrieve does not seed canonical Kanji", async () => {
++  it("GET /api/ai/retrieve returns generic no-store 451 before corpus or Kanji reads", async () => {
+     const { KnowledgeCorpusService } = await import("@/services/knowledge/corpusService");
+-    vi.spyOn(KnowledgeCorpusService, "ensureSeeded").mockResolvedValue(undefined);
++    const corpusSeed = vi.spyOn(KnowledgeCorpusService, "ensureSeeded").mockResolvedValue(undefined);
+ 
+     const { KnowledgeService } = await import("@/services/knowledge/knowledgeService");
+     const seed = vi.spyOn(KnowledgeService, "ensureSeeded");
+@@ -295,8 +301,13 @@ describe("R1S-follow-up: read methods never reach a canonical write", () => {
+     const { NextRequest } = await import("next/server");
+     const response = await GET(new NextRequest("http://localhost/api/ai/retrieve?q=%E6%B0%B4"));
+ 
+-    // No query matched (empty database), so this is a normal miss, not an error.
+-    expect(response.status).toBe(200);
++    expect(response.status).toBe(451);
++    expect(response.headers.get("cache-control")).toBe("no-store");
++    expect(await response.json()).toEqual({
++      success: false,
++      error: { code: "CONTENT_UNAVAILABLE", message: "This content is temporarily unavailable." },
++    });
++    expect(corpusSeed).not.toHaveBeenCalled();
+     expect(seed).not.toHaveBeenCalled();
+     expect(writes).toEqual([]);
+   });
+diff --git a/tests/kanji-source-registry-loader.test.ts b/tests/kanji-source-registry-loader.test.ts
+new file mode 100644
+index 0000000..ee45214
+--- /dev/null
++++ b/tests/kanji-source-registry-loader.test.ts
+@@ -0,0 +1,22 @@
++import { beforeEach, describe, expect, it, vi } from "vitest";
++
++const { mockDb } = vi.hoisted(() => ({
++  mockDb: {
++    select: vi.fn(),
++    insert: vi.fn(),
++  },
++}));
++
++vi.mock("@/db", () => ({ db: mockDb }));
++
++import { ensureKanjiSource } from "@/etl/kanji/loader";
++
++describe("ensureKanjiSource K0.5B rights boundary", () => {
++  beforeEach(() => vi.clearAllMocks());
++
++  it("denies source registration before reading or writing while first-party operation scopes remain conditional", async () => {
++    await expect(ensureKanjiSource()).rejects.toThrow(/RIGHTS_GATE.*first-party:kanji-corpus:v1/);
++    expect(mockDb.select).not.toHaveBeenCalled();
++    expect(mockDb.insert).not.toHaveBeenCalled();
++  });
++});
+diff --git a/tests/kanji-stroke-order-panel.test.ts b/tests/kanji-stroke-order-panel.test.ts
+index 4171ee8..4ed8513 100644
+--- a/tests/kanji-stroke-order-panel.test.ts
++++ b/tests/kanji-stroke-order-panel.test.ts
+@@ -21,7 +21,7 @@ const RETURN_TO = resolveDictionaryReturnHref(
+ );
+ 
+ function renderPanel(
+-  status: "loading" | "available" | "unavailable" | "error",
++  status: "loading" | "available" | "unavailable" | "restricted" | "error",
+   imageSource?: string
+ ): string {
+   return renderToStaticMarkup(
+@@ -35,29 +35,16 @@ function renderPanel(
+   );
+ }
+ 
+-describe("KanjiVG stroke-order asset integration", () => {
+-  it("looks up 水 from the pinned index and renders its local SVG through KanjiVisualService", () => {
+-    const index = JSON.parse(
+-      readFileSync("data/kanjivg-index.json", "utf8")
+-    ) as Record<string, string[]>;
+-    expect(index["水"]).toEqual(["06c34.svg"]);
+-
+-    const service = new KanjiVisualService();
+-    const asset = service.getVisualAsset("水");
+-    const diagram = service.renderStrokeOrderDiagram("水");
+-
+-    expect(asset).not.toBeNull();
+-    expect(asset?.strokes.length).toBeGreaterThan(0);
+-    expect(diagram).toMatch(/^<svg\b/);
+-    expect(diagram).toContain("kvg:StrokePaths_水");
+-    expect((diagram?.match(/<path\b/g) ?? []).length).toBe(asset?.strokes.length);
+-    expect(diagram).not.toContain("<text");
++describe("Kanji visual direct-service rights gate", () => {
++  it("denies visual file reads and renders before consulting filesystem or cache", () => {
++    const service = new KanjiVisualService("/nonexistent-kanjivg-test-fixture");
++    expect(() => service.getVisualAsset("水")).toThrow("Kanji content is temporarily unavailable.");
++    expect(() => service.renderStrokeOrderDiagram("水")).toThrow("Kanji content is temporarily unavailable.");
+   });
+ 
+-  it("returns no diagram for a valid unified ideograph without an indexed asset", () => {
+-    const service = new KanjiVisualService();
+-    expect(service.getVisualAsset("𠀀")).toBeNull();
+-    expect(service.renderStrokeOrderDiagram("𠀀")).toBeNull();
++  it("denies other valid Unicode identities under the same fail-closed boundary", () => {
++    const service = new KanjiVisualService("/nonexistent-kanjivg-test-fixture");
++    expect(() => service.getVisualAsset("𠀀")).toThrow("Kanji content is temporarily unavailable.");
+   });
+ });
+ 
+@@ -97,6 +84,14 @@ describe("Kanji stroke-order response handling", () => {
+       )
+     ).toEqual({ status: "unavailable" });
+ 
++    expect(
++      resolveKanjiStrokeOrderResponse(
++        { ok: false, status: 451 },
++        { success: false, error: { code: "CONTENT_UNAVAILABLE", message: "This content is temporarily unavailable." } },
++        "水"
++      )
++    ).toEqual({ status: "restricted" });
++
+     expect(
+       resolveKanjiStrokeOrderResponse(
+         { ok: true, status: 200 },
+@@ -139,18 +134,23 @@ describe("Kanji stroke-order panel presentation", () => {
+ 
+     const html = renderPanel("available", imageSource ?? undefined);
+     expect(html).toContain('aria-labelledby="kanji-stroke-order-heading"');
+-    expect(html).toContain('alt="KanjiVG stroke-order diagram for 水"');
++    expect(html).toContain('alt="Stroke-order diagram for 水"');
+     expect(html).toContain("data:image/svg+xml;charset=utf-8,%3Csvg");
+     expect(html).not.toContain("<path");
+     expect(html).not.toContain("<svg");
+-    expect(html).toContain("structural component decomposition below");
+-    expect(html).toContain("does not display stroke numbers");
++    expect(html).toContain("separate from structural decomposition");
++    expect(html).toContain("numeric stroke labels are not available");
+   });
+ 
+   it("renders honest unavailable and recoverable error states with native controls", () => {
+     const unavailable = renderPanel("unavailable");
+     expect(unavailable).toContain('role="status"');
+-    expect(unavailable).toContain("No usable KanjiVG stroke-order asset is available for 水.");
++    expect(unavailable).toContain("No stroke-order diagram is available for 水.");
++
++    const restricted = renderPanel("restricted");
++    expect(restricted).toContain("This learning content is temporarily unavailable.");
++    expect(restricted).toContain("This is an availability notice, not an empty result.");
++    expect(restricted).not.toMatch(/KanjiVG|sourceRef|public_distribution|rights policy/i);
+ 
+     const error = renderPanel("error");
+     expect(error).toContain('role="alert"');
+diff --git a/tests/kanji-stroke-order-route.test.ts b/tests/kanji-stroke-order-route.test.ts
+index cbd25e8..23e4ee5 100644
+--- a/tests/kanji-stroke-order-route.test.ts
++++ b/tests/kanji-stroke-order-route.test.ts
+@@ -2,137 +2,44 @@ import { NextRequest } from "next/server";
+ import { beforeEach, describe, expect, it, vi } from "vitest";
+ 
+ vi.mock("@/services/knowledge/kanjiVisualService", () => ({
+-  kanjiVisualService: {
+-    renderStrokeOrderDiagram: vi.fn(),
+-  },
++  kanjiVisualService: { renderStrokeOrderDiagram: vi.fn() },
+ }));
+ 
+-import {
+-  GET,
+-  MAX_STROKE_ORDER_SVG_BYTES,
+-} from "@/app/api/kanji/[character]/stroke-order/route";
++import { GET, MAX_STROKE_ORDER_SVG_BYTES } from "@/app/api/kanji/[character]/stroke-order/route";
+ import { kanjiVisualService } from "@/services/knowledge/kanjiVisualService";
+ 
+-const renderStrokeOrderDiagram = vi.mocked(
+-  kanjiVisualService.renderStrokeOrderDiagram
+-);
+-
++const renderStrokeOrderDiagram = vi.mocked(kanjiVisualService.renderStrokeOrderDiagram);
+ function makeRequest(character = "水"): NextRequest {
+-  return new NextRequest(
+-    `http://localhost/api/kanji/${encodeURIComponent(character)}/stroke-order`
+-  );
+-}
+-
+-function routeParams(character: string) {
+-  return { params: Promise.resolve({ character }) };
++  return new NextRequest(`http://localhost/api/kanji/${encodeURIComponent(character)}/stroke-order`);
+ }
++function routeParams(character: string) { return { params: Promise.resolve({ character }) }; }
+ 
+-const SVG_PREFIX = '<svg xmlns="http://www.w3.org/2000/svg"><!--';
+-const SVG_SUFFIX = "--></svg>";
+-
+-function svgWithByteLength(byteLength: number): string {
+-  const fillerBytes =
+-    byteLength - Buffer.byteLength(`${SVG_PREFIX}${SVG_SUFFIX}`, "utf8");
+-  if (fillerBytes < 0) throw new Error("Requested test SVG is too small");
+-  return `${SVG_PREFIX}${"x".repeat(fillerBytes)}${SVG_SUFFIX}`;
+-}
+-
+-function svgWithCodeUnitsAtLimitAndBytesOverLimit(): string {
+-  const fillerBytes =
+-    MAX_STROKE_ORDER_SVG_BYTES -
+-    Buffer.byteLength(`${SVG_PREFIX}${SVG_SUFFIX}`, "utf8");
+-  return `${SVG_PREFIX}水${"x".repeat(fillerBytes - 1)}${SVG_SUFFIX}`;
+-}
+-
+-describe("GET /api/kanji/[character]/stroke-order", () => {
+-  beforeEach(() => {
+-    vi.clearAllMocks();
+-  });
++describe("GET /api/kanji/[character]/stroke-order rights gate", () => {
++  beforeEach(() => vi.clearAllMocks());
+ 
+-  it("validates and passes the requested character to the existing renderer", async () => {
+-    const diagramSvg = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0" /></svg>';
+-    renderStrokeOrderDiagram.mockReturnValue(diagramSvg);
+-
+-    const response = await GET(makeRequest(), routeParams("水"));
+-    expect(response.status).toBe(200);
+-    expect(await response.json()).toEqual({
+-      success: true,
+-      character: "水",
+-      diagramSvg,
+-    });
+-    expect(renderStrokeOrderDiagram).toHaveBeenCalledOnce();
+-    expect(renderStrokeOrderDiagram).toHaveBeenCalledWith("水");
+-  });
+-
+-  it("accepts a diagram exactly at the UTF-8 byte limit", async () => {
+-    const diagramSvg = svgWithByteLength(MAX_STROKE_ORDER_SVG_BYTES);
+-    expect(Buffer.byteLength(diagramSvg, "utf8")).toBe(MAX_STROKE_ORDER_SVG_BYTES);
+-    renderStrokeOrderDiagram.mockReturnValue(diagramSvg);
+-
+-    const response = await GET(makeRequest(), routeParams("水"));
+-    expect(response.status).toBe(200);
+-    expect((await response.json()).diagramSvg).toBe(diagramSvg);
++  it("rejects invalid identities before any source-backed lookup", async () => {
++    const response = await GET(makeRequest("水日"), routeParams("水日"));
++    expect(response.status).toBe(400);
++    expect(await response.json()).toMatchObject({ success: false, error: { code: "INVALID_KANJI" } });
++    expect(renderStrokeOrderDiagram).not.toHaveBeenCalled();
+   });
+ 
+-  it("rejects an SVG whose UTF-8 byte size exceeds the limit without returning it", async () => {
+-    const diagramSvg = svgWithCodeUnitsAtLimitAndBytesOverLimit();
+-    expect(diagramSvg.length).toBe(MAX_STROKE_ORDER_SVG_BYTES);
+-    expect(Buffer.byteLength(diagramSvg, "utf8")).toBe(
+-      MAX_STROKE_ORDER_SVG_BYTES + 2
+-    );
+-    renderStrokeOrderDiagram.mockReturnValue(diagramSvg);
+-
++  it("withholds the KanjiVG-backed source asset while public-distribution rights remain blocked", async () => {
++    renderStrokeOrderDiagram.mockReturnValue('<svg><path d="M0 0" /></svg>');
+     const response = await GET(makeRequest(), routeParams("水"));
+     const body = await response.json();
+-    expect(response.status).toBe(500);
+-    expect(body).toMatchObject({
++    expect(response.status).toBe(451);
++    expect(response.headers.get("cache-control")).toBe("no-store");
++    expect(body).toEqual({
+       success: false,
+-      error: { code: "STROKE_ORDER_TOO_LARGE" },
++      error: { code: "CONTENT_UNAVAILABLE", message: "This content is temporarily unavailable." },
+     });
++    expect(JSON.stringify(body)).not.toMatch(/KanjiVG|sourceRef|public_distribution/i);
+     expect(body).not.toHaveProperty("diagramSvg");
+-    expect(JSON.stringify(body)).not.toContain(diagramSvg);
+-  });
+-
+-  it("rejects invalid or multiple-character identifiers before visualization lookup", async () => {
+-    const response = await GET(makeRequest("水日"), routeParams("水日"));
+-    expect(response.status).toBe(400);
+-    expect(await response.json()).toMatchObject({
+-      success: false,
+-      error: { code: "INVALID_KANJI" },
+-    });
+     expect(renderStrokeOrderDiagram).not.toHaveBeenCalled();
+   });
+ 
+-  it("reports a valid character with no usable local visual asset as unavailable", async () => {
+-    renderStrokeOrderDiagram.mockReturnValue(null);
+-
+-    const response = await GET(makeRequest("𠀀"), routeParams("𠀀"));
+-    expect(response.status).toBe(404);
+-    expect(await response.json()).toMatchObject({
+-      success: false,
+-      error: { code: "STROKE_ORDER_UNAVAILABLE" },
+-    });
+-    expect(renderStrokeOrderDiagram).toHaveBeenCalledWith("𠀀");
+-  });
+-
+-  it("returns a generic recoverable server error if rendering throws", async () => {
+-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+-    renderStrokeOrderDiagram.mockImplementation(() => {
+-      throw new Error("private renderer detail");
+-    });
+-
+-    try {
+-      const response = await GET(makeRequest(), routeParams("水"));
+-      const body = await response.json();
+-      expect(response.status).toBe(500);
+-      expect(body).toMatchObject({
+-        success: false,
+-        error: { code: "STROKE_ORDER_RENDER_FAILED" },
+-      });
+-      expect(JSON.stringify(body)).not.toContain("private renderer detail");
+-      expect(consoleError).toHaveBeenCalled();
+-    } finally {
+-      consoleError.mockRestore();
+-    }
++  it("keeps a bounded SVG response ceiling for a future separately cleared source", () => {
++    expect(MAX_STROKE_ORDER_SVG_BYTES).toBe(16 * 1024);
+   });
+ });
+diff --git a/tests/mindtree-public-rights-gate.test.ts b/tests/mindtree-public-rights-gate.test.ts
+new file mode 100644
+index 0000000..f2d65b0
+--- /dev/null
++++ b/tests/mindtree-public-rights-gate.test.ts
+@@ -0,0 +1,29 @@
++import { renderToStaticMarkup } from "react-dom/server";
++import { describe, expect, it } from "vitest";
++import CatalogPage from "@/app/mindtree/page";
++import CharacterPage, { generateStaticParams } from "@/app/mindtree/[character]/page";
++import { mindTreePublicDeliveryDecision } from "@/lib/kanji/mindtreePublicDelivery";
++
++describe("MindTree public delivery rights gate", () => {
++  it("withholds the source-composite catalog and emits no static character pages while blocked", () => {
++    expect(mindTreePublicDeliveryDecision().allowed).toBe(false);
++    expect(generateStaticParams()).toEqual([]);
++    const html = renderToStaticMarkup(CatalogPage());
++    expect(html).toContain("This learning content is temporarily unavailable.");
++    expect(html).toContain("This is an availability notice, not an empty result.");
++    expect(html).not.toMatch(/KANJIDIC2|KanjiVG|sourceRef|public_distribution/i);
++    expect(html).not.toContain("Browse supported characters");
++  });
++
++  it("withholds direct character routes before building a source-backed entry", async () => {
++    const page = await CharacterPage({ params: Promise.resolve({ character: "水" }) });
++    const html = renderToStaticMarkup(page);
++    expect(html).toContain("This learning content is temporarily unavailable.");
++    expect(html).toContain("This is an availability notice, not an empty result.");
++    expect(html).not.toMatch(/KANJIDIC2|KanjiVG|sourceRef|public_distribution/i);
++    expect(html).not.toContain("This character is not in the current source-backed slice.");
++    expect(html).not.toContain("meaningsEnglish");
++    expect(html).not.toContain("dictionaryFacts");
++    expect(html).not.toContain("readingsOn");
++  });
++});
+diff --git a/tests/mobile-dictionary-search-api.test.ts b/tests/mobile-dictionary-search-api.test.ts
+index 1a15518..0b72d74 100644
+--- a/tests/mobile-dictionary-search-api.test.ts
++++ b/tests/mobile-dictionary-search-api.test.ts
+@@ -32,6 +32,13 @@ vi.mock("@/services/dictionary", () => ({
+   },
+ }));
+ 
++// This contract suite simulates a source whose rights have been cleared by the
++// authoritative policy; the separate rights-gate suite exercises the real
++// unresolved K0.5A snapshot and verifies 451 before the service is reached.
++vi.mock("@/lib/dictionary/publicRights", () => ({
++  dictionaryPublicSourceRefs: () => ["first-party:dictionary-core:v1"],
++}));
++
+ import { GET as mobileSearchGET } from "@/app/api/v1/mobile/dictionary/search/route";
+ import {
+   flattenGlosses,
+diff --git a/tests/rights-aware-architecture.test.ts b/tests/rights-aware-architecture.test.ts
+new file mode 100644
+index 0000000..b50c19d
+--- /dev/null
++++ b/tests/rights-aware-architecture.test.ts
+@@ -0,0 +1,307 @@
++import { createElement } from "react";
++import { readFileSync } from "node:fs";
++import { renderToStaticMarkup } from "react-dom/server";
++import { describe, expect, it } from "vitest";
++import { SyntheticStrokeAssetPlayer } from "@/components/kanji/SyntheticStrokeAssetPlayer";
++import {
++  appendRightsEvent,
++  assertSourceOperationAllowed,
++  currentRightsState,
++  createOwnerClearanceEvents,
++  K0_5A_INITIAL_RIGHTS_HISTORY,
++  publicDistributionDecision,
++  sourceOperationDecision,
++  validateRightsHistory,
++} from "@/services/knowledge/provenance/rightsPolicy";
++import { buildRightsAwareExport, verifyRightsAwareExport, type RightsAwareExportRow } from "@/services/knowledge/provenance/rightsAwareExport";
++import { rightsResolutionActions } from "@/services/knowledge/provenance/rightsResolution";
++import { compareSourceAlternatives } from "@/services/knowledge/provenance/sourceAlternatives";
++import { KANJI_MEMBERSHIP_SCHEMA, KANJI_QUOTA_POLICY, KANJI_SELECTION_GOALS, mayAppearInPublicCorpus, validateKanjiMembershipHistory, type KanjiMembershipEvent } from "@/services/knowledge/editorial/kanjiMembership";
++import {
++  appendEditorialRevision,
++  digestEditorialContent,
++  EDITORIAL_CONTENT_SCHEMA,
++  editorialRevisionDigest,
++  validateEditorialContentDataset,
++  type EditorialContentDataset,
++  type FirstPartyEditorialRevision,
++} from "@/services/knowledge/editorial/fieldProvenance";
++import {
++  decompositionsForIdentity,
++  MINDTREE_EVIDENCE_GRAPH_SCHEMA,
++  validateMindTreeEvidenceGraph,
++  type MindTreeEvidenceGraph,
++} from "@/services/knowledge/editorial/mindTreeEvidenceGraph";
++import { validateStrokeAsset } from "@/lib/kanji/strokeAssetContract";
++
++const FIRST_PARTY = "first-party:kanji-corpus:v1";
++const SHA = "a".repeat(64);
++
++describe("K0.5A source-specific append-only rights history", () => {
++  it("carries every K0.4A source into the rights history without treating hashes as clearance", () => {
++    const report = JSON.parse(readFileSync("reports/gates/PHASE-K0.4A-2501-KANJI-SOURCE-LOCK.json", "utf8")) as { sources: Array<{ sourceId: string }> };
++    expect(new Set(K0_5A_INITIAL_RIGHTS_HISTORY.map((event) => event.sourceRef))).toEqual(new Set(report.sources.map((source) => source.sourceId)));
++    expect(validateRightsHistory(K0_5A_INITIAL_RIGHTS_HISTORY).valid).toBe(true);
++    expect(currentRightsState(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:kanjidic2:2023-08", "derivation")).toBe("BLOCKED");
++    expect(currentRightsState(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:jmdict:2023-08", "public_distribution")).toBe("BLOCKED");
++    expect(sourceOperationDecision(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:kanjidic2:2023-08").allowed).toBe(false);
++    expect(sourceOperationDecision(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:jmdict:2023-08").allowed).toBe(false);
++    expect(() => assertSourceOperationAllowed(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:kanjidic2:2023-08")).toThrow(/RIGHTS_GATE/);
++    expect(() => assertSourceOperationAllowed(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:jmdict:2023-08")).toThrow(/RIGHTS_GATE/);
++    expect(() => assertSourceOperationAllowed(K0_5A_INITIAL_RIGHTS_HISTORY, "upstream:kanjivg:2024-08")).toThrow(/RIGHTS_GATE/);
++    expect(publicDistributionDecision(K0_5A_INITIAL_RIGHTS_HISTORY, [FIRST_PARTY]).allowed).toBe(false);
++  });
++
++  it("lists exact rights-evidence closure actions and compares alternatives without inventing coverage", () => {
++    const actions = rightsResolutionActions("upstream:kanjidic2:2023-08", K0_5A_INITIAL_RIGHTS_HISTORY);
++    expect(actions.effect).toBe("no_clearance_granted");
++    expect(actions.actions.map((item) => item.actionId)).toEqual(["K2-01", "K2-02", "K2-03", "K2-04"]);
++    expect(actions.actions[1].action).toContain("CC BY-SA 3.0 versus CC BY-SA 4.0");
++    const comparison = compareSourceAlternatives([
++      { sourceRef: "upstream:kanjidic2:2023-08", label: "Pinned KANJIDIC2", declaredCoverageFields: [], coverageEvidenceRef: null, independence: "independent_third_party" },
++      { sourceRef: "candidate:official-joyo-table", label: "Official Jōyō candidate", declaredCoverageFields: [], coverageEvidenceRef: null, independence: "unknown" },
++      { sourceRef: FIRST_PARTY, label: "First-party pilot", declaredCoverageFields: ["authored-content"], coverageEvidenceRef: "src/etl/kanji/fixture.ts", independence: "first_party_original" },
++    ], K0_5A_INITIAL_RIGHTS_HISTORY);
++    expect(comparison).toMatchObject({ comparisonOnly: true, recommendation: null });
++    expect(comparison.alternatives.find((item) => item.sourceRef === FIRST_PARTY)).toMatchObject({
++      publicDistributionAllowed: false,
++      coverageEvidenceStatus: "provided",
++    });
++    expect(comparison.alternatives.find((item) => item.sourceRef === "candidate:official-joyo-table")?.rightsByScope.retention).toBe("UNKNOWN");
++  });
++
++  it("appends a source/scope event with an intact hash chain and rejects in-place or forged history", () => {
++    const original = [...K0_5A_INITIAL_RIGHTS_HISTORY];
++    const next = appendRightsEvent(original, {
++      eventId: "test:conditional-update",
++      sourceRef: FIRST_PARTY,
++      scope: "public_distribution",
++      state: "CONDITIONAL",
++      recordedOn: "2026-11-02",
++      actor: "project-test",
++      rationale: "Fixture event; not a legal conclusion.",
++      evidenceRef: "test:fixture",
++      evidenceClass: "project_gate_record",
++      evidenceSha256: null,
++    });
++    expect(next).toHaveLength(original.length + 1);
++    expect(original).toHaveLength(K0_5A_INITIAL_RIGHTS_HISTORY.length);
++    expect(validateRightsHistory(next).valid).toBe(true);
++    const tampered = next.map((event, index) => index === next.length - 1 ? { ...event, state: "CLEARED" as const } : event);
++    expect(validateRightsHistory(tampered).valid).toBe(false);
++    expect(() => appendRightsEvent(original, {
++      eventId: "test:invalid-upstream-clearance",
++      sourceRef: "upstream:kanjidic2:2023-08",
++      scope: "public_distribution",
++      state: "CLEARED",
++      recordedOn: "2026-11-02",
++      actor: "test",
++      rationale: "A test cannot claim primary evidence.",
++      evidenceRef: "test:fixture",
++      evidenceClass: "owner_authorization",
++      evidenceSha256: SHA,
++    })).toThrow(/Third-party clearance requires both primary license evidence and a separately pinned qualified rights review/);
++    expect(() => appendRightsEvent(original, {
++      eventId: "test:primary-only-clearance",
++      sourceRef: "upstream:kanjidic2:2023-08",
++      scope: "public_distribution",
++      state: "CLEARED",
++      recordedOn: "2026-11-02",
++      actor: "test",
++      rationale: "Primary terms without qualified review remain insufficient for clearance.",
++      evidenceRef: "test:primary-license",
++      evidenceClass: "primary_license",
++      evidenceSha256: SHA,
++    })).toThrow(/separately pinned qualified rights review/);
++  });
++
++  it("rejects caller-supplied clearance and uses only the immutable runtime rights history", () => {
++    const callerHistory = createOwnerClearanceEvents({
++      sourceRef: FIRST_PARTY,
++      eventIdPrefix: "test:owner-clearance",
++      recordedOn: "2026-11-02",
++      ownerAuthorizationRef: "test:owner-permission",
++      ownerAuthorizationSha256: SHA,
++      scopes: ["derivation", "public_distribution"],
++      history: K0_5A_INITIAL_RIGHTS_HISTORY,
++    });
++    const rows: RightsAwareExportRow<{ meaning?: string; value?: string }>[] = [
++      { contentId: "original-kanji-1", provenanceRefs: [FIRST_PARTY], content: { meaning: "first-party example" } },
++      { contentId: "blocked-kanjidic-row", provenanceRefs: ["upstream:kanjidic2:2023-08"], content: { value: "must not escape" } },
++      { contentId: "mixed-source-row", provenanceRefs: [FIRST_PARTY, "upstream:jmdict:2023-08"], content: { value: "one blocked dependency blocks this row" } },
++      { contentId: "missing-provenance", provenanceRefs: [], content: { value: "missing sources must not escape" } },
++    ];
++    expect(() => buildRightsAwareExport({ rightsHistory: callerHistory, rows })).toThrow(/not authoritative/);
++    const output = buildRightsAwareExport({ rightsHistory: K0_5A_INITIAL_RIGHTS_HISTORY, rows });
++    expect(output.content).toEqual([]);
++    expect(output.audit).toHaveLength(4);
++    expect(JSON.stringify(output)).not.toContain("must not escape");
++    expect(JSON.stringify(output)).not.toContain("missing sources must not escape");
++    expect(verifyRightsAwareExport(output, K0_5A_INITIAL_RIGHTS_HISTORY)).toEqual({ valid: true, issues: [] });
++    expect(verifyRightsAwareExport(output, callerHistory).valid).toBe(false);
++    const tampered = { ...output, audit: output.audit.map((row) => row.contentId === "blocked-kanjidic-row" ? { ...row, included: true } : row) };
++    expect(verifyRightsAwareExport(tampered, K0_5A_INITIAL_RIGHTS_HISTORY).valid).toBe(false);
++  });
++});
++
++function firstPartyDataset(): EditorialContentDataset {
++  return {
++    schemaVersion: EDITORIAL_CONTENT_SCHEMA,
++    identities: [
++      { id: "identity:高", character: "高", variantOfIdentityId: null },
++      { id: "identity:髙", character: "髙", variantOfIdentityId: "identity:高" },
++    ],
++    sourceAssertions: [
++      { id: "assertion:seed", sourceRef: FIRST_PARTY, sourceVersion: "v1", sourceRecordRef: "fixture:kanji-高", evidenceRef: "src/etl/kanji/fixture.ts", assertedFields: ["meaning", "reading"] },
++    ],
++    editorialRevisions: [],
++    kanji: [{ id: "kanji:高", identityId: "identity:高", meaning: { value: "example gloss", provenance: { kind: "source_assertion", id: "assertion:seed" } }, strokeCount: null, gradeLevel: null, jlptLevel: null, frequencyRank: null }],
++    readings: [{ id: "reading:高:on:1", kanjiContentId: "kanji:高", reading: { value: "こう", provenance: { kind: "source_assertion", id: "assertion:seed" } }, kind: "on" }],
++    vocabulary: [],
++    senses: [],
++    examples: [],
++  };
++}
++
++describe("field-level provenance and separated editorial content models", () => {
++  it("keeps exact Unicode variants and Kanji, reading, vocabulary, sense and example entities distinct", () => {
++    const dataset = firstPartyDataset();
++    expect(validateEditorialContentDataset(dataset).valid).toBe(true);
++    expect(dataset.identities.map((identity) => identity.character)).toEqual(["高", "髙"]);
++    expect(dataset.kanji[0].meaning?.provenance).toEqual({ kind: "source_assertion", id: "assertion:seed" });
++    expect(dataset.readings[0].kanjiContentId).toBe(dataset.kanji[0].id);
++    expect(dataset.vocabulary).toEqual([]);
++    expect(dataset.senses).toEqual([]);
++    expect(dataset.examples).toEqual([]);
++  });
++
++  it("requires each field to resolve to the correct source assertion or exact editorial revision", () => {
++    const dataset = firstPartyDataset();
++    dataset.kanji[0].meaning!.provenance = { kind: "source_assertion", id: "missing" };
++    expect(validateEditorialContentDataset(dataset).issues).toContain("kanji:高.meaning: source assertion missing is missing");
++
++    const revisionInput = {
++      id: "revision:meaning-1", contentId: "kanji:高", recordedOn: "2026-11-02",
++      authorAttribution: "local editor", identityTrust: "unverified_local_attribution" as const,
++      changeSummary: "Independently authored wording.", changedFields: ["meaning"],
++      contentSnapshot: { meaning: "Independently authored meaning" },
++    };
++    const revisions = appendEditorialRevision([], revisionInput);
++    const revision = revisions[0];
++    expect(revision.version).toBe(1);
++    expect(revision.previousRevisionId).toBeNull();
++    expect(revision.contentDigest).toBe(digestEditorialContent(revision.contentSnapshot));
++    expect(revision.revisionDigest).toBe(editorialRevisionDigest(revision));
++    dataset.editorialRevisions = revisions;
++    dataset.kanji[0].meaning!.value = "Independently authored meaning";
++    dataset.kanji[0].meaning!.provenance = { kind: "editorial_revision", id: revision.id };
++    expect(validateEditorialContentDataset(dataset).valid).toBe(true);
++    dataset.editorialRevisions = [{ ...revision, contentSnapshot: { meaning: "tampered" } }];
++    expect(validateEditorialContentDataset(dataset).issues).toContain(`${revision.id}: content snapshot digest mismatch`);
++    dataset.editorialRevisions = revisions;
++    const second = appendEditorialRevision(revisions, { ...revisionInput, id: "revision:meaning-2", changeSummary: "Revised again.", contentSnapshot: { meaning: "A second independent wording" } });
++    expect(second[0]).toEqual(revision);
++    expect(second[1]).toMatchObject({ version: 2, previousRevisionId: revision.id });
++  });
++});
++
++function graphFixture(): MindTreeEvidenceGraph {
++  return {
++    schemaVersion: MINDTREE_EVIDENCE_GRAPH_SCHEMA,
++    identities: [
++      { id: "glyph:日", character: "日", variantOfIdentityId: null },
++      { id: "component:日", character: "日", variantOfIdentityId: null },
++      { id: "component:口", character: "口", variantOfIdentityId: null },
++    ],
++    sourceAssertions: [
++      { id: "source:a", sourceRef: "first-party:kanji-mindtree:v1", sourceVersion: "v1", sourceRecordRef: "fixture:a", evidenceRef: "test:a" },
++      { id: "source:b", sourceRef: "upstream:kanjivg:2024-08", sourceVersion: "2024-08", sourceRecordRef: "fixture:b", evidenceRef: "test:b" },
++    ],
++    decompositions: [
++      { id: "decomp:a", glyphIdentityId: "glyph:日", sourceAssertionId: "source:a", sourceRef: "first-party:kanji-mindtree:v1", sourceVersion: "v1", state: "candidate", occurrences: [{ id: "a:1", componentIdentityId: "component:日", renderedAs: "日", position: null, orderIndex: 0 }], edges: [] },
++      { id: "decomp:b", glyphIdentityId: "glyph:日", sourceAssertionId: "source:b", sourceRef: "upstream:kanjivg:2024-08", sourceVersion: "2024-08", state: "candidate", occurrences: [{ id: "b:1", componentIdentityId: "component:口", renderedAs: "口", position: "inside", orderIndex: 0 }, { id: "b:2", componentIdentityId: "component:日", renderedAs: "日", position: "below", orderIndex: 1 }], edges: [{ id: "edge:b", fromOccurrenceId: "b:1", toOccurrenceId: "b:2", relation: "role_claim", claim: "layout", sourceAssertionId: "source:b" }] },
++    ],
++  };
++}
++
++describe("multi-decomposition Mind Tree evidence validation", () => {
++  it("retains separately sourced decompositions without selecting or merging them", () => {
++    const graph = graphFixture();
++    expect(validateMindTreeEvidenceGraph(graph).valid).toBe(true);
++    expect(decompositionsForIdentity(graph, "glyph:日").map((item) => item.id)).toEqual(["decomp:a", "decomp:b"]);
++  });
++
++  it("rejects edge provenance that crosses source boundaries", () => {
++    const graph = graphFixture();
++    graph.decompositions[1].edges[0].sourceAssertionId = "source:a";
++    expect(validateMindTreeEvidenceGraph(graph).issues).toContain("decomp:b/edge:b: edge provenance crosses source boundaries");
++    expect(decompositionsForIdentity(graph, "glyph:日")).toEqual([]);
++  });
++});
++
++describe("separate candidate, approved and published corpus membership", () => {
++  const candidate: KanjiMembershipEvent = {
++    schemaVersion: KANJI_MEMBERSHIP_SCHEMA, eventId: "membership:candidate", identityId: "identity:高", exactCharacter: "高",
++    goal: "japanese_literacy", state: "candidate", sequence: 1, previousEventId: null,
++    sourceAssertionIds: ["assertion:seed"], sourceRefs: [FIRST_PARTY], decisionEvidenceRef: "test:candidate-evidence", decisionAuthority: "selection simulation only",
++    decisionTrust: "unverified_local_attribution", authenticationEvidenceRef: null, authenticationEvidenceSha256: null,
++  };
++  const approved: KanjiMembershipEvent = { ...candidate, eventId: "membership:approved", state: "approved", sequence: 2, previousEventId: candidate.eventId, decisionEvidenceRef: "test:approval-evidence", decisionAuthority: "test reviewer" };
++  const published: KanjiMembershipEvent = { ...approved, eventId: "membership:published", state: "published", sequence: 3, previousEventId: approved.eventId, decisionEvidenceRef: "test:publication-evidence", decisionAuthority: "test publisher" };
++
++  it("preserves the four distinct goals and keeps candidate membership out of public corpus", () => {
++    expect(KANJI_SELECTION_GOALS).toEqual(["japanese_literacy", "general_reading_coverage", "learner_progression", "comprehensive_reference"]);
++    expect(KANJI_QUOTA_POLICY).toBe("no_equal_quotas_without_owner_approval");
++    expect(validateKanjiMembershipHistory([candidate]).valid).toBe(true);
++    expect(mayAppearInPublicCorpus({ latestEvent: candidate, rightsHistory: K0_5A_INITIAL_RIGHTS_HISTORY, membershipEvidenceVerified: false })).toEqual({ allowed: false, reason: "membership_not_published" });
++    expect(validateKanjiMembershipHistory([candidate, approved, published]).valid).toBe(true);
++  });
++
++  it("requires both published membership and source-scoped public clearance", () => {
++    expect(mayAppearInPublicCorpus({ latestEvent: published, rightsHistory: K0_5A_INITIAL_RIGHTS_HISTORY, membershipEvidenceVerified: false })).toEqual({ allowed: false, reason: "membership_authority_unverified" });
++    const rightsHistory = createOwnerClearanceEvents({
++      sourceRef: FIRST_PARTY, eventIdPrefix: "test:membership-owner-clearance", recordedOn: "2026-11-02",
++      ownerAuthorizationRef: "test:membership-owner-grant", ownerAuthorizationSha256: SHA,
++      scopes: ["derivation", "public_distribution"], history: K0_5A_INITIAL_RIGHTS_HISTORY,
++    });
++    expect(mayAppearInPublicCorpus({ latestEvent: published, rightsHistory, membershipEvidenceVerified: false })).toEqual({ allowed: false, reason: "membership_authority_unverified" });
++    const externallyAuthenticated = { ...published, decisionTrust: "authenticated_external" as const, authenticationEvidenceRef: "test:verified-decision", authenticationEvidenceSha256: SHA };
++    expect(validateKanjiMembershipHistory([candidate, approved, externallyAuthenticated]).valid).toBe(true);
++    expect(mayAppearInPublicCorpus({ latestEvent: externallyAuthenticated, rightsHistory, membershipEvidenceVerified: true })).toEqual({ allowed: true, reason: "published_membership_and_all_sources_cleared" });
++    const illegallyChanged = { ...approved, state: "published" as const, sequence: 3, previousEventId: "wrong" };
++    expect(validateKanjiMembershipHistory([candidate, illegallyChanged]).valid).toBe(false);
++  });
++});
++
++describe("versioned stroke asset contract", () => {
++  it("renders accessible native controls around clearly labeled synthetic-only geometry", () => {
++    const asset = {
++      schemaVersion: "nihongobridge-stroke-asset@1" as const,
++      assetId: "test:asset:accessible",
++      label: "abstract practice shape",
++      geometryOrigin: "synthetic_test_geometry" as const,
++      sourceRef: "test:stroke-player:fixture@1",
++      strokes: [{ id: "line-1", pathData: "M 10 10 L 90 90", description: "diagonal line" }],
