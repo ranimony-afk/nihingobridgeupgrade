@@ -1,0 +1,273 @@
++    };
++    const html = renderToStaticMarkup(createElement(SyntheticStrokeAssetPlayer, { asset }));
++    expect(html).toContain('role="img"');
++    expect(html).toContain('role="status"');
++    expect(html).toContain("not a Kanji drawing or linguistic fact");
++    expect(html).toContain(">Next stroke</button>");
++    expect(html).toContain(">Reset</button>");
++  });
++
++  it("accepts synthetic test geometry and rejects upstream sources and active SVG path payloads", () => {
++    const asset = {
++      schemaVersion: "nihongobridge-stroke-asset@1",
++      assetId: "test:asset:1",
++      label: "three-line practice shape",
++      geometryOrigin: "synthetic_test_geometry",
++      sourceRef: "test:stroke-player:fixture@1",
++      strokes: [{ id: "line-1", pathData: "M 10 10 L 90 90", description: "diagonal line" }],
++    };
++    expect(validateStrokeAsset(asset).valid).toBe(true);
++    expect(validateStrokeAsset({ ...asset, sourceRef: "upstream:kanjivg:2024-08" }).valid).toBe(false);
++    expect(validateStrokeAsset({ ...asset, strokes: [{ ...asset.strokes[0], pathData: "M 0 0 <script>" }] }).valid).toBe(false);
++  });
++});
+diff --git a/tests/test_k011_readiness.py b/tests/test_k011_readiness.py
+new file mode 100644
+index 0000000..77b07f3
+--- /dev/null
++++ b/tests/test_k011_readiness.py
+@@ -0,0 +1,71 @@
++"""Focused fail-closed tests for the read-only K0.11 evidence verifier."""
++from __future__ import annotations
++
++import copy
++import importlib.util
++import json
++import unittest
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++REPORT_PATH = ROOT / "reports/gates/PHASE-K0.11-SOURCE-AUTHORIZATION-READINESS.json"
++MODULE_PATH = ROOT / "scripts/verify-k011-readiness.py"
++SPEC = importlib.util.spec_from_file_location("verify_k011_readiness", MODULE_PATH)
++assert SPEC and SPEC.loader
++verifier = importlib.util.module_from_spec(SPEC)
++SPEC.loader.exec_module(verifier)
++
++
++class K011ReadinessVerifierTests(unittest.TestCase):
++    @classmethod
++    def setUpClass(cls) -> None:
++        cls.baseline = json.loads(REPORT_PATH.read_text(encoding="utf-8"))
++
++    def test_current_evidence_is_consistent_but_verdict_remains_blocked(self) -> None:
++        self.assertEqual(self.baseline["verdict"], "BLOCKED")
++        self.assertEqual(verifier.audit_report(self.baseline, ROOT), [])
++
++    def test_manually_entered_approved_is_rejected(self) -> None:
++        altered = copy.deepcopy(self.baseline)
++        altered["sourceInventory"][0]["rights"]["scopeStates"]["retention"] = "APPROVED"
++        errors = verifier.audit_report(altered, ROOT)
++        self.assertTrue(any("invalid or permissive rights state" in error for error in errors))
++
++    def test_cleared_is_not_a_valid_k011_readiness_state(self) -> None:
++        altered = copy.deepcopy(self.baseline)
++        altered["sourceInventory"][0]["rights"]["scopeStates"]["public_distribution"] = "CLEARED"
++        errors = verifier.audit_report(altered, ROOT)
++        self.assertTrue(any("invalid or permissive rights state" in error for error in errors))
++
++    def test_mismatched_reason_total_fails_closed(self) -> None:
++        altered = copy.deepcopy(self.baseline)
++        first = next(iter(altered["k010Reconciliation"]["runs"].values()))
++        first["computedReasonCounts"] = {"FABRICATED": 1}
++        errors = verifier.audit_report(altered, ROOT)
++        self.assertTrue(any("K0.11 K0.10 reconciliation summary mismatch" in error for error in errors))
++
++    def test_source_lock_hash_mismatch_fails_closed(self) -> None:
++        altered = copy.deepcopy(self.baseline)
++        lock_id = next(
++            entry["sourceId"] for entry in altered["sourceInventory"]
++            if entry["registration"].get("sourceLock") == "K0.4A"
++        )
++        altered["sourceInventory"] = [entry for entry in altered["sourceInventory"] if entry["sourceId"] != lock_id]
++        errors = verifier.audit_report(altered, ROOT)
++        self.assertTrue(any("omits one or more K0.4A source-lock IDs" in error for error in errors))
++
++    def test_tatoeba_phases_cannot_be_collapsed(self) -> None:
++        altered = copy.deepcopy(self.baseline)
++        altered["phase14Tatoeba"]["14.5B"]["doNotCollapseWith14_5A"] = False
++        errors = verifier.audit_report(altered, ROOT)
++        self.assertTrue(any("14.5B must remain distinct" in error for error in errors))
++
++    def test_k010_narrative_table_cannot_drift_from_machine_counts(self) -> None:
++        altered = copy.deepcopy(self.baseline)
++        altered["k010Reconciliation"]["runs"]["syntheticEligible"]["narrativeRowLabel"] = "Empty export"
++        errors = verifier.audit_report(altered, ROOT)
++        self.assertTrue(any("narrative supplied/kind counts differ" in error for error in errors))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_k014_openjlpt_grammar.py b/tests/test_k014_openjlpt_grammar.py
+new file mode 100644
+index 0000000..8e3ba5c
+--- /dev/null
++++ b/tests/test_k014_openjlpt_grammar.py
+@@ -0,0 +1,84 @@
++"""K0.14 tests for the pinned OpenJLPT grammar-only adapter.
++
++The source-data test reads the acquired v0.2.0 snapshot. Synthetic records are
++used only to exercise validator edge cases; they are not counted as authentic
++dataset records or accuracy evidence.
++"""
++from __future__ import annotations
++
++import sys
++import unittest
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT))
++
++from scripts.k014_openjlpt_grammar import (  # noqa: E402
++    PINNED_FILES,
++    RAW_ROOT,
++    build_outputs,
++    build_review_queue,
++    normalize_value,
++    source_path,
++    validate_record,
++    verify_pinned_bytes,
++)
++
++
++class OpenJLPTRawSnapshotTests(unittest.TestCase):
++    def test_all_pinned_release_files_match_checksums(self) -> None:
++        for relative, expected in PINNED_FILES.items():
++            path = source_path(relative)
++            self.assertTrue(path.is_file(), relative)
++            actual = verify_pinned_bytes(relative, path.read_bytes())
++            self.assertEqual(expected["bytes"], actual["bytes"], relative)
++            self.assertEqual(expected["gitBlob"], actual["gitBlob"], relative)
++            self.assertEqual(expected["sha256"], actual["sha256"], relative)
++
++    def test_real_source_records_parse_and_validate_without_claiming_semantic_accuracy(self) -> None:
++        self.assertTrue((RAW_ROOT / "acquisition-manifest.json").is_file())
++        normalized, quality, rejected = build_outputs()
++        self.assertEqual(100, quality["sourceCount"])
++        self.assertEqual(100, quality["parsedCount"])
++        self.assertEqual(100, quality["structurallyValidCount"])
++        self.assertEqual(100, quality["normalizedCount"])
++        self.assertEqual(0, quality["rejectedCount"])
++        self.assertEqual(0, quality["exactDuplicateRecordCount"])
++        self.assertEqual(1, quality["duplicatePatternKeyCount"])
++        self.assertEqual([], rejected)
++        self.assertEqual(100, len(normalized["records"]))
++        self.assertEqual("NOT_AUTHORIZED", normalized["dataset"]["publicationStatus"])
++        self.assertEqual(100, quality["humanReview"]["reviewPendingCount"])
++        self.assertEqual({"N1": 20, "N2": 20, "N3": 20, "N4": 20, "N5": 20}, quality["levelDistribution"])
++        self.assertEqual(200, quality["exampleAvailability"]["exampleItemCount"])
++        self.assertEqual({"en,ja": 200}, quality["exampleAvailability"]["exampleKeyShapes"])
++        self.assertEqual(100, quality["qualityClasses"]["PROVENANCE"]["recordsWithExamplesMissingPerExampleOrigin"])
++        queue = build_review_queue(normalized, quality)
++        self.assertEqual(100, queue["pendingCount"])
++        self.assertEqual(100, len(queue["items"]))
++        self.assertEqual("NOT_PERFORMED", quality["semanticValidation"]["status"])
++
++    def test_synthetic_validator_edge_case_only(self) -> None:
++        fixture = {
++            "pattern": "〜ている",
++            "level": "N5",
++            "meaning": "state or ongoing action",
++            "formation": "Verb て-form + いる",
++            "examples": [{"ja": "例文", "en": "Example."}],
++            "tags": ["aspect"],
++        }
++        self.assertEqual([], validate_record(fixture, path="sources/grammar/n5.json", index=1))
++        malformed = dict(fixture, examples=[{"ja": "例文"}])
++        codes = {issue["code"] for issue in validate_record(malformed, path="sources/grammar/n5.json", index=1)}
++        self.assertIn("example_language_field_missing_or_empty", codes)
++
++    def test_unicode_normalization_is_additive_not_destructive(self) -> None:
++        original = "  カ\u3099  "
++        normalized = normalize_value(original)
++        self.assertEqual("カ\u3099", original.strip())
++        self.assertEqual("ガ", normalized)
++        self.assertNotEqual(original, normalized)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_kanji_k0_candidate_simulation.py b/tests/test_kanji_k0_candidate_simulation.py
+new file mode 100644
+index 0000000..99ee65e
+--- /dev/null
++++ b/tests/test_kanji_k0_candidate_simulation.py
+@@ -0,0 +1,77 @@
++import json
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++sys.path.insert(0, str(ROOT / "scripts"))
++
++import kanji_k0_candidate_simulation as simulation  # noqa: E402
++
++
++class CandidateSimulationTest(unittest.TestCase):
++    def setUp(self) -> None:
++        self.records = {
++            "A": {"grade": 2, "freq": 1, "jlpt": 4, "nanori": False},
++            "B": {"grade": 9, "freq": 3, "jlpt": 1, "nanori": True},
++            "C": {"grade": None, "freq": 2, "jlpt": None, "nanori": False},
++            "D": {"grade": 1, "freq": None, "jlpt": None, "nanori": True},
++            "E": {"grade": None, "freq": None, "jlpt": 2, "nanori": False},
++        }
++
++    def test_scenario_counts_and_source_proxies_are_explicit(self) -> None:
++        result = simulation.calculate_summary(self.records, target_count=3)
++
++        self.assertEqual(result["dimension_proxy_counts"]["literacy_grade_1_6_or_8"], 2)
++        self.assertEqual(result["dimension_proxy_counts"]["frequency_rank_present"], 3)
++        self.assertEqual(result["dimension_proxy_counts"]["legacy_jlpt_present"], 3)
++        self.assertEqual(result["dimension_proxy_counts"]["name_grade_9_or_10"], 1)
++        self.assertEqual(result["intersections"]["frequency_and_name_grade"], 1)
++        self.assertEqual(result["union_counts"]["literacy_or_frequency"], 4)
++        self.assertEqual(result["union_counts"]["all_four_signals"], 5)
++
++        scenarios = {item["name"]: item for item in result["scenarios"]}
++        self.assertEqual(scenarios["literacy_first_proxy"]["candidate_count"], 2)
++        self.assertEqual(scenarios["frequency_first_proxy"]["candidate_count"], 3)
++        self.assertEqual(scenarios["learner_first_legacy_jlpt_proxy"]["candidate_count"], 3)
++        self.assertEqual(scenarios["comprehensive_reference_name_grade_proxy"]["candidate_count"], 3)
++        self.assertEqual(scenarios["balanced_hybrid_evidence_union_proxy"]["candidate_count"], 5)
++        self.assertFalse(result["union_counts"]["legacy_jlpt_adds_no_members_beyond_literacy_or_name_grade"])
++
++    def test_ranked_outsider_sensitivity_is_deterministic_but_unapproved(self) -> None:
++        result = simulation.calculate_summary(self.records, target_count=3)
++        sensitivity = result["literacy_core_plus_top_ranked_frequency_outsiders_sensitivity"]
++
++        self.assertEqual(sensitivity["status"], "SIMULATED_ONLY_NOT_APPROVED")
++        self.assertEqual(sensitivity["extension_slots_derived_from_target_minus_literacy_proxy"], 1)
++        self.assertEqual(sensitivity["cutoff_frequency_rank"], 2)
++        self.assertEqual(sensitivity["candidate_count"], 3)
++        self.assertEqual(sensitivity["ranked_members"], 2)
++        self.assertEqual(sensitivity["no_grade_members_in_extension"], 1)
++
++    def test_duplicate_frequency_ranks_fail_closed(self) -> None:
++        invalid = {
++            "A": {"grade": 1, "freq": 1, "jlpt": None, "nanori": False},
++            "B": {"grade": 2, "freq": 1, "jlpt": None, "nanori": False},
++        }
++        with self.assertRaisesRegex(ValueError, "rank values are not unique"):
++            simulation.calculate_summary(invalid, target_count=2)
++
++    def test_unpinned_input_is_rejected_before_xml_parsing(self) -> None:
++        with tempfile.TemporaryDirectory() as directory:
++            path = Path(directory) / "not-kanjidic2.xml"
++            path.write_text("not the pinned source", encoding="utf-8")
++            with self.assertRaisesRegex(ValueError, "pin mismatch"):
++                simulation.parse_pinned_source(path)
++
++    def test_output_shape_contains_only_aggregate_counts(self) -> None:
++        result = simulation.calculate_summary(self.records, target_count=3)
++        encoded = json.dumps(result, ensure_ascii=False, sort_keys=True)
++        self.assertNotIn('"candidate_rows"', encoded)
++        self.assertNotIn('"characters"', encoded)
++        self.assertIn('"signal_cohort_counts_only"', encoded)
++
++
++if __name__ == "__main__":
++    unittest.main()
